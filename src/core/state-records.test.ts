@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import { deflateToBase64 } from '@/core/deflate';
 import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
@@ -45,7 +46,7 @@ describe('state records', () => {
     // #when
     const decoded = decodeStateRecords(encodeStateRecords([BROK, GONE]));
     // #then
-    expect(decoded).toEqual({ ok: true, value: [BROK, GONE] });
+    expect(decoded).toEqual(Result.ok([BROK, GONE]));
   });
   test.each([
     ['text that is not base64', 'not base64!'],
@@ -57,7 +58,7 @@ describe('state records', () => {
     // #when
     const decoded = decodeStateRecords(data);
     // #then
-    expect(decoded).toEqual({ ok: false, error: 'invalid-records' });
+    expect(decoded).toEqual(Result.err('invalid-records'));
   });
 });
 
@@ -73,9 +74,7 @@ describe('stateAnswer', () => {
       })),
       skipped: answer.skipped,
     }).toEqual({
-      messages: [
-        { v: 4, g: GENERATION, t: 'state', r: 'r1', i: 1, n: 1, records: { ok: true, value: [] } },
-      ],
+      messages: [{ v: 4, g: GENERATION, t: 'state', r: 'r1', i: 1, n: 1, records: Result.ok([]) }],
       skipped: [],
     });
   });
@@ -89,14 +88,14 @@ describe('stateAnswer', () => {
     const decoded = answer.messages.flatMap((message) => {
       const part = decodeStateRecords(message.records);
 
-      return part.ok ? part.value : [];
+      return part.isOk() ? part.value : [];
     });
 
     expect({
       count: answer.messages.length > 1,
       numbering: answer.messages.map((message) => [message.i, message.n]),
       underLimit: answer.messages.every((message) => jsonByteLength(message) < MESSAGE_BYTE_LIMIT),
-      parse: answer.messages.every((message) => parseRoomMessage(message).ok),
+      parse: answer.messages.every((message) => parseRoomMessage(message).isOk()),
       echo: answer.messages.every((message) => message.r === 'r1' && message.g === GENERATION),
       records: decoded,
       skipped: answer.skipped,
@@ -140,7 +139,7 @@ describe('stateAnswer', () => {
     const decoded = answer.messages.flatMap((message) => {
       const part = decodeStateRecords(message.records);
 
-      return part.ok ? part.value : [];
+      return part.isOk() ? part.value : [];
     });
 
     expect({

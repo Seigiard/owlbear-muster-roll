@@ -53,5 +53,5 @@ function decodedPreset(data: string | null): Preset | null {
 
   const decoded = decodePreset(data);
 
-  return decoded.ok ? decoded.value : null;
+  return decoded.isOk() ? decoded.value : null;
 }

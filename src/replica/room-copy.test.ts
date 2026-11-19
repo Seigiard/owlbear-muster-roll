@@ -279,7 +279,7 @@ function gatedMetadata(platform: MockPlatform, gate: Gate) {
 function copied(generation: Generation, records: readonly VersionedRecord[]): JsonObject {
   const encoded = encodeSnapshot(generation, records);
 
-  if (!encoded.ok) {
+  if (!encoded.isOk()) {
     throw new Error('fixture did not encode');
   }
 
@@ -289,7 +289,7 @@ function copied(generation: Generation, records: readonly VersionedRecord[]): Js
 function metadataAtLimit(generation: Generation, records: readonly VersionedRecord[]): JsonObject {
   const encoded = encodeSnapshot(generation, records);
 
-  if (!encoded.ok) {
+  if (!encoded.isOk()) {
     throw new Error('fixture did not encode');
   }
 
@@ -306,7 +306,7 @@ function metadataJsonBytes(metadata: JsonObject): number {
 function decoded(room: ReturnType<typeof createMemoryRoom>) {
   const read = readSnapshot(room.getMetadata());
 
-  if (!read.ok) {
+  if (!read.isOk()) {
     throw new Error('room copy did not decode');
   }
 

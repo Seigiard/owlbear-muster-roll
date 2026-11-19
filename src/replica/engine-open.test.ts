@@ -636,7 +636,7 @@ async function startBackground(
       return client.local.flatMap((data) => {
         const parsed = parseEngineMessage(data);
 
-        if (!parsed.ok || parsed.value.t !== 'open-sheet') return [];
+        if (!parsed.isOk() || parsed.value.t !== 'open-sheet') return [];
         const { t: _type, ...request } = wireOpenSheetOf(parsed.value);
 
         return [request];
@@ -667,7 +667,7 @@ function localEngineMessageTypes(messages: readonly JsonValue[]): EngineMessage[
   return messages.flatMap((message) => {
     const parsed = parseEngineMessage(message);
 
-    return parsed.ok ? [parsed.value.t] : [];
+    return parsed.isOk() ? [parsed.value.t] : [];
   });
 }
 

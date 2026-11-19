@@ -5,7 +5,7 @@ import {
   type RecordFailure,
   type VersionedRecord,
 } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import {
   buildStorageKey,
   generationMarkerKey,
@@ -61,37 +61,37 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
     write: (generation, candidate) => {
       const parsed = parseRecord(candidate);
 
-      if (!parsed.ok) {
+      if (!parsed.isOk()) {
         return parsed;
       }
 
       const record = parsed.value;
       const storageKey = buildStorageKey(roomId, generation, record.k);
 
-      if (!storageKey.ok) {
+      if (!storageKey.isOk()) {
         return storageKey;
       }
 
       const stored = readRecord(storage, storageKey.value, record.k);
 
-      if (!stored.ok) {
+      if (!stored.isOk()) {
         return stored;
       }
 
       const winner = stored.value === null ? record : mergeRecords(stored.value, record);
 
       if (winner === stored.value) {
-        return ok(winner);
+        return Result.ok(winner);
       }
 
       const written = storage.setItem(storageKey.value, JSON.stringify(winner));
 
-      return written.ok ? ok(winner) : err(written.error);
+      return written.isOk() ? Result.ok(winner) : Result.err(written.error);
     },
     loadGeneration: (generation) => {
       const keys = storage.keys();
 
-      if (!keys.ok) {
+      if (!keys.isOk()) {
         return keys;
       }
 
@@ -102,20 +102,20 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
         const parts = parseStorageKey(storageKey);
 
         if (
-          parts.ok &&
+          parts.isOk() &&
           parts.value.roomId === roomId &&
           compareGenerations(parts.value.generation, generation) === 0
         ) {
           const text = storage.getItem(storageKey);
 
-          if (!text.ok) {
+          if (!text.isOk()) {
             return text;
           }
 
           if (text.value !== null) {
             const record = parseStoredRecord(text.value, parts.value.key);
 
-            if (record.ok) {
+            if (record.isOk()) {
               records.push(record.value);
             } else {
               corruptKeys.push(parts.value.key);
@@ -124,12 +124,12 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
         }
       }
 
-      return ok({ records, corruptKeys });
+      return Result.ok({ records, corruptKeys });
     },
     readHighestGeneration: () => {
       const keys = storage.keys();
 
-      if (!keys.ok) {
+      if (!keys.isOk()) {
         return keys;
       }
 
@@ -140,7 +140,7 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
         const marker = parseGenerationMarkerKey(storageKey);
 
         if (
-          marker.ok &&
+          marker.isOk() &&
           marker.value.roomId === roomId &&
           !incomplete.has(generationId(marker.value.generation)) &&
           compareGenerations(marker.value.generation, highest) > 0
@@ -152,14 +152,14 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
         const parts = parseStorageKey(storageKey);
 
         if (
-          parts.ok &&
+          parts.isOk() &&
           parts.value.roomId === roomId &&
           !incomplete.has(generationId(parts.value.generation)) &&
           compareGenerations(parts.value.generation, highest) > 0
         ) {
           const stored = readRecord(storage, storageKey, parts.value.key);
 
-          if (!stored.ok) {
+          if (!stored.isOk()) {
             return stored;
           }
 
@@ -169,22 +169,22 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
         }
       }
 
-      return ok(highest);
+      return Result.ok(highest);
     },
     markIncomplete: (generation) => {
       const key = incompleteMarkerKey(roomId, generation);
 
-      return key.ok ? storage.setItem(key.value, '1') : key;
+      return key.isOk() ? storage.setItem(key.value, '1') : key;
     },
     markComplete: (generation) => {
       const key = incompleteMarkerKey(roomId, generation);
 
-      return key.ok ? storage.removeItem(key.value) : key;
+      return key.isOk() ? storage.removeItem(key.value) : key;
     },
     markGeneration: (generation) => {
       const key = generationMarkerKey(roomId, generation);
 
-      return key.ok ? storage.setItem(key.value, '1') : key;
+      return key.isOk() ? storage.setItem(key.value, '1') : key;
     },
     removeGeneration: (generation) =>
       removeWhere((found) => compareGenerations(found.generation, generation) === 0),
@@ -193,7 +193,7 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
     removeIncomplete: () => {
       const keys = storage.keys();
 
-      if (!keys.ok) {
+      if (!keys.isOk()) {
         return keys;
       }
 
@@ -204,7 +204,7 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
     removeOlderFormats: () => {
       const keys = storage.keys();
 
-      if (!keys.ok) {
+      if (!keys.isOk()) {
         return keys;
       }
 
@@ -212,20 +212,20 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
         if (isOlderFormatRoomKey(storageKey, roomId)) {
           const removed = storage.removeItem(storageKey);
 
-          if (!removed.ok) {
+          if (!removed.isOk()) {
             return removed;
           }
         }
       }
 
-      return ok(undefined);
+      return Result.ok(undefined);
     },
   };
 
   function keyGeneration(storageKey: string): KeyGeneration | null {
     const record = parseStorageKey(storageKey);
 
-    if (record.ok) {
+    if (record.isOk()) {
       return record.value.roomId === roomId
         ? { generation: record.value.generation, marker: null }
         : null;
@@ -233,7 +233,7 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
 
     const incomplete = parseIncompleteMarkerKey(storageKey);
 
-    if (incomplete.ok) {
+    if (incomplete.isOk()) {
       return incomplete.value.roomId === roomId
         ? { generation: incomplete.value.generation, marker: 'incomplete' }
         : null;
@@ -241,7 +241,7 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
 
     const kept = parseGenerationMarkerKey(storageKey);
 
-    return kept.ok && kept.value.roomId === roomId
+    return kept.isOk() && kept.value.roomId === roomId
       ? { generation: kept.value.generation, marker: 'generation' }
       : null;
   }
@@ -265,7 +265,7 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
   function removeWhere(matches: (found: KeyGeneration) => boolean): Result<void, StorageFailure> {
     const keys = storage.keys();
 
-    if (!keys.ok) {
+    if (!keys.isOk()) {
       return keys;
     }
 
@@ -291,7 +291,7 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
 
       const removed = storage.removeItem(storageKey);
 
-      if (!removed.ok) {
+      if (!removed.isOk()) {
         return removed;
       }
     }
@@ -299,12 +299,12 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
     for (const storageKey of [...generationMarkers, ...incompleteMarkers]) {
       const removed = storage.removeItem(storageKey);
 
-      if (!removed.ok) {
+      if (!removed.isOk()) {
         return removed;
       }
     }
 
-    return ok(undefined);
+    return Result.ok(undefined);
   }
 }
 
@@ -321,15 +321,15 @@ function readRecord(
 ): Result<VersionedRecord | null, StorageFailure> {
   const text = storage.getItem(storageKey);
 
-  if (!text.ok) {
+  if (!text.isOk()) {
     return text;
   }
 
   if (text.value === null) {
-    return ok(null);
+    return Result.ok(null);
   }
 
   const record = parseStoredRecord(text.value, key);
 
-  return ok(record.ok ? record.value : null);
+  return Result.ok(record.isOk() ? record.value : null);
 }

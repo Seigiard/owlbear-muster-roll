@@ -69,7 +69,7 @@ export function createCommitOutbox(
     for (const assembled of held.values()) {
       const fragments = fragmentRecord(assembled);
 
-      if (!fragments.ok) {
+      if (!fragments.isOk()) {
         console.error('Muster Roll dropped a commit record too large for one message', assembled.k);
         held.delete(assembled.k);
         heldAcks.delete(assembled.k);
@@ -119,7 +119,7 @@ export function createCommitOutbox(
 
     // Measured with the acks of each record's key, so a part with its acks stays under the limit.
     const split = splitBatch(items, envelopeBytes);
-    const first = split.ok ? (split.value[0] ?? []) : [];
+    const first = split.isOk() ? (split.value[0] ?? []) : [];
     const records = first.map(([record]) => record);
     const acks = first.flatMap(([, keyAcks]) => keyAcks);
 
@@ -235,7 +235,7 @@ function fittingAcks(
   for (let count = acks.length; count >= 0; count -= 1) {
     const item: CommitItem = [record, acks.slice(0, count)];
 
-    if (splitBatch([item], envelopeBytes).ok) {
+    if (splitBatch([item], envelopeBytes).isOk()) {
       return count;
     }
   }

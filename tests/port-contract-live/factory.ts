@@ -418,7 +418,7 @@ export function livePortContractSupport(factory: PortContractFactory): ScenarioS
 export function cleanupStorageNamespace(storage: StoragePort, namespace: string): void {
   const keys = storage.keys();
 
-  if (!keys.ok) {
+  if (!keys.isOk()) {
     throw new Error(keys.error.reason);
   }
 
@@ -429,7 +429,7 @@ export function cleanupStorageNamespace(storage: StoragePort, namespace: string)
 
     const removed = storage.removeItem(key);
 
-    if (!removed.ok) {
+    if (!removed.isOk()) {
       throw new Error(removed.error.reason);
     }
   }
@@ -620,7 +620,7 @@ async function sendControl(
     'Live harness control transport timed out while sending a control message.',
   );
 
-  if (!result.ok) {
+  if (!result.isOk()) {
     throw new Error(
       result.error.kind === 'rate-limited'
         ? 'The live harness control message was rate-limited.'

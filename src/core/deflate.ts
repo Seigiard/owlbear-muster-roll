@@ -1,6 +1,6 @@
 import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
 
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 
 // Keeps String.fromCharCode under the engine's argument limit.
 const BASE64_CHUNK_BYTES = 0x8000;
@@ -20,17 +20,17 @@ export function inflateFromBase64(data: string, maxBytes: number): Result<string
     // With a fixed buffer fflate does not grow it, so output past `maxBytes` fills it to the end.
     bytes = inflateSync(fromBase64(data), { out: new Uint8Array(maxBytes + 1) });
   } catch {
-    return err('invalid-data');
+    return Result.err('invalid-data');
   }
 
   if (bytes.length > maxBytes) {
-    return err('too-large');
+    return Result.err('too-large');
   }
 
   try {
-    return ok(strFromU8(bytes));
+    return Result.ok(strFromU8(bytes));
   } catch {
-    return err('invalid-data');
+    return Result.err('invalid-data');
   }
 }
 

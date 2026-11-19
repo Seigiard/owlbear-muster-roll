@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue, ReadonlyJsonValue } from '@/core/json';
-import type { Result } from '@/core/result';
+import type { Result } from 'better-result';
 import type { PlayerRole } from '@/core/visibility';
 
 export type Unsubscribe = () => void;

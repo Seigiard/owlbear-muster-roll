@@ -361,11 +361,11 @@ function splitParts(
       ? null
       : splitBatch(fragmentRecords(pendingView, recordReserve), envelopeBytes);
 
-  if (recordParts !== null && !recordParts.ok) {
+  if (recordParts !== null && !recordParts.isOk()) {
     return null;
   }
 
-  if (pendingParts !== null && !pendingParts.ok) {
+  if (pendingParts !== null && !pendingParts.isOk()) {
     return null;
   }
 

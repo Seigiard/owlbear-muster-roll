@@ -10,7 +10,7 @@ import {
   PRESET_FILE_BYTE_LIMIT,
   type Preset,
 } from '@/core/preset';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import { copy } from '@/copy';
 import { downloadJsonFile } from '@/ui/download';
 import { presetFailureMessage } from '@/ui/preset-errors';
@@ -138,7 +138,7 @@ export function usePresetUpload({
 
     const data = await readPreset(file);
 
-    if (!data.ok) {
+    if (!data.isOk()) {
       dispatch({ type: 'file-error', message: data.error });
 
       return;
@@ -263,7 +263,7 @@ export function PresetDownload({ preset, catchingUp }: PresetDownloadProps): Rea
 async function readPreset(file: File): Promise<Result<string, string>> {
   // Checked before reading, so a huge file is never read into the window.
   if (file.size > PRESET_FILE_BYTE_LIMIT) {
-    return err(tooLargeText());
+    return Result.err(tooLargeText());
   }
 
   let text: string;
@@ -272,12 +272,14 @@ async function readPreset(file: File): Promise<Result<string, string>> {
   try {
     text = await file.text();
   } catch {
-    return err(copy.badFile(copy.badFileReason.notJson));
+    return Result.err(copy.badFile(copy.badFileReason.notJson));
   }
 
   const parsed = parsePresetFile(text);
 
-  return parsed.ok ? ok(encodePreset(parsed.value)) : err(presetFailureMessage(parsed.error));
+  return parsed.isOk()
+    ? Result.ok(encodePreset(parsed.value))
+    : Result.err(presetFailureMessage(parsed.error));
 }
 
 function tooLargeText(): string {

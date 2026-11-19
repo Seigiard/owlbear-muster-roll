@@ -537,7 +537,7 @@ export function rejection(
 
     const parsed = parseEngineMessage(message);
 
-    if (parsed.ok && parsed.value.t === 'command-rejected' && parsed.value.id === id) {
+    if (parsed.isOk() && parsed.value.t === 'command-rejected' && parsed.value.id === id) {
       return parsed.value.reason;
     }
   }

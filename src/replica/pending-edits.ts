@@ -12,7 +12,7 @@ import {
   type FieldValue,
   type VersionedRecord,
 } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import { type EditId, type RejectMessage } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 import { type Command, type RejectionReason } from '@/core/ui-messages';
@@ -99,33 +99,33 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     view: ReadonlyMap<string, VersionedRecord>,
   ): Result<Denial, RejectionReason> {
     if (!isPlayerEdit(command)) {
-      return err('not-allowed');
+      return Result.err('not-allowed');
     }
 
     // No access refuses before the field is checked, so a read-only sheet says why.
     const policy = resolveSheet(view, presetOf(view.get('preset')), command.sheetId);
 
     if (policy === null || !playerMayEdit(policy, view, options.playerId)) {
-      return err('not-allowed');
+      return Result.err('not-allowed');
     }
 
     if (
       (command.type === 'repeat-block-add' || command.type === 'repeat-block-delete') &&
       repeatTabById(policy.template, sectionIdOf(command.block) ?? '') !== null
     ) {
-      return err('not-allowed');
+      return Result.err('not-allowed');
     }
 
     const composed = compose(view, command);
 
-    if (!composed.ok) {
-      return err(composed.error);
+    if (!composed.isOk()) {
+      return Result.err(composed.error);
     }
 
     const [record] = composed.value;
 
     if (record === undefined || !proposalAllowed(contextOf(view), options.playerId, record)) {
-      return err('not-allowed');
+      return Result.err('not-allowed');
     }
 
     const patch = patchOf(command, record);
@@ -146,10 +146,10 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       // The row was removed by a commit the windows do not show yet, or the edit grew too large.
       const failure = proposeEntry(entry, records().get(entry.k), entry.sent);
 
-      return ok(denial(deniesEdit(failure)));
+      return Result.ok(denial(deniesEdit(failure)));
     }
 
-    return ok({ notify: false });
+    return Result.ok({ notify: false });
   }
 
   function overlay(view: Map<string, VersionedRecord>): void {
@@ -259,11 +259,11 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       const base = records().get(entry.k);
       const made = rebuiltRecord(entry, base, entry.sent);
 
-      if (made.ok && proposalAllowed(contextOf(records()), options.playerId, made.value)) {
+      if (made.isOk() && proposalAllowed(contextOf(records()), options.playerId, made.value)) {
         proposals.put({ ...entry, record: made.value });
       } else {
         proposals.drop(entry.k);
-        denied ||= !made.ok ? deniesEdit(made.error) : true;
+        denied ||= !made.isOk() ? deniesEdit(made.error) : true;
       }
     }
 
@@ -408,7 +408,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   ): ProposalFailure | null {
     const made = rebuiltRecord(entry, base, force);
 
-    if (!made.ok) {
+    if (!made.isOk()) {
       proposals.drop(entry.k);
 
       return made.error;
@@ -439,13 +439,13 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       entry.l,
     );
 
-    if (!made.ok) {
+    if (!made.isOk()) {
       return made;
     }
 
     const stripped = strippedProposal(made.value);
 
-    return recordFitsOneMessage(stripped) ? ok(stripped) : err('too-large');
+    return recordFitsOneMessage(stripped) ? Result.ok(stripped) : Result.err('too-large');
   }
 
   // AD-14: a player's version keeps no value the template of its sheet no longer has in its row or
@@ -472,7 +472,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       entry.l,
     );
 
-    return made.ok ? strippedProposal(made.value) : null;
+    return made.isOk() ? strippedProposal(made.value) : null;
   }
 
   // AD-14: the entry loses the fields its sheet's template no longer has in its row or repeat
@@ -504,10 +504,10 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       true,
     );
 
-    if (!made.ok || !proposalAllowed(context, options.playerId, made.value)) {
+    if (!made.isOk() || !proposalAllowed(context, options.playerId, made.value)) {
       proposals.drop(entry.k);
 
-      return made.ok || deniesEdit(made.error);
+      return made.isOk() || deniesEdit(made.error);
     }
 
     if (entry === found && !moved) {

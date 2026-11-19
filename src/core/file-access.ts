@@ -1,3 +1,5 @@
+import type { Result } from 'better-result';
+
 export type FileAccessCapability = 'open-only' | 'write-and-follow';
 
 export type FileReference = {
@@ -14,9 +16,7 @@ export type FileAccessFailure = {
   reason: string;
 };
 
-export type FileAccessResult<Value> =
-  | { ok: true; value: Value }
-  | { ok: false; error: FileAccessFailure };
+export type FileAccessResult<Value> = Result<Value, FileAccessFailure>;
 
 export type FileOpenRequest = {
   mode: 'open' | 'save';

@@ -3,7 +3,7 @@ import { assembleRecords } from '@/core/merge';
 import { fixtureSnapshotCells, fixtureSnapshotBlocks } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
 import type { Preset } from '@/core/preset';
-import { err } from '@/core/result';
+import { Result } from 'better-result';
 import {
   blockDataSchema,
   cellValues,
@@ -17,6 +17,7 @@ import {
   importSnapshot,
   parseSnapshotFile,
   type CurrentPreset,
+  type SnapshotImport,
   type SnapshotFileFailure,
 } from '@/core/snapshot-import';
 
@@ -173,7 +174,7 @@ type Imported = {
 function imported(input: SnapshotFile): Imported {
   const result = importSnapshot(input, CURRENT, AUTHOR);
 
-  if (!result.ok) {
+  if (!result.isOk()) {
     throw new Error(`the import failed: ${result.error}`);
   }
 
@@ -230,7 +231,7 @@ describe('importSnapshot', () => {
     );
 
     // #then
-    if (!importResult.ok) throw new Error(importResult.error);
+    if (!importResult.isOk()) throw new Error(importResult.error);
 
     const assembled = assembleRecords(importResult.value.records);
     const parsedBlock = blockDataSchema.safeParse(assembled.get('blk:journal:conditions:c1')?.d);
@@ -291,7 +292,7 @@ describe('importSnapshot', () => {
     const result = importSnapshot(input, { preset, data: CURRENT.data }, AUTHOR);
 
     // #then
-    if (!result.ok) {
+    if (!result.isOk()) {
       throw new Error(`the import failed: ${result.error}`);
     }
 
@@ -324,9 +325,8 @@ describe('importSnapshot', () => {
     // #when
     const result = importSnapshot(input, CURRENT, AUTHOR);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: {
+    expect(result).toEqual(
+      Result.ok<SnapshotImport>({
         records: [
           {
             k: 'blk:brok',
@@ -361,8 +361,8 @@ describe('importSnapshot', () => {
         count: 0,
         sheets: 0,
         digest: expect.any(String),
-      },
-    });
+      }),
+    );
   });
   test('places a value by field id when the field is now in another row', () => {
     // #given: `notes` was in the row of `str`.
@@ -543,7 +543,7 @@ describe('importSnapshot', () => {
     const result = importSnapshot(snapshot, { preset, data: CURRENT.data }, AUTHOR);
 
     // #then
-    if (!result.ok) {
+    if (!result.isOk()) {
       throw new Error(`the import failed: ${result.error}`);
     }
 
@@ -600,7 +600,7 @@ describe('importSnapshot', () => {
       try {
         const result = importSnapshot(input, { preset, data: CURRENT.data }, AUTHOR);
 
-        return result.ok
+        return result.isOk()
           ? {
               row: dataOf(assembleRecords(result.value.records), 'blk:inventory'),
               count: result.value.count,
@@ -763,7 +763,7 @@ describe('importSnapshot', () => {
     // #when
     const result = importSnapshot(input, { preset, data: CURRENT.data }, AUTHOR);
 
-    if (!result.ok) {
+    if (!result.isOk()) {
       throw new Error(`the import failed: ${result.error}`);
     }
 
@@ -956,7 +956,7 @@ describe('importSnapshot', () => {
     const digests = [first, same, other].map((input) => {
       const result = importSnapshot(input, CURRENT, AUTHOR);
 
-      return result.ok ? result.value.digest : null;
+      return result.isOk() ? result.value.digest : null;
     });
 
     // #then
@@ -972,7 +972,7 @@ describe('importSnapshot', () => {
     const digests = [first, other].map((input) => {
       const result = importSnapshot(input, CURRENT, AUTHOR);
 
-      return result.ok ? result.value.digest : null;
+      return result.isOk() ? result.value.digest : null;
     });
 
     // #then
@@ -993,7 +993,7 @@ describe('importSnapshot', () => {
     // #when
     const result = importSnapshot(input, CURRENT, AUTHOR);
     // #then
-    expect(result).toEqual({ ok: false, error: 'too-large' });
+    expect(result).toEqual(Result.err('too-large'));
   });
 });
 
@@ -1007,7 +1007,7 @@ describe('parseSnapshotFile', () => {
     // #when
     const parsed = parseSnapshotFile(JSON.stringify(valid));
     // #then
-    expect(parsed).toEqual({ ok: true, value: valid });
+    expect(parsed).toEqual(Result.ok(valid));
   });
   test.each([
     ['not JSON', '{', 'not-json'],
@@ -1040,7 +1040,7 @@ describe('parseSnapshotFile', () => {
     // #when
     const parsed = parseSnapshotFile(text);
     // #then
-    expect(parsed).toEqual(err(failure));
+    expect(parsed).toEqual(Result.err(failure));
   });
   test('refuses a file over 1 MiB as too large before it reads JSON', () => {
     // #given
@@ -1048,24 +1048,24 @@ describe('parseSnapshotFile', () => {
     // #when
     const parsed = parseSnapshotFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'too-large' });
+    expect(parsed).toEqual(Result.err('too-large'));
   });
   test('reads a file saved with a byte order mark', () => {
     // #when
     const parsed = parseSnapshotFile(`\uFEFF${JSON.stringify(valid)}`);
     // #then
-    expect(parsed).toEqual({ ok: true, value: valid });
+    expect(parsed).toEqual(Result.ok(valid));
   });
   test('round-trips through the data a window sends', () => {
     // #when
     const decoded = decodeSnapshotFileData(encodeSnapshotFileData(valid));
     // #then
-    expect(decoded).toEqual({ ok: true, value: valid });
+    expect(decoded).toEqual(Result.ok(valid));
   });
   test('refuses data that does not inflate as a bad structure', () => {
     // #when
     const decoded = decodeSnapshotFileData('bm90IGRlZmxhdGU=');
     // #then
-    expect(decoded).toEqual({ ok: false, error: 'invalid-structure' });
+    expect(decoded).toEqual(Result.err('invalid-structure'));
   });
 });

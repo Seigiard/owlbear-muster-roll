@@ -62,7 +62,7 @@ export function builderProblems(document: BuilderDocument): BuilderProblem[] {
   if (problems.length === 0) {
     const parsed = parsePresetFile(formatPresetFile(toPreset(document)));
 
-    if (!parsed.ok) {
+    if (!parsed.isOk()) {
       problems.push({ uid: PRESET_UID, failure: parsed.error });
     }
   }
@@ -83,7 +83,7 @@ export function problemReason(failure: BuilderFailure): string {
 export function downloadText(document: BuilderDocument): string | null {
   const text = formatPresetFile(toPreset(document));
 
-  return parsePresetFile(text).ok ? text : null;
+  return parsePresetFile(text).isOk() ? text : null;
 }
 
 function windowInRange(window: WindowSize): boolean {

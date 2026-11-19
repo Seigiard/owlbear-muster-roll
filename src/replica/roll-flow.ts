@@ -20,7 +20,7 @@ import { prepareDiceRoll, type DiceRollFailure, type PreparedDiceRoll } from '@/
 import { resolveSheet, sheetName } from '@/core/sheets';
 import type { Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import type { Generation } from '@/core/storage-key';
 import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
 import { rollShownTo, rollTargetShownTo, type PlayerRole } from '@/core/visibility';
@@ -101,7 +101,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
 
     const prepared = prepareRoll(message);
 
-    if (!prepared.ok) {
+    if (!prepared.isOk()) {
       ports.replyOutcome(message.id, prepared.error);
 
       return;
@@ -109,7 +109,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
 
     const local = evaluatedWith(prepared.value, randomFaces(ports.random));
 
-    if (!local.ok) {
+    if (!local.isOk()) {
       ports.replyOutcome(message.id, local.error);
 
       return;
@@ -128,7 +128,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     const hidden = policy !== null && !rollTargetShownTo('PLAYER', policy.template, message.place);
 
     if (policy === null || !rollShownTo(ports.role(), hidden)) {
-      return err({ code: 'refused' });
+      return Result.err({ code: 'refused' });
     }
 
     const dice = prepareDiceRoll(
@@ -139,11 +139,11 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
       new Map(Object.entries(message.shown)),
     );
 
-    if (!dice.ok) {
-      return err(rollFailure(dice.error));
+    if (!dice.isOk()) {
+      return Result.err(rollFailure(dice.error));
     }
 
-    return ok({
+    return Result.ok({
       sheetId: message.sheetId,
       hidden,
       // "" for an empty name: every client shows the fallback label.
@@ -224,7 +224,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
       return;
     }
 
-    if (!faces.ok) {
+    if (!faces.isOk()) {
       if (faces.error.code === 'stopped') {
         return;
       }
@@ -254,7 +254,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
       return;
     }
 
-    if (!evaluated.ok) {
+    if (!evaluated.isOk()) {
       ports.replyOutcome(requestId, evaluated.error);
 
       return;
@@ -284,7 +284,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     const message = rollMessage(ports.generation(), { id: ports.newId(), roller, ...evaluated });
 
     // A roll a receiver would drop, or one too large to send, never goes out.
-    if (!parseRoomMessage(message).ok || !fitsOneMessage(message)) {
+    if (!parseRoomMessage(message).isOk() || !fitsOneMessage(message)) {
       console.error('Muster Roll built a roll the room would not take');
       ports.replyOutcome(requestId, { code: 'failed' });
 
@@ -345,11 +345,11 @@ function evaluatedWith(
 ): Result<EvaluatedRoll, RollOutcome> {
   const rolled = prepared.dice.roll(faces);
 
-  if (!rolled.ok) {
-    return err(rollFailure(rolled.error));
+  if (!rolled.isOk()) {
+    return Result.err(rollFailure(rolled.error));
   }
 
-  return ok({
+  return Result.ok({
     sheetId: prepared.sheetId,
     hidden: prepared.hidden,
     sheetName: prepared.sheetName,

@@ -918,7 +918,7 @@ export async function startReplicaEngine(
     const { store, generation } = currentPersistence;
     const written = store.write(generation, record);
 
-    if (written.ok) {
+    if (written.isOk()) {
       problemKeys.delete(record.k);
       problemKeys.delete(GENERATION_SAVE_MARK);
 
@@ -1051,7 +1051,7 @@ export async function startReplicaEngine(
     const data = presetDataSchema.safeParse(record.d);
     const decoded = data.success ? decodePreset(data.data) : null;
 
-    if (decoded === null || !decoded.ok) {
+    if (decoded === null || !decoded.isOk()) {
       return null;
     }
 
@@ -1070,7 +1070,7 @@ export async function startReplicaEngine(
 
     const load = currentPersistence.store.loadGeneration(currentPersistence.generation);
 
-    if (!load.ok) {
+    if (!load.isOk()) {
       console.error('Muster Roll could not read the saved records', load.error);
 
       return;
@@ -1132,7 +1132,7 @@ export async function startReplicaEngine(
           ? undefined
           : currentPersistence.store.markGeneration(currentPersistence.generation);
 
-      if (kept !== undefined && !kept.ok) {
+      if (kept !== undefined && !kept.isOk()) {
         console.error('Muster Roll could not keep its generation', kept.error);
       }
 
@@ -1266,13 +1266,13 @@ export async function startReplicaEngine(
       const stored = store.readHighestGeneration();
       const currentGeneration = generationFlow.generation();
 
-      const generation = stored.ok
+      const generation = stored.isOk()
         ? higherGeneration(currentGeneration, stored.value)
         : currentGeneration;
 
-      const probe = stored.ok ? store.loadGeneration(generation) : stored;
+      const probe = stored.isOk() ? store.loadGeneration(generation) : stored;
 
-      if (probe.ok) {
+      if (probe.isOk()) {
         generationFlow.roleChanged({ store, generation });
         persistAllOnExit = true;
       } else {
@@ -1341,7 +1341,7 @@ export async function startReplicaEngine(
     // Echoes of the engine's own messages fail this schema and stop here.
     const parsed = parseWindowMessage(event.data);
 
-    if (!parsed.ok) {
+    if (!parsed.isOk()) {
       return;
     }
 
@@ -1460,13 +1460,13 @@ function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedR
   // AD-9: a generation whose save stopped part way is no data.
   const removed = store.removeIncomplete();
 
-  if (!removed.ok) {
+  if (!removed.isOk()) {
     console.error('Muster Roll could not remove an incomplete generation', removed.error);
   }
 
   const highest = store.readHighestGeneration();
 
-  if (!highest.ok) {
+  if (!highest.isOk()) {
     console.error('Muster Roll could not read the saved records', highest.error);
 
     // Without the saved records a write would pick the wrong generation or reuse an order.
@@ -1477,13 +1477,13 @@ function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedR
   // AD-9: a run that stopped after it saved a new generation may have left the old one behind.
   const below = store.removeGenerationsBelow(generation);
 
-  if (!below.ok) {
+  if (!below.isOk()) {
     console.error('Muster Roll could not remove a replaced generation', below.error);
   }
 
   const load = store.loadGeneration(generation);
 
-  if (!load.ok) {
+  if (!load.isOk()) {
     console.error('Muster Roll could not read the saved records', load.error);
 
     return { records: [], problemKeys: new Set([UNREADABLE_STORAGE_MARK]), persistence: null };

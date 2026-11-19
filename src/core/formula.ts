@@ -1,5 +1,5 @@
 import { FORMULA_FUNCTION_NAMES, isFieldId } from '@/core/field-id';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 
 export const FORMULA_MAX_LENGTH = 200;
 
@@ -64,14 +64,14 @@ type Token =
 // Minus is binary only. The parser builds a tree and never evaluates.
 export function parseFormula(formula: string): Result<FormulaTree, FormulaFailure> {
   if (formula.length > FORMULA_MAX_LENGTH) {
-    return err('too-long');
+    return Result.err('too-long');
   }
 
   try {
-    return ok(parseTokens(tokenize(formula)));
+    return Result.ok(parseTokens(tokenize(formula)));
   } catch (error) {
     if (error instanceof FormulaError) {
-      return err(error.failure);
+      return Result.err(error.failure);
     }
 
     throw error;

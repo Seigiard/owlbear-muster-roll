@@ -3,7 +3,7 @@ import { copy } from '@/copy';
 import type { DieFace } from '@/core/formula-evaluate';
 import { assembleRecords } from '@/core/merge';
 import { encodePreset, type Preset } from '@/core/preset';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import type { Generation } from '@/core/storage-key';
 import type { RollMessage } from '@/core/room-messages';
 import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
@@ -135,7 +135,7 @@ function createHarness(overrides: Partial<RollFlowPorts> = {}): FlowHarness {
     generation: () => ({ n: 0, a: '' }),
     dice: {
       ready: async () => 'permitted',
-      roll: async () => ok([{ sides: 20, face: 17 }]),
+      roll: async () => Result.ok([{ sides: 20, face: 17 }]),
     },
     gmInRoom: () => true,
     playerId: 'player-1',
@@ -176,7 +176,7 @@ test('replies waiting-access before a permitted dice roll finishes', async () =>
   // #when
   flow.handleRollRequest(REQUEST);
   await drain();
-  diceResult.resolve(ok([{ sides: 20, face: 17 }]));
+  diceResult.resolve(Result.ok([{ sides: 20, face: 17 }]));
   await drain();
   // #then
   expect(harness.outcomes).toEqual([{ code: 'waiting-access' }, { code: 'rolled' }]);
@@ -194,7 +194,7 @@ test('refuses a hidden request from a player before it asks the dice port', () =
 
         return 'permitted';
       },
-      roll: async () => ok([{ sides: 20, face: 17 }]),
+      roll: async () => Result.ok([{ sides: 20, face: 17 }]),
     },
   });
 
@@ -270,7 +270,7 @@ test('falls back to the local result when no dice extension is available', async
       roll: async () => {
         diceRolls += 1;
 
-        return ok([{ sides: 20, face: 17 }]);
+        return Result.ok([{ sides: 20, face: 17 }]);
       },
     },
   });
@@ -349,7 +349,7 @@ test('does not ask readiness when already stopped', async () => {
 
         return 'permitted';
       },
-      roll: async () => ok([{ sides: 20, face: 17 }]),
+      roll: async () => Result.ok([{ sides: 20, face: 17 }]),
     },
   });
 
@@ -382,7 +382,7 @@ test('does not ask the dice port when stopped after readiness', async () => {
       roll: async () => {
         stoppedDiceRolls += 1;
 
-        return ok([{ sides: 20, face: 17 }]);
+        return Result.ok([{ sides: 20, face: 17 }]);
       },
     },
   });
@@ -393,7 +393,7 @@ test('does not ask the dice port when stopped after readiness', async () => {
       roll: async () => {
         permittedDiceRolls += 1;
 
-        return ok([{ sides: 20, face: 17 }]);
+        return Result.ok([{ sides: 20, face: 17 }]);
       },
     },
   });
@@ -430,7 +430,7 @@ test('does not report a malformed dice result after stopped during the dice wait
   flow.handleRollRequest({ ...REQUEST, id: 'stopped-during-dice' });
   await drain();
   stopped = true;
-  diceResult.resolve(ok([{ sides: 6, face: 1 }]));
+  diceResult.resolve(Result.ok([{ sides: 6, face: 1 }]));
   await drain();
   // #then
   expect(harness.outcomes).toEqual([]);
@@ -575,7 +575,7 @@ test('a stopped dice operation produces no fallback roll or outcome', async () =
   const harness = createHarness({
     dice: {
       ready: async () => 'permitted',
-      roll: async () => err({ code: 'stopped' }),
+      roll: async () => Result.err({ code: 'stopped' }),
     },
   });
 

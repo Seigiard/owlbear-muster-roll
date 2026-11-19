@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { err, ok } from '@/core/result';
+import { Result } from 'better-result';
 import type { SendResult } from '@/platform/ports';
 
 const rateLimitHitSchema = z.object({ error: z.object({ name: z.literal('RateLimitHit') }) });
@@ -9,13 +9,13 @@ export async function toSendResult(send: () => Promise<void>): Promise<SendResul
   try {
     await send();
 
-    return ok(undefined);
+    return Result.ok(undefined);
   } catch (cause) {
     if (rateLimitHitSchema.safeParse(cause).success) {
-      return err({ kind: 'rate-limited' });
+      return Result.err({ kind: 'rate-limited' });
     }
 
-    return err({ kind: 'failed', reason: describeRejection(cause) });
+    return Result.err({ kind: 'failed', reason: describeRejection(cause) });
   }
 }
 

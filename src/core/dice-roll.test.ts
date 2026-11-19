@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { assembleRecords } from '@/core/merge';
 import { blockAddress } from '@/core/block-address';
 import { fixtureRecord } from '../../tests/support/block-fixtures';
@@ -402,13 +403,12 @@ test('rolls a repeat-row dice cell from the scoped descendant block', () => {
   );
 
   // #then
-  expect(rolled).toEqual({
-    ok: true,
-    value: {
+  expect(rolled).toEqual(
+    Result.ok({
       cell: 'Проверка',
       result: { roll: 9, faces: [7], target: null, targetFaces: [], outcome: null },
-    },
-  });
+    }),
+  );
 });
 
 describe('rollDiceCell', () => {
@@ -449,13 +449,13 @@ describe('rollDiceCell', () => {
   ])('%s', (_name, formula, value, label, expected) => {
     // #when
     const prepared = diceChoiceRoll(formula, value, label);
-    const rolled = prepared.ok ? prepared.value.roll(randomFaces(SEVEN)) : null;
+    const rolled = prepared.isOk() ? prepared.value.roll(randomFaces(SEVEN)) : null;
 
-    const actual = prepared.ok
+    const actual = prepared.isOk()
       ? {
           cell: prepared.value.cell,
           terms: prepared.value.terms,
-          result: rolled?.ok === true ? rolled.value : rolled,
+          result: rolled?.isOk() === true ? rolled.value : rolled,
         }
       : prepared;
 
@@ -466,7 +466,7 @@ describe('rollDiceCell', () => {
     // #given
     const prepared = diceChoiceRoll('1d(weapon_die)', 'd8', 'Урон', true);
 
-    if (!prepared.ok) {
+    if (!prepared.isOk()) {
       throw new Error(`the repeat-block dice roll must prepare: ${prepared.error.code}`);
     }
 
@@ -481,10 +481,7 @@ describe('rollDiceCell', () => {
     expect(actual).toEqual({
       cell: 'Урон (1d8)',
       terms: [{ count: 1, sides: 8 }],
-      result: {
-        ok: true,
-        value: { roll: 3, faces: [3], target: null, targetFaces: [], outcome: null },
-      },
+      result: Result.ok({ roll: 3, faces: [3], target: null, targetFaces: [], outcome: null }),
     });
   });
   test.each([
@@ -494,7 +491,7 @@ describe('rollDiceCell', () => {
     // #when
     const prepared = diceChoiceRoll('1d(weapon_die)', value);
     // #then
-    expect(prepared).toEqual({ ok: false, error: { code: 'field', field: 'Урон' } });
+    expect(prepared).toEqual(Result.err({ code: 'field', field: 'Урон' }));
   });
   test('gives the field error when no field resolves from a dice-choice slot', () => {
     // #given
@@ -502,19 +499,18 @@ describe('rollDiceCell', () => {
     // #when
     const prepared = diceChoiceRoll(formula, undefined);
     // #then
-    expect(prepared).toEqual({ ok: false, error: { code: 'field', field: 'nothing' } });
+    expect(prepared).toEqual(Result.err({ code: 'field', field: 'nothing' }));
   });
   test('rolls from the records and labels the roll by the cell', () => {
     // #when
     const rolled = roll(STRENGTH);
     // #then
-    expect(rolled).toEqual({
-      ok: true,
-      value: {
+    expect(rolled).toEqual(
+      Result.ok({
         cell: 'Сила',
         result: { roll: 7, faces: [7], target: 12, targetFaces: [], outcome: 'success' },
-      },
-    });
+      }),
+    );
   });
   test('a nested attack reads its own value, its NPC value and the sheet value', () => {
     // #given
@@ -602,13 +598,12 @@ describe('rollDiceCell', () => {
     const rolled = rollDiceCell(layout, records, 'encounter', place, new Map(), randomFaces(SEVEN));
 
     // #then
-    expect(rolled).toEqual({
-      ok: true,
-      value: {
+    expect(rolled).toEqual(
+      Result.ok({
         cell: 'damage + hp + sheet_bonus',
         result: { roll: 12, faces: [], target: null, targetFaces: [], outcome: null },
-      },
-    });
+      }),
+    );
   });
   test('names a roll by the dice cell name while keeping the formula as the roll expression', () => {
     // #given
@@ -644,7 +639,7 @@ describe('rollDiceCell', () => {
     );
 
     // #then
-    expect(prepared.ok ? prepared.value.cell : prepared).toEqual('Спасбросок STR');
+    expect(prepared.isOk() ? prepared.value.cell : prepared).toEqual('Спасбросок STR');
   });
   test('adds the written chosen die to a named Nd field roll', () => {
     // #given
@@ -699,7 +694,7 @@ describe('rollDiceCell', () => {
     );
 
     // #then
-    expect(prepared.ok ? prepared.value.cell : prepared).toEqual('Урон атаки 1 (1d8)');
+    expect(prepared.isOk() ? prepared.value.cell : prepared).toEqual('Урон атаки 1 (1d8)');
   });
   test('keeps a named Nd field roll label when the name equals the unresolved formula', () => {
     // #given
@@ -754,7 +749,7 @@ describe('rollDiceCell', () => {
     );
 
     // #then
-    expect(prepared.ok ? prepared.value.cell : prepared).toEqual('1d(damage) (1d8)');
+    expect(prepared.isOk() ? prepared.value.cell : prepared).toEqual('1d(damage) (1d8)');
   });
   test('names an empty formula field by its cell name', () => {
     // #given
@@ -797,39 +792,37 @@ describe('rollDiceCell', () => {
       new Map([['hp_max', { kind: 'text', text: '' }]]),
     );
 
-    const result = prepared.ok ? prepared.value.roll(randomFaces(SEVEN)) : prepared;
+    const result = prepared.isOk() ? prepared.value.roll(randomFaces(SEVEN)) : prepared;
     // #then
-    expect(result).toEqual({ ok: false, error: { code: 'field', field: 'HP, максимум' } });
+    expect(result).toEqual(Result.err({ code: 'field', field: 'HP, максимум' }));
   });
   test('uses the text a field shows over its record', () => {
     // #when
     const rolled = roll(STRENGTH, [['str', { kind: 'text', text: '16' }]]);
     // #then
-    expect(rolled.ok && rolled.value.result.target).toBe(14);
+    expect(rolled.isOk() && rolled.value.result.target).toBe(14);
   });
   test('uses the text a repeat row shows over its own instance', () => {
     // #when
     const rolled = roll(ATTACK, [['bonus', { kind: 'text', text: '5' }]]);
     // #then
-    expect(rolled).toEqual({
-      ok: true,
-      value: {
+    expect(rolled).toEqual(
+      Result.ok({
         cell: 'Атака',
         result: { roll: 26, faces: [7], target: null, targetFaces: [], outcome: null },
-      },
-    });
+      }),
+    );
   });
   test('rolls a dice cell in the second row of a repeat block from the fields of its whole block', () => {
     // #when
     const rolled = roll(SPELL_RANGE);
     // #then
-    expect(rolled).toEqual({
-      ok: true,
-      value: {
+    expect(rolled).toEqual(
+      Result.ok({
         cell: 'Дальность',
         result: { roll: 13, faces: [7], target: null, targetFaces: [], outcome: null },
-      },
-    });
+      }),
+    );
   });
   test.each<[string, DicePlace, [string, ShownValue][], string]>([
     ['a field shown in an input error', STRENGTH, [['str', { kind: 'error' }]], 'Сила'],
@@ -868,13 +861,13 @@ describe('rollDiceCell', () => {
     // #when
     const rolled = roll(place, shown);
     // #then
-    expect(rolled).toEqual({ ok: false, error: { code: 'field', field } });
+    expect(rolled).toEqual(Result.err({ code: 'field', field }));
   });
   test('gives the arithmetic error with no field for a division by zero', () => {
     // #when
     const rolled = roll({ ...STRENGTH, rowIndex: 2, cellIndex: 1 });
     // #then
-    expect(rolled).toEqual({ ok: false, error: { code: 'arithmetic' } });
+    expect(rolled).toEqual(Result.err({ code: 'arithmetic' }));
   });
   test.each<[string, DicePlace]>([
     ['a cell that is a field', { ...STRENGTH, cellIndex: 1 }],
@@ -886,7 +879,7 @@ describe('rollDiceCell', () => {
     // #when
     const rolled = roll(place);
     // #then
-    expect(rolled).toEqual({ ok: false, error: { code: 'not-dice' } });
+    expect(rolled).toEqual(Result.err({ code: 'not-dice' }));
   });
 });
 
@@ -930,13 +923,12 @@ describe('rollDiceCell across tabs', () => {
     // #when
     const rolled = rollDiceCell(TABBED, RECORDS, 'brok', place, new Map(), randomFaces(SEVEN));
     // #then
-    expect(rolled).toEqual({
-      ok: true,
-      value: {
+    expect(rolled).toEqual(
+      Result.ok({
         cell: 'Сила',
         result: { roll: 21, faces: [7], target: null, targetFaces: [], outcome: null },
-      },
-    });
+      }),
+    );
   });
   test('finds no dice cell at a section index counted across the whole sheet', () => {
     // #given: section 2 of the sheet is section 1 of the second tab.
@@ -951,7 +943,7 @@ describe('rollDiceCell across tabs', () => {
     // #when
     const rolled = rollDiceCell(TABBED, RECORDS, 'brok', place, new Map(), randomFaces(SEVEN));
     // #then
-    expect(rolled).toEqual({ ok: false, error: { code: 'not-dice' } });
+    expect(rolled).toEqual(Result.err({ code: 'not-dice' }));
   });
   test('rolls with the selected repeat-tab block instead of the root or a sibling', () => {
     // #given
@@ -999,13 +991,12 @@ describe('rollDiceCell across tabs', () => {
     );
 
     // #then
-    expect(rolled).toEqual({
-      ok: true,
-      value: {
+    expect(rolled).toEqual(
+      Result.ok({
         cell: 'Хиты',
         result: { roll: 8, faces: [1], target: null, targetFaces: [], outcome: null },
-      },
-    });
+      }),
+    );
   });
   test('reads a field in another plain section of the selected repeat-tab block', () => {
     // #given
@@ -1062,12 +1053,11 @@ describe('rollDiceCell across tabs', () => {
     );
 
     // #then
-    expect(rolled).toEqual({
-      ok: true,
-      value: {
+    expect(rolled).toEqual(
+      Result.ok({
         cell: 'Проверка хитов',
         result: { roll: 8, faces: [1], target: null, targetFaces: [], outcome: null },
-      },
-    });
+      }),
+    );
   });
 });

@@ -1,7 +1,7 @@
 import { deflateToBase64 } from '@/core/deflate';
 import type { JsonValue } from '@/core/json';
 import { blockDataSchema, type Cells, type VersionedRecord } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 
 export const MESSAGE_BYTE_LIMIT = 15000;
 
@@ -22,17 +22,17 @@ export function fitsOneMessage(message: JsonValue): boolean {
 
 // Acceptance checks fragments too, so an assembled block can grow beyond one message.
 export function recordFitsOneMessage(record: VersionedRecord): boolean {
-  return fragmentRecord(record).ok;
+  return fragmentRecord(record).isOk();
 }
 
 export function fragmentRecord(
   record: VersionedRecord,
   reserveBytes = RECORD_ENVELOPE_RESERVE_BYTES,
 ): Result<VersionedRecord[], SplitFailure> {
-  if (recordFragmentFits(record, reserveBytes)) return ok([record]);
+  if (recordFragmentFits(record, reserveBytes)) return Result.ok([record]);
   const block = record.k.startsWith('blk:') ? blockDataSchema.safeParse(record.d).data : undefined;
 
-  if (block === undefined) return err('item-too-large');
+  if (block === undefined) return Result.err('item-too-large');
   const fragments: VersionedRecord[] = [];
   let cells: Cells = {};
 
@@ -42,11 +42,11 @@ export function fragmentRecord(
     d: { ...block, cells: values },
   });
 
-  if (!recordFragmentFits(part({}), reserveBytes)) return err('item-too-large');
+  if (!recordFragmentFits(part({}), reserveBytes)) return Result.err('item-too-large');
 
   for (const [id, cell] of Object.entries(block.cells)) {
     if (!recordFragmentFits(part({ [id]: cell }), reserveBytes)) {
-      return err('item-too-large');
+      return Result.err('item-too-large');
     }
 
     if (!recordFragmentFits(part({ ...cells, [id]: cell }), reserveBytes)) {
@@ -59,7 +59,7 @@ export function fragmentRecord(
 
   fragments.push(part(cells));
 
-  return ok(fragments);
+  return Result.ok(fragments);
 }
 
 export function fragmentRecords(
@@ -69,7 +69,7 @@ export function fragmentRecords(
   return records.flatMap((record) => {
     const result = fragmentRecord(record, reserveBytes);
 
-    return result.ok ? result.value : [record];
+    return result.isOk() ? result.value : [record];
   });
 }
 
@@ -95,7 +95,7 @@ export function splitBatch<Item extends JsonValue>(
     const bytes = jsonByteLength(item);
 
     if (bytes > capacity) {
-      return err('item-too-large');
+      return Result.err('item-too-large');
     }
 
     const separator = current.length === 0 ? 0 : 1;
@@ -110,5 +110,5 @@ export function splitBatch<Item extends JsonValue>(
     }
   }
 
-  return ok(parts);
+  return Result.ok(parts);
 }

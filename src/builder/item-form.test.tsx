@@ -323,7 +323,7 @@ describe('v4 node forms', () => {
         result.templates[0]?.tabs[0]?.sections[2]?.repeat?.id,
         result.templates[0]?.tabs[1]?.sections[0]?.repeat?.id,
       ],
-      presetAccepted: parsePresetFile(JSON.stringify(result)).ok,
+      presetAccepted: parsePresetFile(JSON.stringify(result)).isOk(),
     }).toEqual({
       ids: ['stroka_1', 'stroka_1_2', 'ataki', 'ataki_2'],
       presetAccepted: true,
@@ -361,7 +361,7 @@ describe('v4 node forms', () => {
     // #then
     expect({
       repeat: result.templates[0]?.tabs[0]?.repeat,
-      presetAccepted: parsePresetFile(JSON.stringify(result)).ok,
+      presetAccepted: parsePresetFile(JSON.stringify(result)).isOk(),
     }).toEqual({
       repeat: { id: 'pets', nameField: 'pet_name' },
       presetAccepted: true,

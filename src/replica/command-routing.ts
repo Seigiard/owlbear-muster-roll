@@ -246,7 +246,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
 
     const diff = ports.composers.presetDiffResult(ports.liveContext(), message.data);
 
-    if (!diff.ok) {
+    if (!diff.isOk()) {
       ports.reject(message.id, diff.error);
 
       return;
@@ -258,7 +258,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
   function composeCommand(id: string, command: Command): void {
     const composed = ports.composers.compose(ports.liveContext(), command);
 
-    if (!composed.ok) {
+    if (!composed.isOk()) {
       ports.reject(id, composed.error);
 
       return;
@@ -284,7 +284,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
   function uploadPreset(id: string, command: Extract<Command, { type: 'preset-upload' }>): void {
     const batch = ports.composers.composePresetUpload(ports.liveContext(), command);
 
-    if (!batch.ok) {
+    if (!batch.isOk()) {
       ports.reject(id, batch.error.reason, batch.error.changed);
 
       return;
@@ -330,7 +330,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
   function handlePlayerCommand(id: string, command: Command): void {
     const result = ports.pendingEdits.edit(command, pendingView());
 
-    if (!result.ok) {
+    if (!result.isOk()) {
       ports.reject(id, result.error);
 
       return;
@@ -352,7 +352,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
       command,
     );
 
-    if (!dry.ok) {
+    if (!dry.isOk()) {
       pendingIds.delete(id);
       ports.reject(id, dry.error);
 
@@ -389,7 +389,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
         entry.command,
       );
 
-      return composed.ok ? composed.value : [];
+      return composed.isOk() ? composed.value : [];
     }
 
     const { record } = ports.composers.composePatches(context, entry.patches);
@@ -430,7 +430,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
           entry.command,
         );
 
-        if (composed.ok) {
+        if (composed.isOk()) {
           applied.push(...ports.apply(composed.value));
           completed.push(entry.id);
         } else {

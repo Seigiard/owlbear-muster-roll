@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import type { FieldPatchWireTarget } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
@@ -40,7 +41,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'projection-request', nonce: 'n1' });
     // #then
-    expect(parsed).toEqual({ ok: true, value: { t: 'projection-request', nonce: 'n1' } });
+    expect(parsed).toEqual(Result.ok({ t: 'projection-request', nonce: 'n1' }));
   });
   test('accepts a sheet-create command', () => {
     // #given
@@ -48,7 +49,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage(message);
     // #then
-    expect(parsed).toEqual({ ok: true, value: message });
+    expect(parsed).toEqual(Result.ok(message));
   });
   test.each([
     ['k', { k: 'blk:a' }],
@@ -64,7 +65,7 @@ describe('parseWindowMessage', () => {
     });
 
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test.each([
     ['k', { k: 'blk:a' }],
@@ -75,7 +76,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command: SHEET_CREATE, ...extra });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test.each<[string, JsonValue]>([
     ['a create with no sheetId', { type: 'sheet-create', set: 'pc' }],
@@ -105,7 +106,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test('accepts a sheet-delete command that names only the sheet', () => {
     // #given
@@ -118,7 +119,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage(message);
     // #then
-    expect(parsed).toEqual({ ok: true, value: message });
+    expect(parsed).toEqual(Result.ok(message));
   });
   test.each<[string, JsonValue]>([
     ['no sheetId', { type: 'sheet-delete' }],
@@ -129,7 +130,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test.each<[string, WireCommand]>([
     [
@@ -253,7 +254,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test.each<[string, Extract<WireCommand, { type: 'repeat-block-add' }>]>([
     [
@@ -301,7 +302,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test('accepts an owner-set command for a player and for no one', () => {
     // #given
@@ -321,7 +322,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = messages.map((message) => parseWindowMessage(message));
     // #then
-    expect(parsed).toEqual(messages.map((value) => ({ ok: true, value })));
+    expect(parsed).toEqual(messages.map((value) => Result.ok(value)));
   });
   test.each<[string, JsonValue]>([
     ['no playerId', { type: 'owner-set', sheetId: 's1', name: 'Оля' }],
@@ -331,7 +332,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test('accepts a preset-upload command carrying base64 data', () => {
     // #given
@@ -350,7 +351,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage(message);
     // #then
-    expect(parsed).toEqual({ ok: true, value: message });
+    expect(parsed).toEqual(Result.ok(message));
   });
 
   const UPLOAD = {
@@ -384,7 +385,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test.each<[string, FieldPatchWireTarget, JsonValue]>([
     ['a row field', { kind: 'row', rowId: 'str' }, 12],
@@ -452,13 +453,13 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test('refuses a command of an unknown type', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command: { type: 'other' } });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
 
   const ROLL_REQUEST = {
@@ -473,7 +474,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage(ROLL_REQUEST);
     // #then
-    expect(parsed).toEqual({ ok: true, value: ROLL_REQUEST });
+    expect(parsed).toEqual(Result.ok(ROLL_REQUEST));
   });
   test.each<[string, JsonValue]>([
     ['a record key', { ...ROLL_REQUEST, k: 'blk:brok' }],
@@ -493,7 +494,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage(message);
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test('accepts a roll request on a sheet and an instance whose ids are as long as an id can be', () => {
     // #given: a sheet or a repeat row id is at most 64 characters.
@@ -508,7 +509,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage(message);
     // #then
-    expect(parsed).toEqual({ ok: true, value: message });
+    expect(parsed).toEqual(Result.ok(message));
   });
   test('accepts an open-sheet acknowledgement and refuses one with a sheet or no id', () => {
     // #when
@@ -520,16 +521,16 @@ describe('parseWindowMessage', () => {
 
     // #then
     expect(parsed).toEqual([
-      { ok: true, value: { t: 'open-sheet-ack', id: 'o1' } },
-      { ok: false, error: 'invalid-message' },
-      { ok: false, error: 'invalid-message' },
+      Result.ok({ t: 'open-sheet-ack', id: 'o1' }),
+      Result.err('invalid-message'),
+      Result.err('invalid-message'),
     ]);
   });
   test('refuses a request without a nonce', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'projection-request' });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test.each<[string, JsonValue]>([
     ['text', 'hello'],
@@ -539,7 +540,7 @@ describe('parseWindowMessage', () => {
     // #when
     const parsed = parseWindowMessage(message);
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
 });
 
@@ -559,7 +560,7 @@ describe('parseEngineMessage', () => {
     // #when
     const parsed = parseEngineMessage({ t: 'command-rejected', id: 'c1', reason });
     // #then
-    expect(parsed).toEqual({ ok: true, value: { t: 'command-rejected', id: 'c1', reason } });
+    expect(parsed).toEqual(Result.ok({ t: 'command-rejected', id: 'c1', reason }));
   });
   test.each(['invalid-name', 'not-npc', 'not-character'])(
     'refuses a rejection for the reason %s of format 1',
@@ -567,7 +568,7 @@ describe('parseEngineMessage', () => {
       // #when
       const parsed = parseEngineMessage({ t: 'command-rejected', id: 'c1', reason });
       // #then
-      expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+      expect(parsed).toEqual(Result.err('invalid-message'));
     },
   );
   test.each<[string, RollOutcome]>([
@@ -582,7 +583,7 @@ describe('parseEngineMessage', () => {
     // #when
     const parsed = parseEngineMessage(message);
     // #then
-    expect(parsed).toEqual({ ok: true, value: message });
+    expect(parsed).toEqual(Result.ok(message));
   });
   test('accepts an open-sheet request for a sheet and for a repeat block of it', () => {
     // #given
@@ -601,24 +602,18 @@ describe('parseEngineMessage', () => {
     const parsed = messages.map((message) => parseEngineMessage(message));
     // #then
     expect(parsed).toEqual([
-      {
-        ok: true,
-        value: {
-          t: 'open-sheet',
-          id: 'o1',
-          block: { sheetId: 'brok', path: [] },
-          cellId: 'portrait',
-        },
-      },
-      {
-        ok: true,
-        value: {
-          t: 'open-sheet',
-          id: 'o2',
-          block: { sheetId: 'npc', path: ['npc_name', 'i1'] },
-          cellId: 'portrait',
-        },
-      },
+      Result.ok({
+        t: 'open-sheet',
+        id: 'o1',
+        block: { sheetId: 'brok', path: [] },
+        cellId: 'portrait',
+      }),
+      Result.ok({
+        t: 'open-sheet',
+        id: 'o2',
+        block: { sheetId: 'npc', path: ['npc_name', 'i1'] },
+        cellId: 'portrait',
+      }),
     ]);
   });
   test.each<[string, JsonValue]>([
@@ -634,19 +629,19 @@ describe('parseEngineMessage', () => {
     // #when
     const parsed = parseEngineMessage(message);
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test('refuses a field error that names no field', () => {
     // #when
     const parsed = parseEngineMessage({ t: 'roll-outcome', id: 'r1', outcome: { code: 'field' } });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test('refuses a rejection for an unknown reason', () => {
     // #when
     const parsed = parseEngineMessage({ t: 'command-rejected', id: 'c1', reason: 'other' });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test('takes a count, a sheet count and a digest with `count-changed` only', () => {
     // #given
@@ -654,11 +649,11 @@ describe('parseEngineMessage', () => {
 
     // #when
     const parsed = [
-      parseEngineMessage({ ...changed, count: 2, sheets: 1, digest: '0a1b2c3d' }).ok,
-      parseEngineMessage(changed).ok,
-      parseEngineMessage({ ...changed, count: 2, sheets: 1 }).ok,
-      parseEngineMessage({ ...changed, count: 2, digest: '0a1b2c3d' }).ok,
-      parseEngineMessage({ t: 'command-rejected', id: 'c1', reason: 'too-large', count: 2 }).ok,
+      parseEngineMessage({ ...changed, count: 2, sheets: 1, digest: '0a1b2c3d' }).isOk(),
+      parseEngineMessage(changed).isOk(),
+      parseEngineMessage({ ...changed, count: 2, sheets: 1 }).isOk(),
+      parseEngineMessage({ ...changed, count: 2, digest: '0a1b2c3d' }).isOk(),
+      parseEngineMessage({ t: 'command-rejected', id: 'c1', reason: 'too-large', count: 2 }).isOk(),
     ];
 
     // #then
@@ -679,7 +674,7 @@ describe('parseEngineMessage', () => {
     // #when
     const parsed = parseEngineMessage(message);
     // #then
-    expect(parsed).toEqual({ ok: true, value: message });
+    expect(parsed).toEqual(Result.ok(message));
   });
   test.each<[string, JsonValue]>([
     [
@@ -700,7 +695,7 @@ describe('parseEngineMessage', () => {
     // #when
     const parsed = parseEngineMessage(message);
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
 
   const PROJECTION = {
@@ -735,13 +730,13 @@ describe('parseEngineMessage', () => {
     // #when
     const parsed = parseEngineMessage(PROJECTION);
     // #then
-    expect(parsed).toEqual({ ok: true, value: PROJECTION });
+    expect(parsed).toEqual(Result.ok(PROJECTION));
   });
   test('refuses a part numbered above its total', () => {
     // #when
     const parsed = parseEngineMessage({ ...PROJECTION, i: 3 });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test('refuses a projection holding an invalid record', () => {
     // #when
@@ -751,7 +746,7 @@ describe('parseEngineMessage', () => {
     });
 
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
   test('accepts the catching-up rejection and refuses a part with no sync state', () => {
     // #given
@@ -759,10 +754,10 @@ describe('parseEngineMessage', () => {
 
     // #when
     const parsed = [
-      parseEngineMessage({ t: 'command-rejected', id: 'c1', reason: 'catching-up' }).ok,
-      parseEngineMessage(withoutSync).ok,
-      parseEngineMessage({ ...PROJECTION, sync: { ...LIVE, state: 'paused' } }).ok,
-      parseEngineMessage({ ...PROJECTION, sync: { ...LIVE, role: 'OWNER' } }).ok,
+      parseEngineMessage({ t: 'command-rejected', id: 'c1', reason: 'catching-up' }).isOk(),
+      parseEngineMessage(withoutSync).isOk(),
+      parseEngineMessage({ ...PROJECTION, sync: { ...LIVE, state: 'paused' } }).isOk(),
+      parseEngineMessage({ ...PROJECTION, sync: { ...LIVE, role: 'OWNER' } }).isOk(),
     ];
 
     // #then
@@ -788,7 +783,9 @@ describe('parseEngineMessage', () => {
     const parsed = [parseEngineMessage(projection), parseEngineMessage(delta)];
     // #then
     expect(
-      parsed.map((result) => (result.ok && 'party' in result.value ? result.value.party : null)),
+      parsed.map((result) =>
+        result.isOk() && 'party' in result.value ? result.value.party : null,
+      ),
     ).toEqual([[], []]);
   });
   test('refuses a party over 100 player ids, or with a bad id or too long a name', () => {
@@ -797,13 +794,13 @@ describe('parseEngineMessage', () => {
 
     // #when
     const parsed = [
-      parseEngineMessage({ ...PROJECTION, party: [member] }).ok,
+      parseEngineMessage({ ...PROJECTION, party: [member] }).isOk(),
       parseEngineMessage({
         ...PROJECTION,
         party: Array.from({ length: 101 }, (_unused, index) => ({ ...member, id: `p-${index}` })),
-      }).ok,
-      parseEngineMessage({ ...PROJECTION, party: [{ ...member, id: 'a b' }] }).ok,
-      parseEngineMessage({ ...PROJECTION, party: [{ ...member, name: 'Я'.repeat(101) }] }).ok,
+      }).isOk(),
+      parseEngineMessage({ ...PROJECTION, party: [{ ...member, id: 'a b' }] }).isOk(),
+      parseEngineMessage({ ...PROJECTION, party: [{ ...member, name: 'Я'.repeat(101) }] }).isOk(),
     ];
 
     // #then
@@ -828,10 +825,7 @@ describe('parseEngineMessage', () => {
     // #when
     const parsed = [parseEngineMessage(delta), parseEngineMessage(rejected)];
     // #then
-    expect(parsed).toEqual([
-      { ok: true, value: delta },
-      { ok: true, value: rejected },
-    ]);
+    expect(parsed).toEqual([Result.ok(delta), Result.ok(rejected)]);
   });
   test('accepts a delta carrying the new-version notice and refuses an unknown notice', () => {
     // #given
@@ -855,10 +849,7 @@ describe('parseEngineMessage', () => {
     ];
 
     // #then
-    expect(parsed).toEqual([
-      { ok: true, value: delta },
-      { ok: false, error: 'invalid-message' },
-    ]);
+    expect(parsed).toEqual([Result.ok(delta), Result.err('invalid-message')]);
   });
   test('accepts a delta carrying the older-format room copy notice', () => {
     // #given
@@ -878,7 +869,7 @@ describe('parseEngineMessage', () => {
     // #when
     const parsed = parseEngineMessage(delta);
     // #then
-    expect(parsed).toEqual({ ok: true, value: delta });
+    expect(parsed).toEqual(Result.ok(delta));
   });
   test('accepts a delta carrying the room-copy notice and a failed room copy', () => {
     // #given
@@ -898,7 +889,7 @@ describe('parseEngineMessage', () => {
     // #when
     const parsed = parseEngineMessage(delta);
     // #then
-    expect(parsed).toEqual({ ok: true, value: delta });
+    expect(parsed).toEqual(Result.ok(delta));
   });
   test('refuses a part with no room copy status or with an unknown room copy state', () => {
     // #given
@@ -906,9 +897,9 @@ describe('parseEngineMessage', () => {
 
     // #when
     const parsed = [
-      parseEngineMessage(withoutRoomCopy).ok,
-      parseEngineMessage({ ...PROJECTION, roomCopy: { ...NO_COPY, state: 'stale' } }).ok,
-      parseEngineMessage({ ...PROJECTION, roomCopy: { ...NO_COPY, freeBytes: -1 } }).ok,
+      parseEngineMessage(withoutRoomCopy).isOk(),
+      parseEngineMessage({ ...PROJECTION, roomCopy: { ...NO_COPY, state: 'stale' } }).isOk(),
+      parseEngineMessage({ ...PROJECTION, roomCopy: { ...NO_COPY, freeBytes: -1 } }).isOk(),
     ];
 
     // #then
@@ -920,15 +911,15 @@ describe('parseEngineMessage', () => {
     const outcomes = [null, 'read', 'none', 'unreadable', 'newer', 'older', 'stale'] as const;
 
     // #when
-    const parsed = outcomes.map(
-      (outcome) => parseEngineMessage({ ...PROJECTION, roomCopy: { ...NO_COPY, outcome } }).ok,
+    const parsed = outcomes.map((outcome) =>
+      parseEngineMessage({ ...PROJECTION, roomCopy: { ...NO_COPY, outcome } }).isOk(),
     );
 
     const older = parseEngineMessage({ ...PROJECTION, roomCopy: withoutOutcome });
     // #then
     expect({
       parsed,
-      older: older.ok && older.value.t === 'projection' ? older.value.roomCopy : null,
+      older: older.isOk() && older.value.t === 'projection' ? older.value.roomCopy : null,
     }).toEqual({ parsed: [true, true, true, true, true, true, false], older: NO_COPY });
   });
 });

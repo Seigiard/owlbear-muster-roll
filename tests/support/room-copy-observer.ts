@@ -92,7 +92,7 @@ function createHeldWriteCopy() {
     setLowerCopy: () => {
       const encoded = encodeSnapshot(INITIAL, [RECORD]);
 
-      if (!encoded.ok) {
+      if (!encoded.isOk()) {
         throw new Error('observer fixture did not encode');
       }
 
@@ -101,7 +101,7 @@ function createHeldWriteCopy() {
     snapshot: () => {
       const read = readSnapshot(metadata);
 
-      if (!read.ok || read.value === null) {
+      if (!read.isOk() || read.value === null) {
         throw new Error('observer fixture did not decode');
       }
 

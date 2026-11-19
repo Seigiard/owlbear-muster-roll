@@ -8,7 +8,7 @@ import {
   DICE_PLUS_RESULT_CHANNEL,
 } from '@/core/dice-plus';
 import type { JsonValue } from '@/core/json';
-import { err } from '@/core/result';
+import { Result } from 'better-result';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import type { DiceExtensionTiming } from '@/core/timing';
@@ -368,7 +368,7 @@ async function startClient(
     if (channel === DICE_PLUS_REQUEST_ACCESS_CHANNEL && accessFailures > 0) {
       accessFailures -= 1;
 
-      return err({ kind: 'failed', reason: 'test' });
+      return Result.err({ kind: 'failed', reason: 'test' });
     }
 
     return sendMessage(channel, data, sendOptions);

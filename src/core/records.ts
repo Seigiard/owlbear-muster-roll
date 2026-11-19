@@ -10,7 +10,7 @@ import {
 } from '@/core/block-address';
 import { isTemplateId } from '@/core/field-id';
 import type { JsonValue } from '@/core/json';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 
 // Every id between the ":" of a key. `__proto__` is refused: as an object key it sets the
 // prototype instead of a property, so a value under it would be lost on the next parse.
@@ -134,7 +134,7 @@ export type RecordFailure = 'invalid-record';
 export function parseRecord(candidate: JsonValue): Result<VersionedRecord, RecordFailure> {
   const parsed = recordSchema.safeParse(candidate);
 
-  return parsed.success ? ok(parsed.data) : err('invalid-record');
+  return parsed.success ? Result.ok(parsed.data) : Result.err('invalid-record');
 }
 
 export function parseStoredRecord(
@@ -146,10 +146,10 @@ export function parseStoredRecord(
 
     // A record filed under another key must not take that key's place.
     return parsed.success && parsed.data.k === expectedKey
-      ? ok(parsed.data)
-      : err('invalid-record');
+      ? Result.ok(parsed.data)
+      : Result.err('invalid-record');
   } catch {
-    return err('invalid-record');
+    return Result.err('invalid-record');
   }
 }
 

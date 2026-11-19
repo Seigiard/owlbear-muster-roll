@@ -84,7 +84,7 @@ export function DuplicateCount({
 
     const count = parseDuplicateCount(text);
 
-    if (!count.ok) {
+    if (!count.isOk()) {
       setProblem('invalid');
 
       return;

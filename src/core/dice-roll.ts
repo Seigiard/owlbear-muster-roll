@@ -35,7 +35,7 @@ import {
   type TemplateRowPlace,
 } from '@/core/preset';
 import { cellValues, repDataSchema, type FieldValue, type VersionedRecord } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import { cellLabel, rowValues, type FieldValues } from '@/core/sheet-values';
 
 // What a window shows in a field it holds locally: unsent text, or an input error.
@@ -154,13 +154,13 @@ export function rollDiceCell(
 ): Result<DiceRoll, DiceRollFailure> {
   const prepared = prepareDiceRoll(layout, records, sheetId, place, shown);
 
-  if (!prepared.ok) {
+  if (!prepared.isOk()) {
     return prepared;
   }
 
   const rolled = prepared.value.roll(faces);
 
-  return rolled.ok ? ok({ cell: prepared.value.cell, result: rolled.value }) : rolled;
+  return rolled.isOk() ? Result.ok({ cell: prepared.value.cell, result: rolled.value }) : rolled;
 }
 
 // As `rollDiceCell`, with the faces left for later, so a caller can ask for them by the terms.
@@ -187,7 +187,7 @@ export function prepareDiceRoll(
     cell?.kind !== 'dice' ||
     repeat !== (place.instanceId !== null)
   ) {
-    return err({ code: 'not-dice' });
+    return Result.err({ code: 'not-dice' });
   }
 
   const from: TemplateRowPlace = {
@@ -203,7 +203,7 @@ export function prepareDiceRoll(
     const block = blockValues(layout, records, sheetId, place);
 
     if (block === null) {
-      return err({ code: 'not-dice' });
+      return Result.err({ code: 'not-dice' });
     }
 
     ownBlock = withShown(block, shown);
@@ -212,8 +212,8 @@ export function prepareDiceRoll(
   const tree = parseFormula(cell.formula);
 
   // The preset schema refuses a formula that does not parse, so none reaches a roll.
-  if (!tree.ok) {
-    return err({ code: 'arithmetic' });
+  if (!tree.isOk()) {
+    return Result.err({ code: 'arithmetic' });
   }
 
   const formula = tree.value;
@@ -244,8 +244,8 @@ export function prepareDiceRoll(
 
   const resolved = resolveFormulaDiceFields(formula, diceFieldLookup);
 
-  if (!resolved.ok) {
-    return err({ code: 'field', field: fieldLabel(layout, from, resolved.error.fieldId) });
+  if (!resolved.isOk()) {
+    return Result.err({ code: 'field', field: fieldLabel(layout, from, resolved.error.fieldId) });
   }
 
   // Resolution above proves every Nd(id) has a value, so the writer can use a non-null lookup.
@@ -268,7 +268,7 @@ export function prepareDiceRoll(
         : `${cellText} (${writtenFormula})`
       : cellText;
 
-  return ok({
+  return Result.ok({
     cell: label,
     terms: formulaDiceTerms(resolved.value),
     roll: (faces) => {
@@ -278,15 +278,15 @@ export function prepareDiceRoll(
         faces,
       );
 
-      if (!rolled.ok) {
-        return err(
+      if (!rolled.isOk()) {
+        return Result.err(
           rolled.error.code === 'field'
             ? { code: 'field', field: fieldLabel(layout, from, rolled.error.fieldId) }
             : { code: 'arithmetic' },
         );
       }
 
-      return rolled;
+      return Result.ok(rolled.value);
     },
   });
 }

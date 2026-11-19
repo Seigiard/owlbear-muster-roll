@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { assembleRecords, mergeRecords } from '@/core/merge';
 import { blockAddress } from '@/core/block-address';
 import { fixturePatch } from '../../tests/support/block-fixtures';
@@ -141,7 +142,7 @@ describe('pending edits', () => {
     const result = harness.pending.edit(field('str', 11), harness.records);
     // #then
     expect({ result, sent: harness.sent }).toEqual({
-      result: { ok: true, value: { notify: false } },
+      result: Result.ok({ notify: false }),
       sent: [
         {
           k: 'blk:brok',
@@ -175,7 +176,7 @@ describe('pending edits', () => {
       const result = harness.pending.edit(command, harness.records);
       // #then
       expect({ result, sent: harness.sent }).toEqual({
-        result: { ok: false, error: reason },
+        result: Result.err(reason),
         sent: [],
       });
     },
@@ -192,7 +193,7 @@ describe('pending edits', () => {
 
     // #then
     expect({ result, sent: harness.sent }).toEqual({
-      result: { ok: true, value: { notify: false } },
+      result: Result.ok({ notify: false }),
       sent: [
         {
           k: 'blk:camp',
@@ -214,7 +215,7 @@ describe('pending edits', () => {
     const result = harness.pending.edit(field('str', 11, 'hidden'), harness.records);
     // #then
     expect({ result, sent: harness.sent }).toEqual({
-      result: { ok: false, error: 'not-allowed' },
+      result: Result.err('not-allowed'),
       sent: [],
     });
   });
@@ -254,7 +255,7 @@ describe('pending edits', () => {
     const result = harness.pending.edit(field('note', 'ы'.repeat(8000)), harness.records);
     // #then
     expect({ result, sent: harness.sent, size: harness.pending.size() }).toEqual({
-      result: { ok: false, error: 'too-large' },
+      result: Result.err('too-large'),
       sent: [],
       size: 0,
     });
@@ -281,7 +282,7 @@ describe('pending edits', () => {
 
     // #then
     expect({ result, sent: harness.sent, size: harness.pending.size() }).toEqual({
-      result: { ok: true, value: { notify: true } },
+      result: Result.ok({ notify: true }),
       sent: [],
       size: 0,
     });
@@ -329,7 +330,7 @@ describe('pending edits', () => {
     harness.pending.overlay(view);
     // #then
     expect({ result, record: view.get(STR.k), size: harness.pending.size() }).toEqual({
-      result: { ok: false, error: 'unchanged' },
+      result: Result.err('unchanged'),
       record: STR,
       size: 0,
     });
@@ -948,7 +949,7 @@ function createHarness(
 
       const decoded = decodePreset(data.data);
 
-      return decoded.ok ? decoded.value : null;
+      return decoded.isOk() ? decoded.value : null;
     },
     compose: (view, command) =>
       composers.compose(

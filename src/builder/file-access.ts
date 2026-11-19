@@ -1,4 +1,4 @@
-import { err, ok } from '@/core/result';
+import { Result } from 'better-result';
 
 import type {
   FileAccessCapability,
@@ -67,45 +67,52 @@ export function createBrowserFileAccess(): FileAccessPort {
               });
 
         if (handle === undefined) {
-          return ok(null);
+          return Result.ok(null);
         }
 
         const id = `browser-file-${nextId}`;
         nextId += 1;
         handles.set(id, handle);
 
-        return ok({ id, name: handle.name });
+        return Result.ok({ id, name: handle.name });
       } catch (error) {
         if (
           (error instanceof Error || error instanceof DOMException) &&
           error.name === 'AbortError'
         ) {
-          return ok(null);
+          return Result.ok(null);
         }
 
-        return err(fileError(error instanceof Error ? error : new Error('File access failed')));
+        return Result.err(
+          fileError(error instanceof Error ? error : new Error('File access failed')),
+        );
       }
     },
     read: async (file) => {
       const handle = handles.get(file.id);
 
       if (handle === undefined) {
-        return err({ reason: `No browser file ${file.id}` });
+        return Result.err({ reason: `No browser file ${file.id}` });
       }
 
       try {
         const contents = await handle.getFile();
 
-        return ok({ text: await contents.text(), modifiedAt: new Date(contents.lastModified) });
+        return Result.ok({
+          text: await contents.text(),
+          modifiedAt: new Date(contents.lastModified),
+        });
       } catch (error) {
-        return err(fileError(error instanceof Error ? error : new Error('File access failed')));
+        return Result.err(
+          fileError(error instanceof Error ? error : new Error('File access failed')),
+        );
       }
     },
     write: async (file, text) => {
       const handle = handles.get(file.id);
 
       if (handle === undefined) {
-        return err({ reason: `No browser file ${file.id}` });
+        return Result.err({ reason: `No browser file ${file.id}` });
       }
 
       try {
@@ -115,9 +122,11 @@ export function createBrowserFileAccess(): FileAccessPort {
 
         const contents = await handle.getFile();
 
-        return ok({ text, modifiedAt: new Date(contents.lastModified) });
+        return Result.ok({ text, modifiedAt: new Date(contents.lastModified) });
       } catch (error) {
-        return err(fileError(error instanceof Error ? error : new Error('File access failed')));
+        return Result.err(
+          fileError(error instanceof Error ? error : new Error('File access failed')),
+        );
       }
     },
     follow: (file, onChange) => {
@@ -139,7 +148,7 @@ export function createBrowserFileAccess(): FileAccessPort {
           return;
         }
 
-        if (result.ok) {
+        if (result.isOk()) {
           const changed =
             previous !== null &&
             (previous.modifiedAt.getTime() !== result.value.modifiedAt.getTime() ||
@@ -156,10 +165,10 @@ export function createBrowserFileAccess(): FileAccessPort {
       };
 
       const timer = window.setInterval(() => {
-        read().catch(() => onChange(err(fileError(new Error('File access failed')))));
+        read().catch(() => onChange(Result.err(fileError(new Error('File access failed')))));
       }, FOLLOW_INTERVAL_MS);
 
-      read().catch(() => onChange(err(fileError(new Error('File access failed')))));
+      read().catch(() => onChange(Result.err(fileError(new Error('File access failed')))));
 
       return () => {
         active = false;
@@ -176,15 +185,15 @@ async function readFile(
   const handle = handles.get(file.id);
 
   if (handle === undefined) {
-    return err({ reason: `No browser file ${file.id}` });
+    return Result.err({ reason: `No browser file ${file.id}` });
   }
 
   try {
     const contents = await handle.getFile();
 
-    return ok({ text: await contents.text(), modifiedAt: new Date(contents.lastModified) });
+    return Result.ok({ text: await contents.text(), modifiedAt: new Date(contents.lastModified) });
   } catch (error) {
-    return err(fileError(error instanceof Error ? error : new Error('File access failed')));
+    return Result.err(fileError(error instanceof Error ? error : new Error('File access failed')));
   }
 }
 

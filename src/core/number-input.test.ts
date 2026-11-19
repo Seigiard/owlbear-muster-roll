@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import { parseNumberInput } from './number-input';
 
@@ -15,13 +16,13 @@ describe('parseNumberInput', () => {
     // #when
     const parsed = parseNumberInput(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value });
+    expect(parsed).toEqual(Result.ok(value));
   });
   test('reads an empty text as a clear', () => {
     // #when
     const parsed = parseNumberInput('');
     // #then
-    expect(parsed).toEqual({ ok: true, value: null });
+    expect(parsed).toEqual(Result.ok(null));
   });
   test.each<[string, string]>([
     ['an exponent', '1e3'],
@@ -38,6 +39,6 @@ describe('parseNumberInput', () => {
     // #when
     const parsed = parseNumberInput(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'not-a-number' });
+    expect(parsed).toEqual(Result.err('not-a-number'));
   });
 });

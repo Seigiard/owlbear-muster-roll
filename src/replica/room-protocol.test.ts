@@ -478,7 +478,7 @@ describe('createRoomProtocol', () => {
     protocol.receive(event(malformed));
     await settleIngress();
     // #then
-    expect({ parsed: parseRoomMessage(malformed).ok, senderLookups, handlerEffects }).toEqual({
+    expect({ parsed: parseRoomMessage(malformed).isOk(), senderLookups, handlerEffects }).toEqual({
       parsed: false,
       senderLookups: [],
       handlerEffects: [],
@@ -514,7 +514,7 @@ describe('createRoomProtocol', () => {
       await settleIngress();
       // #then
       expect({
-        parsed: parseRoomMessage(rejectedMessage).ok,
+        parsed: parseRoomMessage(rejectedMessage).isOk(),
         rejected: rejectedEffects,
         admittedControl: {
           handlerEffects: handlerEffects.slice(rejectedEffects.handlerEffects.length),

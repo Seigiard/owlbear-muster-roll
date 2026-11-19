@@ -426,7 +426,7 @@ export function startReplicaClient(
     // Echoes of a window's own requests and commands fail this schema and stop here.
     const parsed = parseInternalEngineMessage(event.data);
 
-    if (parsed.ok) {
+    if (parsed.isOk()) {
       handleMessage(parsed.value);
     }
   });

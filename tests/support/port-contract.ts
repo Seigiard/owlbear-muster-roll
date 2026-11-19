@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue } from '@/core/json';
-import type { Result } from '@/core/result';
+import { Result } from 'better-result';
 import type {
   BroadcastEvent,
   BroadcastPort,
@@ -480,7 +480,7 @@ function normalizeOwnedKeys(
   fixture: StorageFixture,
   names: Readonly<Record<string, string>>,
 ): Result<string[], StorageFailure> {
-  if (!result.ok) {
+  if (!result.isOk()) {
     return result;
   }
 
@@ -490,10 +490,7 @@ function normalizeOwnedKeys(
   // oxlint-disable-next-line unicorn/no-array-sort
   keys.sort();
 
-  return {
-    ok: true,
-    value: keys,
-  };
+  return Result.ok(keys);
 }
 
 function invokeStorageOperation(

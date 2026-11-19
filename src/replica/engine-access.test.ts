@@ -769,7 +769,7 @@ function partyDeltas(client: Client): PartyEntry[][] {
   return client.local.flatMap((message) => {
     const parsed = parseEngineMessage(message);
 
-    return parsed.ok && parsed.value.t === 'delta' ? [parsed.value.party] : [];
+    return parsed.isOk() && parsed.value.t === 'delta' ? [parsed.value.party] : [];
   });
 }
 

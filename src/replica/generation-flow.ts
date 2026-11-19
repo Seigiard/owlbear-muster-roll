@@ -12,7 +12,7 @@ import {
 } from '@/core/snapshot-import';
 import { generationSchema, INITIAL_GENERATION, type Generation } from '@/core/storage-key';
 import { presetDataSchema, type VersionedRecord } from '@/core/records';
-import { err, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import type { Snapshot } from '@/core/snapshot';
 import type { CatchUp, CatchUpDecision } from '@/replica/catch-up';
 import type { RecordStore } from '@/replica/record-store';
@@ -134,21 +134,21 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
   function planImport(data: string): Result<SnapshotImport, RejectionReason> {
     const file = decodeSnapshotFileData(data);
 
-    if (!file.ok) {
-      return err(file.error === 'too-large' ? 'too-large' : 'invalid-snapshot');
+    if (!file.isOk()) {
+      return Result.err(file.error === 'too-large' ? 'too-large' : 'invalid-snapshot');
     }
 
     const stored = ports.records().get('preset');
     const presetData = presetDataSchema.safeParse(stored?.d);
 
     if (!presetData.success) {
-      return err('preset-required');
+      return Result.err('preset-required');
     }
 
     const preset = ports.presetOf(stored);
 
     if (preset === null) {
-      return err('preset-unreadable');
+      return Result.err('preset-unreadable');
     }
 
     const imported = importSnapshot(
@@ -160,8 +160,8 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
       ports.connectionId,
     );
 
-    if (!imported.ok) {
-      return err(imported.error === 'too-large' ? 'too-large' : 'invalid-snapshot');
+    if (!imported.isOk()) {
+      return Result.err(imported.error === 'too-large' ? 'too-large' : 'invalid-snapshot');
     }
 
     return imported;
@@ -189,7 +189,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
 
     const planned = planImport(command.data);
 
-    if (!planned.ok) {
+    if (!planned.isOk()) {
       ports.reject(id, planned.error);
 
       return;
@@ -263,7 +263,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
 
     const planned = planImport(message.data);
 
-    if (!planned.ok) {
+    if (!planned.isOk()) {
       ports.reject(message.id, planned.error);
 
       return;
@@ -304,7 +304,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
     if (!saveGeneration(store, generation, records)) {
       const removed = store.removeGeneration(generation);
 
-      if (!removed.ok) {
+      if (!removed.isOk()) {
         console.error('Muster Roll could not remove a part saved generation', removed.error);
       }
 
@@ -344,7 +344,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
 
       const removed = store.removeGenerationsBelow(generation);
 
-      if (!removed.ok) {
+      if (!removed.isOk()) {
         console.error('Muster Roll could not remove the replaced records', removed.error);
       }
 
@@ -444,7 +444,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
       if (!saveGeneration(store, generation, records)) {
         const removed = store.removeGeneration(generation);
 
-        if (!removed.ok) {
+        if (!removed.isOk()) {
           console.error('Muster Roll could not remove a part saved generation', removed.error);
         }
 
@@ -457,7 +457,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
 
       const removed = store.removeGenerationsBelow(generation);
 
-      if (!removed.ok) {
+      if (!removed.isOk()) {
         console.error('Muster Roll could not remove the replaced records', removed.error);
       }
 
@@ -496,7 +496,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
   ): boolean {
     const marked = store.markIncomplete(generation);
 
-    if (!marked.ok) {
+    if (!marked.isOk()) {
       console.error('Muster Roll could not mark a new generation', marked.error);
       ports.markGenerationSaveFailed();
 
@@ -505,7 +505,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
 
     const kept = store.markGeneration(generation);
 
-    if (!kept.ok) {
+    if (!kept.isOk()) {
       console.error('Muster Roll could not keep a new generation', kept.error);
       ports.markGenerationSaveFailed();
 
@@ -515,7 +515,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
     for (const record of records) {
       const written = store.write(generation, record);
 
-      if (!written.ok) {
+      if (!written.isOk()) {
         console.error('Muster Roll could not save a record of a new generation', written.error);
         ports.markGenerationSaveFailed();
 
@@ -525,7 +525,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
 
     const complete = store.markComplete(generation);
 
-    if (!complete.ok) {
+    if (!complete.isOk()) {
       console.error('Muster Roll could not mark a new generation complete', complete.error);
       ports.markGenerationSaveFailed();
 
@@ -559,7 +559,7 @@ function higherGeneration(first: Generation, second: Generation): Generation {
 function removeOlderFormats(store: RecordStore): void {
   const removed = store.removeOlderFormats();
 
-  if (!removed.ok) {
+  if (!removed.isOk()) {
     console.error('Muster Roll could not remove the records of an older format', removed.error);
   }
 }

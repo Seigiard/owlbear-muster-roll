@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import { parsePresetFile, PRESET_FILE_BYTE_LIMIT, type Preset } from '@/core/preset';
 import { copy } from '@/copy';
@@ -179,7 +180,7 @@ describe('downloadText', () => {
     const text = downloadText(fromPreset(VALID));
     // #then
     expect(text).not.toBeNull();
-    expect(parsePresetFile(text ?? '')).toEqual({ ok: true, value: VALID });
+    expect(parsePresetFile(text ?? '')).toEqual(Result.ok(VALID));
   });
 });
 

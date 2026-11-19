@@ -13,7 +13,7 @@ import {
   type PresetFailure,
 } from '@/core/preset';
 import { encodePreset } from '@/core/preset';
-import { err, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import {
   importSnapshot,
   parseSnapshotFile,
@@ -236,10 +236,10 @@ export function BuilderPage({
     // A file far over the limit is refused before it is read.
     const parsed: Result<Preset, PresetFailure> =
       file.size > PRESET_FILE_BYTE_LIMIT
-        ? err({ code: 'too-large' })
+        ? Result.err({ code: 'too-large' })
         : parsePresetFile(await file.text());
 
-    if (!parsed.ok) {
+    if (!parsed.isOk()) {
       setRequest(null);
       setFileMessage({ variant: 'danger', text: presetFailureMessage(parsed.error) });
 
@@ -258,7 +258,7 @@ export function BuilderPage({
   async function openAttachedFile(kind: FileBlockKind): Promise<boolean> {
     const opened = await fileAccess.open({ mode: 'open' });
 
-    if (!opened.ok) {
+    if (!opened.isOk()) {
       setFileMessage({ variant: 'danger', text: copy.fileOperationFailed });
 
       return false;
@@ -270,7 +270,7 @@ export function BuilderPage({
 
     const read = await fileAccess.read(opened.value);
 
-    if (!read.ok) {
+    if (!read.isOk()) {
       setFileMessage({ variant: 'danger', text: copy.fileOperationFailed });
 
       return false;
@@ -279,7 +279,7 @@ export function BuilderPage({
     if (kind === 'preset') {
       const parsed = parsePresetFile(read.value.text);
 
-      if (!parsed.ok) {
+      if (!parsed.isOk()) {
         setFileMessage({ variant: 'danger', text: presetFailureMessage(parsed.error) });
 
         return true;
@@ -330,7 +330,7 @@ export function BuilderPage({
     const text = await file.text();
     const parsed = parseSnapshotFile(text);
 
-    if (!parsed.ok) {
+    if (!parsed.isOk()) {
       setFileMessage({ variant: 'danger', text: fileFailureText(parsed.error) });
 
       return;
@@ -345,7 +345,7 @@ export function BuilderPage({
       'builder',
     );
 
-    if (!imported.ok) {
+    if (!imported.isOk()) {
       setFileMessage({ variant: 'danger', text: snapshotImportFailureText(imported.error) });
 
       return;
@@ -367,7 +367,7 @@ export function BuilderPage({
     const example = BUILDER_EXAMPLES.find((item) => item.key === key);
     const parsed = example === undefined ? null : parsePresetFile(example.text);
 
-    if (example !== undefined && parsed?.ok === true) {
+    if (example !== undefined && parsed?.isOk() === true) {
       requestOpen({
         preset: parsed.value,
         origin: null,
@@ -392,7 +392,7 @@ export function BuilderPage({
     if (kind === 'preset') {
       const parsed = parsePresetFile(text);
 
-      return parsed.ok
+      return parsed.isOk()
         ? {
             ok: true,
             kind: 'preset',
@@ -404,7 +404,7 @@ export function BuilderPage({
 
     const parsed = parseSnapshotFile(text);
 
-    if (!parsed.ok) {
+    if (!parsed.isOk()) {
       return { ok: false, message: fileFailureText(parsed.error) };
     }
 
@@ -416,7 +416,7 @@ export function BuilderPage({
       'builder',
     );
 
-    return imported.ok
+    return imported.isOk()
       ? {
           ok: true,
           kind: 'snapshot',
@@ -559,7 +559,7 @@ export function BuilderPage({
   ): Promise<void> {
     const currentDocumentText = documentText(kind);
 
-    if (!result.ok) {
+    if (!result.isOk()) {
       dispatchFiles({
         type: 'fail',
         kind,
@@ -791,7 +791,7 @@ export function BuilderPage({
 
     const currentOnDisk = await fileAccess.read(file.reference);
 
-    if (!currentOnDisk.ok) {
+    if (!currentOnDisk.isOk()) {
       if (filesRef.current[kind].file?.reference?.id === file.reference.id) {
         dispatchFiles({
           type: 'fail',
@@ -853,7 +853,7 @@ export function BuilderPage({
 
     const result = await fileAccess.write(file.reference, text);
 
-    if (!result.ok) {
+    if (!result.isOk()) {
       dispatchFiles({
         type: 'fail',
         kind,
@@ -893,7 +893,7 @@ export function BuilderPage({
 
     const opened = await fileAccess.open({ mode: 'save', suggestedName });
 
-    if (!opened.ok) {
+    if (!opened.isOk()) {
       setFileMessage({ variant: 'danger', text: copy.fileOperationFailed });
 
       return;
@@ -905,7 +905,7 @@ export function BuilderPage({
 
     const written = await fileAccess.write(opened.value, text);
 
-    if (!written.ok) {
+    if (!written.isOk()) {
       setFileMessage({ variant: 'danger', text: copy.fileOperationFailed });
 
       return;

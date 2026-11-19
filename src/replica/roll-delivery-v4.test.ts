@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { copy } from '@/copy';
 import { encodePreset, type Preset } from '@/core/preset';
-import { ok } from '@/core/result';
+import { Result } from 'better-result';
 import type { RollMessage } from '@/core/room-messages';
 import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
 import type { PlayerRole } from '@/core/visibility';
@@ -101,7 +101,7 @@ function createHarness(role: PlayerRole) {
     role: () => role,
     stopped: () => false,
     generation: () => ({ n: 0, a: '' }),
-    dice: { ready: async () => 'absent', roll: async () => ok([]) },
+    dice: { ready: async () => 'absent', roll: async () => Result.ok([]) },
     gmInRoom: () => true,
     playerId: 'gm',
     playerName: async () => 'Ведущий',
