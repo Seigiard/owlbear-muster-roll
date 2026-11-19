@@ -55,6 +55,7 @@ declare global {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.clock.install();
   await page.setViewportSize({ width: 600, height: 600 });
 });
 
@@ -259,7 +260,7 @@ test('a rename back to the shown name while the first is on its way still goes o
   await background.close();
   await nameField(page).fill('Лиза');
   await page.keyboard.press('Tab');
-  await page.waitForTimeout(300);
+  await page.clock.runFor(300);
   await expect(nameField(page)).toHaveValue('Лиза');
   // #when
   await nameField(page).fill('Брок');
@@ -489,7 +490,7 @@ async function postToWindow(page: Page, message: JsonValue): Promise<void> {
 
 // Long enough for a command to reach the background and its record to reach storage.
 async function savedAfterSettling(page: Page): Promise<Saved> {
-  await page.waitForTimeout(300);
+  await page.clock.runFor(300);
   const types = await page.evaluate(() => window.wireTypes);
 
   return {

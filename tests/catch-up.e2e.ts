@@ -252,6 +252,10 @@ async function openClient(
 
   const background = await openClientBackground(context, params);
 
+  if (records !== null) {
+    await expect(window.getByRole('button', { name: ADD })).toBeVisible();
+  }
+
   return { window, background, connectionId: connectionIdOf(params) };
 }
 

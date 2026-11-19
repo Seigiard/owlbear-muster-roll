@@ -295,11 +295,10 @@ test('a focused field keeps its text through a remote change, and Esc shows the 
   await field(a.window, 'Сила').press('Enter');
   await a.window.getByRole('checkbox', { name: 'Сила' }).click();
   await expect(b.window.getByRole('checkbox', { name: 'Сила' })).toBeChecked();
-  const whileFocused = await field(b.window, 'Сила').inputValue();
+  await expect(field(b.window, 'Сила')).toHaveValue('14');
   await field(b.window, 'Сила').press('Escape');
   // #then
   await expect(field(b.window, 'Сила')).toHaveValue('20');
-  expect(whileFocused).toBe('14');
 });
 
 test('a commit from a connection the party does not know is dropped', async ({ context }) => {
@@ -364,6 +363,7 @@ test('a player client merges a GM commit and persists nothing', async ({ context
   const playerWindow = await openClientWindow(context, PLAYER);
   await listenDeltaKeys(playerWindow);
   await openClientBackground(context, PLAYER);
+  await expect(playerWindow.getByRole('tab', { name: 'Брок' })).toBeVisible();
 
   if (a === undefined) {
     throw new Error('the GM client did not open');

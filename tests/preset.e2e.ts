@@ -8,6 +8,7 @@ import { MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import { renderedColor, tokenColor } from './support/colors';
 import {
   ABSENT,
+  ADD,
   EXAMPLE_PRESET_TEXT,
   openBackground,
   roomKeys,
@@ -452,6 +453,7 @@ test('with a preset and a sheet, Settings enables the upload and the download', 
   await page.goto('/index.html');
   await seedStorage(page, [SAVED_SHEET], EXAMPLE_PRESET_TEXT);
   await openBackground(context);
+  await expect(page.getByRole('button', { name: ADD })).toBeVisible();
   // #when
   await page.getByRole('tab', { name: SETTINGS }).click();
   // #then

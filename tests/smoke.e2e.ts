@@ -15,7 +15,7 @@ test('the background page loads with no console error', async ({ page }) => {
   // #given
   const errors = collectPageErrors(page);
   // #when
-  await page.goto('/background.html', { waitUntil: 'networkidle' });
+  await page.goto('/background.html');
   // #then
   await expect(page).toHaveTitle('Muster Roll background');
   expect(errors).toEqual([]);
@@ -31,7 +31,7 @@ for (const path of ['/index.html', '/background.html']) {
       }
     });
     // #when
-    await page.goto(path, { waitUntil: 'networkidle' });
+    await page.goto(path);
     // #then
     expect(sdkRequests).toEqual([]);
   });

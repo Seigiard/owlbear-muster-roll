@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import {
+  ADD,
   connectionIdOf,
   openClientBackground,
   openClientWindow,
@@ -244,6 +245,7 @@ async function openSeededGm(
   const window = await openClientWindow(context, GM);
   await seedStorage(window, records, presetText);
   const background = await openClientBackground(context, GM);
+  await expect(window.getByRole('button', { name: ADD })).toBeVisible();
 
   return { window, background, connectionId: connectionIdOf(GM) };
 }
