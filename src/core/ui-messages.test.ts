@@ -218,6 +218,36 @@ describe('parseWindowMessage', () => {
         cellId: 'token',
       },
     ],
+    [
+      'a field patch whose target path ends in another block',
+      {
+        type: 'field-patch',
+        sheetId: 'encounter',
+        target: {
+          kind: 'rep',
+          sectionId: 'attack',
+          instanceId: 'claw',
+          path: ['npc', 'goblin', 'attack', 'bite'],
+        },
+        fieldId: 'damage',
+        value: 1,
+      },
+    ],
+    [
+      'a field patch whose target path has an odd number of segments',
+      {
+        type: 'field-patch',
+        sheetId: 'encounter',
+        target: {
+          kind: 'rep',
+          sectionId: 'attack',
+          instanceId: 'claw',
+          path: ['npc', 'goblin', 'attack'],
+        },
+        fieldId: 'damage',
+        value: 1,
+      },
+    ],
   ])('drops %s', (_name, command) => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
