@@ -7,7 +7,7 @@
 #
 # Expected outcomes:
 #   GenerationAdoption, TwoImports, Promoted, Liveness,
-#   LivenessCopyFails                                            pass
+#   LivenessCopyFails, LivenessPromoted                          pass
 #   finding-*  fail: open findings in the code, see the skill
 #   bug-*      fail: broken variants that show each rule can fail
 set -u

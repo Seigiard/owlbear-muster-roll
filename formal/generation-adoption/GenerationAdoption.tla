@@ -125,15 +125,21 @@ SaveAdoption(r, fromCopy, ok) ==
                       !.pending = IF fromCopy THEN "copy" ELSE "answer"]
        ELSE IF fromCopy THEN done ELSE Leave(done)
 
+(* The Bug "no-retry" breaks the retry of a failed save: catch-up.ts feed   *)
+(* saves only when the adoption first becomes pending, so a pending        *)
+(* adoption is never saved again.                                           *)
+NoRetry(r) == Bug = "no-retry" /\ r.pending # "none"
+
 (* room-copy.ts mergeReadRoomCopy with generation-flow.ts adoptFromCopy.    *)
 ReadCopyInto(r, ok) ==
   LET adopting == IF copy.g > r.own THEN SeeGeneration(r, copy.g) ELSE r
-      saving == copy.g > r.own /\ adopting.target = copy.g
+      saving == copy.g > r.own /\ adopting.target = copy.g /\ ~NoRetry(adopting)
       staged == [adopting EXCEPT !.staged = @ \cup copy.tags]
       after == IF saving THEN SaveAdoption(staged, TRUE, ok) ELSE adopting
   IN IF after.own = copy.g THEN [after EXCEPT !.replica = @ \cup copy.tags] ELSE after
 
 CopySaves(r) == copy.g > r.own /\ SeeGeneration(r, copy.g).target = copy.g
+                /\ ~NoRetry(SeeGeneration(r, copy.g))
 
 (* generation-table.ts importSuperseded, with `aborted` false.             *)
 Superseded(r) == r.target # NONE \/ r.own # r.impGen
@@ -215,17 +221,18 @@ Deliver(c) ==
       merges == m.t = "state" /\ sender = "GM" /\ equal
       (* A `state` of the client's own generation while a failed adoption    *)
       (* save is pending: feed saves the adoption again.                     *)
-      retries == merges /\ heard.phase = "adopting" /\ heard.pending # "none"
+      retries == merges /\ heard.phase = "adopting" /\ heard.pending # "none" /\ ~NoRetry(heard)
       (* A `state` of the target completes the adoption as an answer, or,   *)
       (* with a copy adoption pending, retries it as a copy save.           *)
       FromCopy == IF heard.pending = "copy" THEN BOOLEAN ELSE {FALSE}
       answers == m.t = "request" /\ sender # "NONE" /\ heard.role = "GM"
                  /\ heard.persist # NONE /\ heard.phase = "live"
   IN /\ r.open /\ inbox[c] # << >>
-     /\ \E ok \in SaveOutcomes(r, stages \/ retries), fromCopy \in FromCopy :
+     /\ \E ok \in SaveOutcomes(r, (stages /\ ~NoRetry(heard)) \/ retries), fromCopy \in FromCopy :
           /\ CountFail(ok)
           /\ cl' = [cl EXCEPT ![c] =
-                CASE stages -> SaveAdoption([heard EXCEPT !.staged = @ \cup m.tags], fromCopy, ok)
+                CASE stages /\ NoRetry(heard) -> [heard EXCEPT !.staged = @ \cup m.tags]
+                  [] stages -> SaveAdoption([heard EXCEPT !.staged = @ \cup m.tags], fromCopy, ok)
                   [] merges ->
                        LET merged == [heard EXCEPT !.replica = @ \cup m.tags]
                            retried == IF Bug = "retry-stages-equal"

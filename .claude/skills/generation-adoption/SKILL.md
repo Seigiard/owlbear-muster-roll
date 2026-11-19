@@ -17,17 +17,18 @@ Run `git diff --stat 995e1c7 -- <coverage files>` with the files in the coverage
 formal/generation-adoption/check.sh
 ```
 
-It runs every config in `formal/generation-adoption/` in about 40 seconds and prints one line per config. Exit 0 means that every config ended as expected:
+It runs every config in `formal/generation-adoption/` in about 45 seconds and prints one line per config. Exit 0 means that every config ended as expected:
 
 | Config | Expected | Checks |
 | --- | --- | --- |
 | `GenerationAdoption.cfg` | pass | all safety rules; 1 import, 1 role change, 1 page close, 1 failed save, 1 failed copy write |
 | `TwoImports.cfg` | pass | all safety rules; 2 imports (two GMs mint at once, superseded import), 1 failed save, 1 failed copy write |
-| `Promoted.cfg` | pass | all safety rules; GM `a` and player `b`; 1 import, 1 role change (a promotion or a demotion), 1 page close, 1 failed save, 1 failed copy write. Only here does a promoted client hold an old-generation `state` that retries a failed adoption save |
+| `Promoted.cfg` | pass | all safety rules; GM `a` and player `b`; 1 import, 1 role change (a promotion or a demotion), 1 page close, 1 failed save, 1 failed copy write. Here and in `LivenessPromoted.cfg`, a promoted client holds an old-generation `state` that retries a failed adoption save |
 | `Liveness.cfg` | pass | `EventuallySettled`, `EventuallyAgreed`; 1 role change, 1 failed save, no close, no copy failure |
 | `LivenessCopyFails.cfg` | pass | the same two; 1 failed save, 1 failed copy write, no role change, no close |
+| `LivenessPromoted.cfg` | pass | the same two; GM `a` and player `b`, 1 import, 1 role change (a promotion or a demotion), 1 failed save, no close, no copy failure. A promoted `b` reaches the retry of a failed adoption save |
 | `finding-*.cfg` | fail | the open findings below |
-| `bug-*.cfg` | fail | broken variants (`Bug` constant) that prove each rule can fail |
+| `bug-*.cfg` | fail | broken variants (`Bug` constant) that prove each rule can fail; `bug-no-retry.cfg` (a pending adoption is never saved again) is the one that breaks the liveness rules: `EventuallySettled` and `EventuallyAgreed` each fail on it |
 
 To see TLC's output for one config: `formal/generation-adoption/check.sh <name>.cfg`. The first run installs Java and TLC through `formal/tlc.sh` and needs the network.
 
@@ -94,6 +95,8 @@ Two clients `a` and `b`; the bounds per config are in the table under Run. A pas
 Left out: page reload and start (`loadReplica`), more than two clients and cross-sender reordering, nonces and partial `state` answers (so TASK-129, an own-nonce answer from a higher generation dropped while adopting, is outside this model; the `replica-catch-up` skill covers nonces), held requests of a GM that cannot answer yet, drift catch-ups, commits and player proposals, pending edits and the outbox (`flush`, `drop`), the routine room-copy write race (the `room-copy` skill covers it), failures of `removeGeneration`, `removeGenerationsBelow`, the AD-11 persist-all writes and storage reads, too-large records, and older storage formats. A wipe and an import are one action, because both run `replaceGeneration`.
 
 Fairness for the liveness rules: a waiting message arrives, a catch-up timer fires, a copy read ends and an import's copy write ends. A GM's choices (import, role change, close, routine copy writes, `alive`) are not forced.
+
+The retry of a failed save on a `state` of the client's own generation is not needed for the liveness rules: with that retry removed, `LivenessPromoted.cfg` still passes, because the client asks again and reads the room copy. Its safety is checked in `Promoted.cfg`, and `bug-retry-stages-equal.cfg` breaks it. Liveness with a demotion and a failed copy write is not checked: that room is finding 2.
 
 ## Open findings
 
