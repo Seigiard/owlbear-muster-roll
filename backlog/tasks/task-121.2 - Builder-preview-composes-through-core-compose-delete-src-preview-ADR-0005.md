@@ -4,7 +4,7 @@ title: Builder preview composes through core/compose; delete src/preview; ADR-00
 status: To Do
 assignee: []
 created_date: '2026-11-19T07:46:00Z'
-updated_date: '2026-11-19T07:53:00Z'
+updated_date: '2026-11-19T08:01:00Z'
 labels: []
 dependencies:
   - TASK-121.1
@@ -25,3 +25,9 @@ Second PR of the composer epic (see the parent for every decision). `src/builder
 - [ ] #3 A unit test composes the same field-patch, repeat-block-add and repeat-block-delete commands through the preview sendCommand and through `compose` with the same minter and ids, and the resulting records are deep-equal
 - [ ] #4 Repeat-block add, delete, field edit and undo behave as before in `tests/builder-snapshot.e2e.ts`, which passes unchanged
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Spec: _bmad-output/implementation-artifacts/spec-task-121-2-preview-composes.md (ready-for-dev)
+<!-- SECTION:PLAN:END -->

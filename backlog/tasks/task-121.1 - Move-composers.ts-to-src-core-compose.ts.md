@@ -4,7 +4,7 @@ title: Move composers.ts to src/core/compose.ts
 status: To Do
 assignee: []
 created_date: '2026-11-19T07:45:00Z'
-updated_date: '2026-11-19T07:53:00Z'
+updated_date: '2026-11-19T08:01:00Z'
 labels: []
 dependencies: []
 parent_task_id: TASK-121
@@ -23,3 +23,9 @@ First PR of the composer epic (see the parent). `src/replica/composers.ts` and `
 - [ ] #2 `src/core/compose.ts` imports only `@/core/**`; `bun run lint` passes with the `src/core/**` no-restricted-imports override
 - [ ] #3 Full check passes and the `bun test` junit list equals the master baseline
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Spec: _bmad-output/implementation-artifacts/spec-task-121-1-compose-to-core.md (ready-for-dev)
+<!-- SECTION:PLAN:END -->
