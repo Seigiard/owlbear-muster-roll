@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { VersionedRecord } from '@/core/records';
 import type { Command, RejectionReason } from '@/core/ui-messages';
-import type { ComposeContext, ComposeMode } from '@/replica/composers';
+import type { ComposeContext, ComposeMode } from '@/core/compose';
 import { createPendingQueue } from '@/replica/pending-queue';
 import {
   createCommandRouting,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createVersionMinter } from '@/replica/version-minter';
+import { createVersionMinter } from './version-minter';
 
 describe('createVersionMinter', () => {
   test('takes the highest known counter + 1 with this connection as author', () => {

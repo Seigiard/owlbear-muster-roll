@@ -1,6 +1,6 @@
 import { patchRecordKey } from '@/core/field-patch';
 import type { Command } from '@/core/ui-messages';
-import type { FieldPatchCommand, IdentifiedPatch } from '@/replica/composers';
+import type { FieldPatchCommand, IdentifiedPatch } from '@/core/compose';
 
 // AD-7: one GM intent made during catch-up, in arrival order. Field patches of one record key share
 // one entry, which keeps the place of the first.
