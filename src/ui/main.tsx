@@ -14,6 +14,7 @@ import {
 } from '@/core/block-address';
 import { newInstanceId, newSheetId } from '@/core/ids';
 import { openTabIndex, type RenderedTab, type SheetSetTemplate } from '@/core/preset';
+import type { VersionedRecord } from '@/core/records';
 import { renderedTabs as renderTabs, sameRenderedTab } from '@/core/rendered-tabs';
 import { isSheetSet, sheetKey } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
@@ -319,12 +320,6 @@ function WindowRoot({
     shownTab = firstTab;
   }
 
-  function visibleTemplateTabs(tab: SidebarSheet): RenderedTab[] {
-    return renderTabs(tab.policy.template, records, tab.sheetId).filter((candidate) =>
-      tabShownTo(role, tab.policy.template, candidate.sourceIndex),
-    );
-  }
-
   const clearNameFocus = useCallback(() => {
     if (focusNameOf !== null) {
       dispatch({ type: 'name-focused', sheet: focusNameOf });
@@ -369,12 +364,7 @@ function WindowRoot({
 
     const listed = tab === null ? undefined : tabs.find((candidate) => candidate.id === tab);
 
-    const visible =
-      listed === undefined
-        ? []
-        : renderTabs(listed.policy.template, records, listed.sheetId).filter((candidate) =>
-            tabShownTo(role, listed.policy.template, candidate.sourceIndex),
-          );
+    const visible = listed === undefined ? [] : visibleTemplateTabs(listed, records, role);
 
     const rendered =
       template === undefined ? [] : renderTabs(template, records, openRequest.sheetId);
@@ -425,7 +415,7 @@ function WindowRoot({
             },
       ready,
     });
-  }, [openRequest, preset, ready, records, role, tabIds, tabs, takenOpen]);
+  }, [openRequest, ready, records, role, tabIds, tabs, takenOpen]);
 
   // Taken: the engine drops the request, so a reload or another window does not open it again.
   useEffect(() => {
@@ -473,7 +463,7 @@ function WindowRoot({
   // AD-26: the chosen tab stays while this role sees it; otherwise the first tab this role sees, else
   // none.
   function openTemplateTab(tab: SidebarSheet): { index: number; tab: RenderedTab } | null {
-    const visible = visibleTemplateTabs(tab);
+    const visible = visibleTemplateTabs(tab, records, role);
     const chosen = chosenTemplateTabs.get(tab.id);
 
     const chosenIndex = isLegacyTemplateTabSelection(chosen)
@@ -551,9 +541,7 @@ function WindowRoot({
 
     if (tab === undefined) return;
 
-    const visible = renderTabs(tab.policy.template, records, tab.sheetId).filter((candidate) =>
-      tabShownTo(role, tab.policy.template, candidate.sourceIndex),
-    );
+    const visible = visibleTemplateTabs(tab, records, role);
 
     const index = visible.findIndex(
       (candidate) =>
@@ -807,7 +795,7 @@ function WindowRoot({
     const contentFor = isGm ? gmSheetParts : playerSheetParts;
     const opened = sheet === null ? null : openTemplateTab(sheet);
     const openTab = opened?.tab.sourceIndex ?? null;
-    const visibleTabs = sheet === null ? [] : visibleTemplateTabs(sheet);
+    const visibleTabs = sheet === null ? [] : visibleTemplateTabs(sheet, records, role);
 
     const visibleRepeatTabs =
       sheet === null
@@ -979,5 +967,15 @@ function sameTemplateTabSelection(
     (rendered.block === null
       ? selection.block === null
       : selection.block !== null && sameAddress(rendered.block.block, selection.block))
+  );
+}
+
+function visibleTemplateTabs(
+  tab: SidebarSheet,
+  records: ReadonlyMap<string, VersionedRecord>,
+  role: PlayerRole,
+): RenderedTab[] {
+  return renderTabs(tab.policy.template, records, tab.sheetId).filter((candidate) =>
+    tabShownTo(role, tab.policy.template, candidate.sourceIndex),
   );
 }
