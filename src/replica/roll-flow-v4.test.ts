@@ -73,7 +73,7 @@ function harness(sectionVisibility?: Visibility, rowVisibility?: Visibility) {
     pendingView: () => records,
     presetOf: () => preset,
     role: () => 'PLAYER',
-    stopped: () => false,
+    signal: new AbortController().signal,
     generation: () => ({ n: 0, a: '' }),
     dice: {
       ready: async () => 'absent',
@@ -94,6 +94,8 @@ function harness(sectionVisibility?: Visibility, rowVisibility?: Visibility) {
     },
     notify: () => undefined,
   };
+
+  Object.assign(ports, { stopped: () => ports.signal.aborted });
 
   return {
     flow: createRollFlow(ports),

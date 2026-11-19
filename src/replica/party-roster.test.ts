@@ -80,7 +80,7 @@ describe('party roster', () => {
   test('maps a known connection id to its role and player id with no read of its own', async () => {
     // #given
     const party = createFakeParty([member('gm-b', 'GM', 'owner')]);
-    const roster = createPartyRoster(party);
+    const roster = createPartyRoster(party, undefined, new AbortController().signal);
     await settled();
     const readsBefore = party.reads;
     // #when
@@ -94,7 +94,7 @@ describe('party roster', () => {
   test('re-reads the party once on a miss and finds a sender that joined since', async () => {
     // #given
     const party = createFakeParty();
-    const roster = createPartyRoster(party);
+    const roster = createPartyRoster(party, undefined, new AbortController().signal);
     await settled();
     party.players = [member('late', 'PLAYER', 'lisa')];
     const readsBefore = party.reads;
@@ -109,7 +109,7 @@ describe('party roster', () => {
   test('returns null for a sender still missing after the one re-read', async () => {
     // #given
     const party = createFakeParty([member('gm-b', 'GM')]);
-    const roster = createPartyRoster(party);
+    const roster = createPartyRoster(party, undefined, new AbortController().signal);
     await settled();
     const readsBefore = party.reads;
     // #when
@@ -123,7 +123,7 @@ describe('party roster', () => {
   test('follows a party change, so a member who left is no longer known', async () => {
     // #given
     const party = createFakeParty([member('gm-b', 'GM')]);
-    const roster = createPartyRoster(party);
+    const roster = createPartyRoster(party, undefined, new AbortController().signal);
     await settled();
     // #when
     party.change([member('gm-c', 'GM')]);
@@ -136,7 +136,7 @@ describe('party roster', () => {
   test('takes a role change from a party change', async () => {
     // #given
     const party = createFakeParty([member('gm-b', 'GM')]);
-    const roster = createPartyRoster(party);
+    const roster = createPartyRoster(party, undefined, new AbortController().signal);
     await settled();
     // #when
     party.change([member('gm-b', 'PLAYER')]);
@@ -151,7 +151,7 @@ describe('party roster', () => {
     // #given: the start read sees gm-b as a GM and answers only after the demotion.
     const party = createFakeParty([member('gm-b', 'GM')]);
     party.holdReads = true;
-    const roster = createPartyRoster(party);
+    const roster = createPartyRoster(party, undefined, new AbortController().signal);
     party.change([member('gm-b', 'PLAYER')]);
     // #when
     party.releaseReads();
@@ -166,7 +166,7 @@ describe('party roster', () => {
   test('applies a read that started after the last party change', async () => {
     // #given: the party changed, and then a member joined with no change event yet.
     const party = createFakeParty();
-    const roster = createPartyRoster(party);
+    const roster = createPartyRoster(party, undefined, new AbortController().signal);
     await settled();
     party.change([member('gm-b', 'GM')]);
     party.players = [member('gm-b', 'GM'), member('late', 'GM')];
@@ -178,7 +178,7 @@ describe('party roster', () => {
   test('shares one read among misses that come while it is on its way', async () => {
     // #given
     const party = createFakeParty();
-    const roster = createPartyRoster(party);
+    const roster = createPartyRoster(party, undefined, new AbortController().signal);
     await settled();
     party.holdReads = true;
     party.players = [member('late', 'GM')];
@@ -208,18 +208,19 @@ describe('party roster', () => {
     spyOn(console, 'error').mockImplementation(() => undefined);
     const party = createFakeParty([member('gm-b', 'GM')]);
     party.failReads = true;
-    const roster = createPartyRoster(party);
+    const roster = createPartyRoster(party, undefined, new AbortController().signal);
     // #when
     const sender = await roster.senderOf('gm-b');
     // #then
     expect(sender).toBeNull();
   });
-  test('stops following party changes once stopped', async () => {
+  test('stops following party changes once its signal aborts', async () => {
     // #given
     const party = createFakeParty();
-    const roster = createPartyRoster(party);
+    const controller = new AbortController();
+    const roster = createPartyRoster(party, undefined, controller.signal);
     await settled();
-    roster.stop();
+    controller.abort();
     party.failReads = true;
     spyOn(console, 'error').mockImplementation(() => undefined);
     // #when

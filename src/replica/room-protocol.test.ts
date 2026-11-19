@@ -225,10 +225,10 @@ function createPorts(
   effects: string[],
   senderOf: RoomProtocolPorts['senderOf'] = async () => PLAYER,
 ): RoomProtocolPorts {
-  return {
+  const ports: RoomProtocolPorts = {
     senderOf,
     role: () => 'PLAYER',
-    stopped: () => false,
+    signal: new AbortController().signal,
     generation: () => OWN_GENERATION,
     catchUp: {
       adopting: () => null,
@@ -315,6 +315,10 @@ function createPorts(
       },
     },
   };
+
+  Object.assign(ports, { stopped: () => ports.signal.aborted });
+
+  return ports;
 }
 
 function createAdmissionPorts(
@@ -538,7 +542,7 @@ describe('createRoomProtocol', () => {
   test('drops an in-flight room message when the engine stops during sender lookup', async () => {
     // #given
     const effects: string[] = [];
-    let stopped = false;
+    const controller = new AbortController();
     let release!: (sender: RoomSender | null) => void;
 
     const sender = new Promise<RoomSender | null>((resolve) => {
@@ -546,12 +550,12 @@ describe('createRoomProtocol', () => {
     });
 
     const ports = createPorts(effects, () => sender);
-    ports.stopped = () => stopped;
+    ports.signal = controller.signal;
     const protocol = createRoomProtocol(ports);
     // #when
     protocol.receive(event(messageFor('state-request', OWN_GENERATION)));
     await settleIngress();
-    stopped = true;
+    controller.abort();
     release(PLAYER);
     await settleIngress();
     // #then

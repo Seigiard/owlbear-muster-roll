@@ -69,6 +69,7 @@ type Subject = ReturnType<typeof createRoomCopy> & {
   writable: (next: boolean) => void;
   gm: (next: boolean) => void;
   generation: (next: Generation) => void;
+  abort: () => void;
 };
 
 type WriteImportObservation =
@@ -167,25 +168,42 @@ function createSubject(
   }[] = [];
 
   const delays: number[] = [];
+  const controller = new AbortController();
   let generation = options.generation ?? INITIAL;
   let writable = options.writable ?? true;
   let gm = options.gm ?? true;
   let newer = 0;
   let changed = 0;
 
+  function scheduleForTest(
+    ...args: [AbortSignal, number, () => void] | [number, () => void]
+  ): () => void {
+    const [signal, delay, run] = args.length === 3 ? args : [undefined, args[0], args[1]];
+    const entry = { run, cancelled: false };
+
+    scheduled.push(entry);
+
+    signal?.addEventListener(
+      'abort',
+      () => {
+        entry.cancelled = true;
+      },
+      { once: true },
+    );
+
+    delays.push(delay);
+
+    return () => {
+      entry.cancelled = true;
+    };
+  }
+
   const copy = createRoomCopy({
     metadata,
     timing: { snapshotPauseMs: 10, snapshotJitterMs: 4 },
     random: () => 0.5,
-    schedule: (delay, run) => {
-      delays.push(delay);
-      const entry = { run, cancelled: false };
-      scheduled.push(entry);
-
-      return () => {
-        entry.cancelled = true;
-      };
-    },
+    signal: controller.signal,
+    schedule: scheduleForTest,
     writable: () => writable,
     gm: () => gm,
     generation: () => generation,
@@ -227,6 +245,9 @@ function createSubject(
     },
     generation: (next: Generation) => {
       generation = next;
+    },
+    abort: () => {
+      controller.abort();
     },
   });
 
@@ -748,14 +769,14 @@ test('a healthy observer receives stopped-write import completion before its dea
   expect(observed).toEqual(expected);
 });
 
-test('a stopped room copy does not merge records after its active write settles', async () => {
+test('an aborted room copy does not merge records after its active write settles', async () => {
   // #given
   const subject = createSubject();
   holdWrite(subject.gate);
   subject.pageHidden();
   await waitFor(() => subject.gate.writes === 1);
   // #when
-  subject.stop();
+  subject.abort();
   subject.gate.releaseWrite();
   await flush();
   const afterWrite = subject.changed;
@@ -1115,12 +1136,12 @@ test('watch updates sizes without merging own generation and adopts higher gener
   });
 });
 
-test('demotion and stop clear scheduled work and block later write effects', async () => {
+test('demotion and abort clear scheduled work and block later write effects', async () => {
   // #given
   const subject = createSubject();
   subject.edited();
   subject.demoted();
-  subject.stop();
+  subject.abort();
   subject.room.setMetadata(copied(HIGHER, [RECORD]));
   // #when
   await subject.runScheduled();
