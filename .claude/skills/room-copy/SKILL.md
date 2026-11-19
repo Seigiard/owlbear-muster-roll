@@ -101,4 +101,4 @@ Replay the counterexample on the real code, one step per action, as a scratch Bu
 - `src/replica/command-routing.ts`: `composeCommand`, `uploadPreset` (their `roomCopyEdited` calls)
 - `src/replica/background-main.ts`: the `visibilitychange`, `resume` and `online` listeners
 
-Sync commit: `1116e34`. Move it forward only after you confirm, file by file, that the code map still describes the covered code at the new commit. To list what changed since: `git log --oneline 1116e34.. -- src/replica/room-copy.ts src/replica/engine.ts src/replica/room-protocol.ts src/replica/command-routing.ts src/replica/background-main.ts`.
+Sync commit: `19232ad`. Move it forward only after you confirm, file by file, that the code map still describes the covered code at the new commit. To list what changed since: `git log --oneline 19232ad.. -- src/replica/room-copy.ts src/replica/engine.ts src/replica/room-protocol.ts src/replica/command-routing.ts src/replica/background-main.ts`.

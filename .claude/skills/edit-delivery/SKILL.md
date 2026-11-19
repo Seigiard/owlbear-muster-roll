@@ -55,10 +55,10 @@ Each is an operator in `EditDelivery.tla`. Status is at the sync commit.
 1. The player edits `str` to 11. `edit` mints `c=3` and `sendNow` sends `propose (k, 3, P)`.
 2. The GM's `receiveProposal` commits it: `checkProposal` says `commit`, `sendCommits` puts the record and ack `(k, 3, P)` in the outbox.
 3. The GM edits `str` to 15 at `c=4`. `commit-outbox.ts` `add` merges it over the held record; the ack stays.
-4. The send queue gives up on that commit (`send-queue.ts` `sendUntilAnswered`, a non-rate-limit error), so `answered` never runs on the player. An AD-5 gate drop on the player (`room-protocol.ts:184`, sender not yet in the party) loses it the same way.
+4. The send queue gives up on that commit (`send-queue.ts` `sendUntilAnswered`, a non-rate-limit error), so `answered` never runs on the player. An AD-5 gate drop on the player (`room-protocol.ts:185`, sender not yet in the party) loses it the same way.
 5. With no ack, the resend timer of `armResend` sends `(k, 3, P)` again.
 6. `checkProposal` (`core/access.ts:225`) sees the held cell at `c=4` and answers `stale` with the record holding 15.
-7. The player's `rejected` (`pending-edits.ts:197`) matches its entry, rebuilds the patch over that record with `c=5` and proposes again.
+7. The player's `rejected` (`pending-edits.ts:203`) matches its entry, rebuilds the patch over that record with `c=5` and proposes again.
 8. The GM commits `(k, 5, P)` with value 11. The GM's 15 is gone from the room.
 
 Replayed against the real `createPendingEdits`, `checkProposal` and `mergeRecords` with the `pending-edits.test.ts` harness: the GM's cell ends as `[11, 5, "player-connection"]` after its own `[15, 4, …]`. With no message lost (`MaxLosses = 0`) the rule holds, because one FIFO send queue on the GM delivers the commit's ack before any later reject. The cause is that neither side can tell "my committed version was overwritten" from "my version lost a race": `stale` only compares counters.
@@ -112,7 +112,7 @@ Replay the path against the real code before calling it a bug: the `pending-edit
 
 ## Coverage record
 
-Sync commit: `1116e34`. At that commit the model describes:
+Sync commit: `19232ad`. At that commit the model describes:
 
 - `src/replica/pending-edits.ts`: `edit`, `answered`, `rejected`, `caughtUp`, `recordsChanged` (revoke only), `gmBack`, `proposeEntry`, `rebuiltRecord`, `denial`, `deniesEdit`
 - `src/replica/proposal-queue.ts`: `sendNow`, `armResend`, `propose`, `put`, `hold`, `drop`, `matching`, `resendAll`, `proposedRecord` (fields only)
@@ -124,4 +124,4 @@ Sync commit: `1116e34`. At that commit the model describes:
 - `src/replica/engine.ts`: the `createPendingEdits` options, `sendCommits`, `performCaughtUp`, `receiveRecords`, the `gm-back` decision
 - `src/platform/send-queue.ts`: `drain`, `sendUntilAnswered` (FIFO, give-up)
 
-To see what changed since: `git log 1116e34..HEAD -- <the files above>`.
+To see what changed since: `git log 19232ad..HEAD -- <the files above>`.

@@ -9,7 +9,7 @@ A TLA+ model of one room in `formal/catch-up/CatchUp.tla`: a player `p` and a GM
 
 ## 1. Does my change touch the verified code?
 
-Run `git diff --stat 1116e34 -- src/replica/catch-up.ts src/replica/engine.ts src/replica/room-protocol.ts src/core/room-messages.ts src/replica/generation-flow.ts src/replica/room-copy.ts`. Then read the coverage record below. A change in a function that the record names needs a model check. For a change elsewhere in those files, read the code map and confirm that no modeled step changed.
+Run `git diff --stat 19232ad -- src/replica/catch-up.ts src/replica/engine.ts src/replica/room-protocol.ts src/core/room-messages.ts src/replica/generation-flow.ts src/replica/room-copy.ts`. Then read the coverage record below. A change in a function that the record names needs a model check. For a change elsewhere in those files, read the code map and confirm that no modeled step changed.
 
 ## 2. Run
 
@@ -100,7 +100,7 @@ Ghost variables (`pinged`, `owed`, `dropped`, `lastHeard`, `badOffline`) record 
 
 ## Coverage record
 
-Sync commit: `1116e34`. At that commit the model describes:
+Sync commit: `19232ad`. At that commit the model describes:
 
 - `src/replica/catch-up.ts`: all of `createCatchUp` apart from the drift part of `aliveReceived` and `partyChanged`.
 - `src/replica/engine.ts`: `catchUpTimerKey`, `disarmCatchUpTimer`, `armCatchUpTimer`, `runCatchUp`, `enterCatchUp`, `changeRole` (the catch-up part), the startup lines that enter `start` and watch, `stop`, `flushNow`, `catchUp`.

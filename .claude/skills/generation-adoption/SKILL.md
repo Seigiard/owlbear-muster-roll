@@ -9,7 +9,7 @@ A TLA+ model of AD-9 in `formal/generation-adoption/GenerationAdoption.tla`. TLC
 
 ## Does my change touch the verified code?
 
-Run `git diff --stat 1116e34 -- <coverage files>` with the files in the coverage record below. Any change in a function the record names needs a model check. A change elsewhere in those files needs a read of the code map to confirm that no modeled step changed.
+Run `git diff --stat 19232ad -- <coverage files>` with the files in the coverage record below. Any change in a function the record names needs a model check. A change elsewhere in those files needs a read of the code map to confirm that no modeled step changed.
 
 ## Run
 
@@ -121,7 +121,7 @@ When a config ends against expectation, read the path with `/statechart`, then r
 
 ## Coverage record
 
-Sync commit: `1116e34`. Move it forward only after you confirm that the model describes the covered functions at the new commit.
+Sync commit: `19232ad`. Move it forward only after you confirm that the model describes the covered functions at the new commit.
 
 - `src/replica/generation-flow.ts`: `importFromSnapshot`, `wipe`, `replaceGeneration`, `importSuperseded`, `nextGeneration`, `adoptFromCopy`, `seeGeneration`, `stage`, `clearStaged`, `saveAdoption`, `saveGeneration`, `roleChanged`
 - `src/replica/catch-up.ts`: `enterFromGeneration`, `finishAdoption`, `leave`, `enter`, `canAnswer`, `stateMerged`, `stateRequested`, `pingReceived`, `fired` (`catch-up`, `answer`), `adoptionStaged`, `generationRead`, `generationHeard`
