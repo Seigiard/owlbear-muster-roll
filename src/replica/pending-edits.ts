@@ -1,6 +1,7 @@
 import { playerMayEdit, proposalAllowed, type ProposalContext } from '@/core/access';
 import { parseBlockKey, sectionIdOf, type BlockAddress } from '@/core/block-address';
-import { assembleRecords, counterAbove, mergeRecords, type Version } from '@/core/merge';
+import { createFragmentAssembler, GM_FRAGMENT_ASSEMBLER_LIMITS } from '@/core/fragment-assembler';
+import { counterAbove, mergeRecords, type Version } from '@/core/merge';
 import { recordFitsOneMessage } from '@/core/message-size';
 import { plainRowIdOf, repeatTabById, type Preset, type Template } from '@/core/preset';
 import { presetMoves, stripToTemplate, type PresetMoves } from '@/core/preset-migrate';
@@ -84,7 +85,10 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     schedule: options.schedule,
   });
 
-  const staleRejects = new Map<string, { n: number; parts: Map<number, VersionedRecord> }>();
+  const staleRejects = createFragmentAssembler({
+    ...GM_FRAGMENT_ASSEMBLER_LIMITS,
+    maxParts: Infinity,
+  });
 
   let lastDeniedAt = Number.NEGATIVE_INFINITY;
 
@@ -355,39 +359,27 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
 
     const key = JSON.stringify([message.k, message.c, message.a]);
 
-    const assembly = staleRejects.get(key) ?? {
-      n: message.n,
-      parts: new Map<number, VersionedRecord>(),
-    };
+    const outcome = staleRejects.add(
+      key,
+      { i: message.i, n: message.n, record: message.current },
+      now(),
+    );
 
-    if (assembly.n !== message.n) {
-      staleRejects.delete(key);
+    let current: VersionedRecord;
 
-      return null;
-    }
+    switch (outcome.kind) {
+      case 'complete':
+        current = outcome.record;
+        break;
+      case 'waiting':
+      case 'ignored':
+      case 'dropped':
+        return null;
+      default: {
+        const exhaustive: never = outcome;
 
-    const previous = assembly.parts.get(message.i);
-
-    if (previous !== undefined) {
-      if (JSON.stringify(previous) !== JSON.stringify(message.current)) {
-        staleRejects.delete(key);
+        return exhaustive;
       }
-
-      return null;
-    }
-
-    assembly.parts.set(message.i, message.current);
-    staleRejects.set(key, assembly);
-
-    if (assembly.parts.size !== assembly.n) {
-      return null;
-    }
-
-    staleRejects.delete(key);
-    const current = assembleRecords(assembly.parts.values()).get(message.k);
-
-    if (current === undefined) {
-      return null;
     }
 
     const { i: _i, n: _n, current: _fragment, ...withoutFragment } = message;
