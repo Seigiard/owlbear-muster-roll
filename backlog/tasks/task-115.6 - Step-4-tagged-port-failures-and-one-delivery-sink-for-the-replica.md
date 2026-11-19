@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-18T19:41:00Z'
-updated_date: '2026-11-19T08:19:00Z'
+updated_date: '2026-11-19T11:34:00Z'
 labels:
   - architecture
   - replica
@@ -45,3 +45,9 @@ Failures leave the replica through 86 `console.error` calls in seven patterns; `
 5. Tests read the failure list instead of spyOn(console, 'error').
 6. tdd chain (run ~/.claude/artifacts/task-115-20261119/TASK-115.6); junit lists against the baseline; grep -c console.error src/replica is 1; full check.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented on task-115-6-failure-sink (c5c30c1, merged with epic as 5699f49). Seven TaggedError port failures in src/platform/ports.ts with plain-data fields, NotificationFailure new; metadata/party/player reads and notification.show return Result. src/replica/failures.ts: ReplicaFailure, the replica's own tagged failures (send-dropped, record-too-large, message-rejected, open-request-lost, propose-dropped), createFailureSink({limit, now}) with DIAGNOSTICS_LIMIT 20. Every replica module takes report; the engine creates one sink per client, publishes recent() as the projection field diagnostics, and the console subscriber is the one console.error left in src/replica production (87 -> 1). Denial carries cause (gone, denied, too-large); copy editTooLarge 'Правка слишком большая'. Checks on 5699f49: fmt, lint, typecheck, build; browser 583/583; bun: no baseline line lost except two renames recorded in deferred-work.md. Calibrated both false-green rows.
+<!-- SECTION:NOTES:END -->
