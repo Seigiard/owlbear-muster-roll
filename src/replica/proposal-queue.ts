@@ -356,7 +356,7 @@ export function movedPatches(
     const sectionId = sectionIdOf(parsed);
     const instanceId = blockIdOf(parsed);
     const parent = parentOf(parsed);
-    const target = sectionId === null ? null : moves.sectionOf(sectionId, parsed.path);
+    const target = sectionId === null ? null : moves.sectionOf(sectionId, parsed);
 
     return target === null || instanceId === null || parent === null
       ? []

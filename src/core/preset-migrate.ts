@@ -53,7 +53,7 @@ export type TemplateScopes = {
 
 export type PresetMoves = {
   rowOf: (fieldId: string) => string | null;
-  sectionOf: (sectionId: string, path?: readonly string[]) => string | null;
+  sectionOf: (sectionId: string, block?: BlockAddress) => string | null;
 };
 
 type RepeatPathParts = {
@@ -392,10 +392,10 @@ export function presetMoves(before: TemplateLayout, after: TemplateLayout): Pres
 
   return {
     rowOf: (id) => next.rowFields.get(id)?.rowId ?? null,
-    sectionOf: (id, path) =>
-      path === undefined
+    sectionOf: (id, block) =>
+      block === undefined
         ? sectionTarget(id, old.sections.get(id) ?? [], next)
-        : next.sectionsByPath.has(scopePathKey(path))
+        : next.sectionsByPath.has(scopePathOf(block).join(':'))
           ? id
           : null,
   };
@@ -515,10 +515,6 @@ function parseRepeatPath(key: string): RepeatPathParts | null {
 
 function repeatScopePath(parts: RepeatPathParts): string[] {
   return scopePathOf(parts.address);
-}
-
-function scopePathKey(path: readonly string[]): string {
-  return path.filter((_part, index) => index % 2 === 0).join(':');
 }
 
 function fieldsForRepeatPath(
