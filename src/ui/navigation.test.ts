@@ -550,7 +550,12 @@ describe('transition', () => {
       {
         type: 'block-revealed',
         sheet: 'blk:hero',
-        block: address('hero', ['contacts', 'other']),
+        block: address('rival', ['contacts', 'contact']),
+      },
+      {
+        type: 'block-revealed',
+        sheet: 'blk:hero',
+        block: address('hero', ['rivals', 'contact']),
       },
     ]);
 
