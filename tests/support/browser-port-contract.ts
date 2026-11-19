@@ -29,6 +29,10 @@ export const browserPortContractFactory: PortContractFactory = {
     'A real Owlbear rate-limit outcome and recovery require an owner-run live room.',
   ),
   metadata: unsupportedScenario('live-only', LIVE_ONLY_REASON),
+  partyReadFailure: unsupportedScenario('local-injection-only', LIVE_ONLY_REASON),
+  playerRoleFailure: unsupportedScenario('local-injection-only', LIVE_ONLY_REASON),
+  metadataReadFailure: unsupportedScenario('local-injection-only', LIVE_ONLY_REASON),
+  notificationFailure: unsupportedScenario('local-injection-only', LIVE_ONLY_REASON),
 };
 
 type PlainResult<Value, Failure> = { ok: true; value: Value } | { ok: false; error: Failure };

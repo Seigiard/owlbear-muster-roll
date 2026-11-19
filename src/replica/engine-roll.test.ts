@@ -5,9 +5,15 @@ import { blockDataSchema, type VersionedRecord } from '@/core/records';
 import type { Timing } from '@/core/timing';
 import type { RollOutcome } from '@/core/ui-messages';
 import type { MockRoom } from '@/platform/current';
-import type { PlayerRole } from '@/platform/ports';
+import { SendFailure, type PlayerRole } from '@/platform/ports';
 import { copy } from '@/copy';
-import { createRoomRig, sendWire, type RigClient, waitUntil } from '../../tests/support/room-rig';
+import {
+  createRoomRig,
+  diagnostics,
+  sendWire,
+  type RigClient,
+  waitUntil,
+} from '../../tests/support/room-rig';
 
 const GHOST = 'ghost-gm';
 
@@ -564,6 +570,28 @@ describe('a roll', () => {
       outcome: { code: 'failed' },
       rolls: 0,
       shown: [],
+    });
+  });
+  test('whose failed send reaches the window diagnostics as SendFailure', async () => {
+    // #given
+    const room = openRoom();
+    const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
+    gm.platform.failNextSends([
+      new SendFailure({
+        kind: 'failed',
+        reason: 'mock send failure',
+        channel: 'app.muster-roll/sync',
+      }),
+    ]);
+
+    // #when
+    const outcome = await roll(gm, STRENGTH);
+    await waitUntil(() => diagnostics(gm).length === 1);
+
+    // #then
+    expect({ outcome, diagnostics: diagnostics(gm).map(({ tag }) => tag) }).toEqual({
+      outcome: { code: 'failed' },
+      diagnostics: ['SendFailure'],
     });
   });
 });
