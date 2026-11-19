@@ -30,17 +30,23 @@ Code is a functional core with ports and adapters:
 | Layer | Directory | Holds |
 | --- | --- | --- |
 | Core | `src/core` | Records, merge, access check, visibility, preset schema, formula parser, snapshot codec. Pure, with no DOM or SDK |
-| Replica | `src/replica` | The engine in the background page. Owns the replica, protocol, catch-up and snapshot timing. Extracted engine modules: `command-routing`, `generation-flow`, `roll-flow` and `room-protocol` |
-| Platform | `src/platform` | Ports for broadcast, metadata, party, player, map selection, storage, context menu, popover, action, notification, scene and theme. The Owlbear adapter and the test mock |
+| Replica | `src/replica` | The background engine owns the replica and room protocol. `catch-up-table.ts` (catch-up and liveness), `room-copy-table.ts`, and `generation-table.ts` declare a cell for every phase and event pair. `machine.ts` defines `TransitionTable` and `step`. The engine shares one `AbortSignal` with its helpers, uses the platform clock, and reports failures through the sink in `failures.ts` |
+| Platform | `src/platform` | Ports for clock (`now`, `schedule`), broadcast, metadata, party, player, map selection, storage, context menu, popover, action, notification, scene and theme. The Owlbear adapter and the test mock |
 | UI | `src/ui` | React views and nanostores. A projection of the replica |
 | Builder | `src/builder` | The preset builder page (v2): its store, document edits, tree, forms and preview. No replica and no platform |
 
 ```mermaid
 graph TD
-  UI[src/ui] -->|LOCAL messages only| Replica[src/replica<br/>engine, command-routing,<br/>generation-flow, roll-flow,<br/>room-protocol]
+  UI[src/ui] -->|LOCAL messages only| Replica["src/replica<br/>engine, command-routing, roll-flow, room-protocol"]
   UI --> Core[src/core]
   Replica --> Core
-  Replica --> Ports[src/platform ports]
+  Replica -->|one shared AbortSignal| Shells["catch-up-effects.ts, room-copy.ts, generation-flow.ts"]
+  Replica -->|catch-up.ts| CatchUp["catch-up-table.ts<br/>catchUpTable and livenessTable"]
+  Shells -->|room-copy.ts and generation-flow.ts| Tables["room-copy-table.ts and generation-table.ts"]
+  CatchUp --> Machine["machine.ts: TransitionTable and step"]
+  Tables --> Machine
+  Replica --> Failures["failures.ts: failure sink"]
+  Replica --> Ports["src/platform ports<br/>clock: now and schedule"]
   UI --> Ports
   Adapter[src/platform/obr and mock] --> Ports
   Adapter --> SDK["@owlbear-rodeo/sdk"]
@@ -131,13 +137,13 @@ A message with a higher generation also starts AD-9 adoption.
 
 - **Binds:** CAP-10, CAP-15
 - **Prevents:** A frozen Chrome tab counting as online, and a false offline status in a quiet room.
-- **Rule:** `src/replica/catch-up` alone owns `gmLink`. It is `online` when a GM-origin message arrived within the timeout, otherwise `offline`, which shows "no connection to GM". A client with no GM-origin message for half the timeout sends `ping`. A GM client that is not `catching-up` answers `alive` on receipt, with no timer of its own. The party list never sets `gmLink`. A hidden tab that still responds counts as online, because a frozen tab cannot respond.
+- **Rule:** `livenessTable` in `src/replica/catch-up-table.ts` alone decides `gmLink`. The link starts `offline`. A GM-origin message sets it `online` and rearms the silence and ping timers. When the silence timer fires, the link becomes `offline` and the window shows "no connection to GM". The ping timer uses half the silence timeout plus jitter. `catchUpTable` lets a live GM client answer `ping` with `alive` if the client can vouch for the state. The party list never sets `gmLink`. A hidden tab that still responds counts as online.
 
 ### AD-7 — Catch-up is full state [ADOPTED]
 
 - **Binds:** CAP-1, CAP-9, CAP-10, CAP-11
 - **Prevents:** Per-row diff protocols, a stale tab editing or validating on old data, a partial answer counting as complete, and missed `commit`s staying missed.
-- **Rule:** Every decision about catch-up and the GM link lives in `src/replica/catch-up`: entry, answer, exit, drift, adoption gate and liveness. The engine passes it events and runs what it returns.
+- **Rule:** `catchUpTable` in `src/replica/catch-up-table.ts` owns entry, answer, exit, drift and the adoption gate. `catch-up.ts` feeds both it and `livenessTable` through `step` from `machine.ts`. The engine hands their effects to `catch-up-effects.ts`, which schedules timers through `Platform.clock.schedule` with the engine's `AbortSignal` and reports failures to the sink in `failures.ts`. The `answersOwn` nonce check stays in `catch-up.ts`, not in the room protocol or generation flow.
 - **Rule, entry:** A client enters `catching-up` on start, when a page becomes visible, on Page Lifecycle `resume`, on the browser `online` event, on a role change, on a higher generation, and when `alive` from one GM client shows a different digest twice in a row. The digest includes lifecycle, cell coverage, versions and values in canonical key order. Equal outer versions with different cell coverage differ. `alive` carries it with the generation.
 - **Rule, steps:** A GM client first merges all its persisted records of the current generation. The client then merges the snapshot and broadcasts `state-request` with a nonce `r`.
 - **Rule, answer:** A GM client that is not `catching-up` answers after a random short delay, unless it has already seen an answer to `r`. `state` echoes `r` and carries `i of n`. Its records are deflated. Large blocks split at cell boundaries and assemble through the shared merge. A client merges every part whenever it arrives, in any state.
