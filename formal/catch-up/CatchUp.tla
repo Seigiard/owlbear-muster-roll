@@ -179,9 +179,14 @@ EnterFromGeneration(c, M, g, keepNonce) ==
 \* "answer", or "none". `saveOk` is what saveAdoption returns; it also moves
 \* the client's own generation (generation-table.ts saveAdoption,
 \* storeWritten). A failed save keeps pendingAdoption, so the next
-\* `state-merged` or `adoption-staged` saves again.
+\* `state-merged` or `adoption-staged` saves again. The Mutation
+\* "save-fail-reenters" breaks that retry: a failed save starts the adoption
+\* over with a new `r` instead.
 SavePending(c, M, saveOk) ==
-    IF M.phase # "adopting" \/ M.pend = "none" \/ ~saveOk THEN Same(M)
+    IF M.phase # "adopting" \/ M.pend = "none" THEN Same(M)
+    ELSE IF ~saveOk /\ Mutated("save-fail-reenters")
+    THEN Enter(c, M, "generation", M.target)
+    ELSE IF ~saveOk THEN Same(M)
     ELSE LET M1 == [M EXCEPT !.phase = "ordinary", !.gen = M.target, !.target = NoGen,
                              !.pend = "none"]
          IN IF M.pend = "copy" THEN Res(M1, <<Arm(CK)>>)
@@ -651,6 +656,13 @@ Next ==
     \/ XLeave
 
 Spec == Init /\ [][Next]_vars
+
+\* An extra CONSTRAINT for large rooms: TLC does not explore a state with a
+\* ping or alive on its way. A client whose ping timer fires while a peer is
+\* open is not explored past it, so the GM link changes only through state,
+\* reset and state-request messages, and gm-silence fires only after a ping
+\* that reached nobody (TimingOK). This leaves out the pings, not the answers.
+NoPingTraffic == \A msg \in net : msg.t \notin {"ping", "alive"}
 
 \* newId() calls are bounded; TLC does not explore past MaxIds.
 Bounds ==
