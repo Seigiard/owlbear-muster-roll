@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-18T18:24:00Z'
-updated_date: '2026-11-19T04:05:00Z'
+updated_date: '2026-11-19T07:46:00Z'
 labels: []
 dependencies:
   - TASK-114.2
@@ -45,6 +45,8 @@ Implementation completed on task-114.3-block-address-ui.
 Verification: bunx oxfmt --ignore-path .gitignore --check .; bun run lint; bun run typecheck; bun test (3499 pass, 1 skip, 0 fail); bun run test:browser (583 passed); bun run build; git diff --check.
 
 Structural checks: no forbidden path arithmetic remains in src/ui; no tests or e2e files changed. Targeted field-edit/open browser checks passed 44/44.
+
+Correction 2026-11-19 (TASK-121): the Builder preview does not move to the engine; it composes through the shared src/core/compose.ts module instead (ADR-0005).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

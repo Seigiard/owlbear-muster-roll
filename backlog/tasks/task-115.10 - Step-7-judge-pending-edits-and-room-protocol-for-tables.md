@@ -4,6 +4,7 @@ title: 'Step 7: judge pending-edits and room-protocol for tables'
 status: To Do
 assignee: []
 created_date: '2026-11-18T19:41:00Z'
+updated_date: '2026-11-19T08:34:00Z'
 labels:
   - architecture
   - replica
@@ -28,3 +29,9 @@ DESIGN.md leaves `pending-edits` (per-entry waiting, sent, denied-quiet) and `ro
 - [ ] #1 For each of the two modules, either a `TransitionTable` with its generated diagram exists, or DESIGN.md records the reason it stays a linear function
 - [ ] #2 `engine-propose`, `engine-client` and `engine-no-gm` pass; engine suite junit list equals the baseline
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Note 2026-11-19 (architecture review candidate 4): whether proposal-queue folds into pending-edits is this task's call, as part of judging the module's shape; pending-queue stays (GM intents during catch-up, a different role). See TASK-125 for the command-storage follow-up.
+<!-- SECTION:NOTES:END -->
