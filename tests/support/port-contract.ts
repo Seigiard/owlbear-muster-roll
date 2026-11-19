@@ -502,7 +502,13 @@ export async function metadataMergesRetainedEntriesAndDeletesUndefinedEntries(
       fixture.observationTimeoutMs,
     );
 
-    const read = normalizeOwnedMetadata(await fixture.reader.getMetadata(), fixture, {
+    const result = await fixture.reader.getMetadata();
+
+    if (result.isErr()) {
+      throw result.error;
+    }
+
+    const read = normalizeOwnedMetadata(result.value, fixture, {
       [retained]: 'retained',
       [removed]: 'removed',
       [added]: 'added',

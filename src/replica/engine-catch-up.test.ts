@@ -9,7 +9,7 @@ import { generationMarkerKey, type Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
 import type { WireCommand, SyncState } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
-import type { PlayerRole } from '@/platform/ports';
+import { PartyReadFailure, type PlayerPort, type PlayerRole } from '@/platform/ports';
 import {
   createRoomRig,
   heardOf,
@@ -257,7 +257,10 @@ describe('start', () => {
 
     const failingParty = (platform: MockPlatform): MockPlatform => ({
       ...platform,
-      party: { ...platform.party, getPlayers: () => Promise.reject(new Error('no party')) },
+      party: {
+        ...platform.party,
+        getPlayers: () => Promise.resolve(Result.err(new PartyReadFailure({ reason: 'no party' }))),
+      },
     });
 
     // #when
@@ -1393,7 +1396,7 @@ describe('player visibility', () => {
     const client = await startClient(room, 'gm-a', {
       platform: (platform) => ({
         ...platform,
-        player: { ...platform.player, getRole: () => Promise.resolve(currentRole) },
+        player: { ...platform.player, getRole: () => Promise.resolve(Result.ok(currentRole)) },
       }),
       until: 'live',
     });
@@ -1420,11 +1423,11 @@ describe('player visibility', () => {
             if (initial) {
               initial = false;
 
-              return Promise.resolve('GM');
+              return Promise.resolve(Result.ok('GM'));
             }
 
-            return new Promise<PlayerRole>((resolve) => {
-              reads.push(resolve);
+            return new Promise<Awaited<ReturnType<PlayerPort['getRole']>>>((resolve) => {
+              reads.push((role) => resolve(Result.ok(role)));
             });
           },
         },

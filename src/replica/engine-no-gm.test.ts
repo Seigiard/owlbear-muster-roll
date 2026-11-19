@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { Result } from 'better-result';
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
@@ -7,7 +8,7 @@ import type { Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
 import type { RoomCopyStatus, SyncState } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
-import type { PlayerRole } from '@/platform/ports';
+import { MetadataFailure, type PlayerRole } from '@/platform/ports';
 import {
   copyValue,
   createRoomRig,
@@ -513,7 +514,12 @@ describe('outcomes with nothing to read', () => {
         ...platform,
         metadata: {
           ...platform.metadata,
-          getMetadata: () => Promise.reject(new Error('metadata read failed')),
+          getMetadata: () =>
+            Promise.resolve(
+              Result.err(
+                new MetadataFailure({ operation: 'read', reason: 'metadata read failed' }),
+              ),
+            ),
         },
       }),
     });

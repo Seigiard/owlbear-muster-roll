@@ -1,5 +1,6 @@
 import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, spyOn, test } from 'bun:test';
+import { Result } from 'better-result';
 import type { JsonValue } from '@/core/json';
 import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import { encodePreset, type Preset } from '@/core/preset';
@@ -520,10 +521,12 @@ describe('gate', () => {
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
     await startClient(room, 'gm-b');
-    spyOn(gm.platform.party, 'getPlayers').mockResolvedValue([
-      { id: 'owner', connectionId: 'late', name: 'late', role: 'GM' },
-      { id: 'owner', connectionId: 'gm-b', name: 'gm-b', role: 'GM' },
-    ]);
+    spyOn(gm.platform.party, 'getPlayers').mockResolvedValue(
+      Result.ok([
+        { id: 'owner', connectionId: 'late', name: 'late', role: 'GM' },
+        { id: 'owner', connectionId: 'gm-b', name: 'gm-b', role: 'GM' },
+      ]),
+    );
     // #when
     wire.post('late', commit([sheet('first', 1, 'late')]));
     wire.post('gm-b', commit([sheet('second', 1, 'gm-b')]));
@@ -645,7 +648,6 @@ describe('gate', () => {
   test.each<[string, JsonValue]>([
     ['a record that fails its schema', commit([{ ...sheet('lisa'), c: 0 }])],
     ['an unknown type', { v: 4, g: INITIAL, t: 'shout', records: [] }],
-    ['a type with no handler yet', { v: 4, g: INITIAL, t: 'ping' }],
     ['no envelope at all', 'commit'],
   ])('drops a message with the right v and %s, and throws nothing', async (_name, message) => {
     // #given
@@ -664,6 +666,23 @@ describe('gate', () => {
       shown: undefined,
       diagnostics: ['message-rejected'],
     });
+  });
+  test('answers a valid v4 ping without reporting a rejection', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const wire = listen(room, ['alive']);
+    const gm = await startClient(room, 'gm-a');
+    await startClient(room, 'gm-b');
+    const heardBeforePing = wire.heard.length;
+    // #when
+    wire.post('gm-b', { v: 4, g: INITIAL, t: 'ping' });
+    await afterMarker(wire.post, 'gm-b', gm);
+    await waitUntil(() => wire.heard.slice(heardBeforePing).some(({ from }) => from === 'gm-a'));
+    // #then
+    expect({
+      shown: shown(gm, 'blk:lisa'),
+      diagnostics: diagnostics(gm).map(({ tag }) => tag),
+    }).toEqual({ shown: undefined, diagnostics: [] });
   });
 });
 

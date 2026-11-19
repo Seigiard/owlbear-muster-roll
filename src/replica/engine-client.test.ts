@@ -398,7 +398,7 @@ test('engine startup waits for the initial catch-up deadline when a room-copy re
       ...platform,
       metadata: {
         ...platform.metadata,
-        getMetadata: () => new Promise(() => undefined),
+        getMetadata: () => new Promise<never>(() => undefined),
       },
     }),
   });
