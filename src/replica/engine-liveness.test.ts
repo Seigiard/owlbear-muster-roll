@@ -11,7 +11,6 @@ import {
   createRoomRig,
   heardOf,
   lastRequest,
-  pause,
   requestsOf,
   shown,
   type RigClient,
@@ -96,6 +95,8 @@ type Client = RigClient;
 type Room = RigRoom;
 
 const roomRig = createRoomRig({
+  clock: 'manual',
+  engine: { random: () => 0.5 },
   waitLimitMs: 3000,
   seeded: [PRESET_RECORD, BROK],
   timing: { catchUpTimeoutMs: 150, stateAnswerDelayMaxMs: 5 },
@@ -165,7 +166,7 @@ async function settled(room: Room, client: Client): Promise<number> {
 // Two `alive` from `from` with `digest`, one counting window apart.
 async function differTwice(room: Room, from: string, digest: number): Promise<void> {
   room.post(from, alive(digest));
-  await pause(NEXT_WINDOW_MS);
+  await roomRig.advance(NEXT_WINDOW_MS);
   room.post(from, alive(digest));
 }
 
@@ -231,11 +232,11 @@ describe('gmLink', () => {
 
     room.post(GHOST, stateMessage(lastRequest(room, 'player-p'), [PRESET_RECORD]));
     await roomRig.waitUntil(() => gmLink(client) === 'online');
-    const online = Date.now();
+    const online = roomRig.now();
     // #when
-    await roomRig.waitUntil(() => gmLink(client) === 'offline');
+    await roomRig.advance(300);
     // #then
-    const waited = Date.now() - online;
+    const waited = roomRig.now() - online;
     expect({ late: waited < 250, early: waited >= 600 }).toEqual({ late: false, early: false });
   });
   test('no ping and no offline mark comes after stop', async () => {
@@ -254,7 +255,7 @@ describe('gmLink', () => {
     const pingsAtStop = heardOf(room, 'player-p', 'ping').length;
     // #when
     client.engine.stop();
-    await pause(250);
+    await roomRig.advance(250);
     // #then
     expect({ pings: heardOf(room, 'player-p', 'ping').length, link: gmLink(client) }).toEqual({
       pings: pingsAtStop,
@@ -274,7 +275,7 @@ describe('gmLink', () => {
       until: 'live',
     });
 
-    await pause(250);
+    await roomRig.advance(250);
     // #then
     expect({
       link: gmLink(client),
@@ -292,15 +293,16 @@ describe('gmLink', () => {
       timing: { gmLinkTimeoutMs: 120 },
     });
 
+    await roomRig.advance(5);
     await roomRig.waitUntil(() => gmLink(player) === 'online');
     const links: GmLink[] = [];
     // #when
-    const deadline = Date.now() + 600;
+    const deadline = roomRig.now() + 600;
 
-    while (Date.now() < deadline) {
+    while (roomRig.now() < deadline) {
       links.push(gmLink(player));
       // oxlint-disable-next-line no-await-in-loop
-      await pause(POLL_MS);
+      await roomRig.advance(POLL_MS);
     }
 
     // #then
@@ -316,7 +318,7 @@ describe('ping', () => {
   test('a client that hears no GM for half the timeout sends a ping, and repeats it', async () => {
     // #given
     const room = roomRig.openRoom();
-    const started = Date.now();
+    const started = roomRig.now();
 
     // #when
     const client = await startClient(room, 'player-p', {
@@ -325,11 +327,12 @@ describe('ping', () => {
       timing: { gmLinkTimeoutMs: 200 },
     });
 
+    await roomRig.advance(300);
     await roomRig.waitUntil(() => heardOf(room, client.connectionId, 'ping').length === 2);
     // #then
     expect({
       pings: heardOf(room, client.connectionId, 'ping'),
-      waited: Date.now() - started >= 200,
+      waited: roomRig.now() - started >= 200,
     }).toEqual({ pings: [ping(), ping()], waited: true });
   });
   test('a GM-origin message puts off the ping', async () => {
@@ -347,7 +350,7 @@ describe('ping', () => {
     for (let round = 0; round < 8; round += 1) {
       room.post(GHOST, alive(0));
       // oxlint-disable-next-line no-await-in-loop
-      await pause(50);
+      await roomRig.advance(50);
     }
 
     // #then
@@ -383,7 +386,7 @@ describe('ping', () => {
     const client = await startClient(room, 'gm-b', { timing: { catchUpTimeoutMs: 400 } });
     // #when
     room.post('player-p', ping());
-    await roomRig.waitUntil(() => syncState(client) === 'live');
+    await roomRig.advance(400);
     // #then
     expect(heardOf(room, client.connectionId, 'alive')).toEqual([]);
   });
@@ -401,7 +404,7 @@ describe('ping', () => {
     // #when
     room.post(GHOST, ping());
     await roomRig.waitUntil(() => gmLink(client) === 'online');
-    await pause(30);
+    await roomRig.advance(30);
     // #then
     expect(heardOf(room, client.connectionId, 'alive')).toEqual([]);
   });
@@ -476,12 +479,12 @@ describe('drift', () => {
 
     room.join(GHOST, 'GM');
     // #when: the ghost's pings make both answer, so each hears the other's digest at once.
-    const deadline = Date.now() + WAIT_LIMIT_MS;
+    const deadline = roomRig.now() + WAIT_LIMIT_MS;
 
-    while (shown(a, LIZA.k) === undefined && Date.now() < deadline) {
+    while (shown(a, LIZA.k) === undefined && roomRig.now() < deadline) {
       room.post(GHOST, ping());
       // oxlint-disable-next-line no-await-in-loop
-      await pause(40);
+      await roomRig.advance(40);
     }
 
     // #then

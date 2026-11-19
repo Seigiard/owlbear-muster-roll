@@ -25,7 +25,7 @@ import {
   type MockRoom,
   type MockStorageBacking,
 } from '@/platform/current';
-import type { PlayerRole } from '@/platform/ports';
+import type { Platform, PlayerRole } from '@/platform/ports';
 import { createSendQueue, type Wait } from '@/platform/send-queue';
 import { startReplicaEngine } from '@/replica/engine';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
@@ -155,6 +155,7 @@ export type RigClientOptions = {
 };
 
 export type RoomRigOptions = {
+  clock?: 'manual';
   timing?: Partial<Timing>;
   waitLimitMs?: number;
   seeded?: readonly VersionedRecord[];
@@ -164,6 +165,8 @@ export type RoomRigOptions = {
 };
 
 export type RoomRig = {
+  now: () => number;
+  advance: (milliseconds: number) => Promise<void>;
   openRoom: (
     scene?:
       | string[]
@@ -194,12 +197,14 @@ type GenerationLike = {
 
 export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
   const cleanups: (() => void)[] = [];
+  const manual = options.clock === 'manual' ? createManualClock() : null;
   afterEach(() => {
     for (const cleanup of cleanups.splice(0)) {
       cleanup();
     }
 
     mock.restore();
+    manual?.reset();
   });
   const rigTiming = { ...RIG_TIMING, ...options.timing };
   const waitLimitMs = options.waitLimitMs ?? WAIT_LIMIT_MS;
@@ -278,6 +283,11 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
     const mintedIds: string[] = [];
     const commandOutcomes = new Map<string, RigOutcome>();
     const created = createMockPlatform(bus, trackedBacking, identity);
+
+    if (manual !== null) {
+      created.clock = manual.clock;
+    }
+
     const effectiveTiming = { ...rigTiming, ...clientOptions.timing };
 
     for (const record of assembleRecords(seeded).values()) {
@@ -325,6 +335,11 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
 
     function openWindow(pageOptions: RigPageOptions = {}): RigPage {
       const pagePlatform = createMockPlatform(bus, trackedBacking, identity);
+
+      if (manual !== null) {
+        pagePlatform.clock = manual.clock;
+      }
+
       const pageStore = createProjectionStore();
       const pageTiming = { ...effectiveTiming, ...pageOptions.queueTiming };
       const makeId = pageOptions.newId ?? nanoid;
@@ -402,7 +417,15 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
       commandOutcomes,
       writes,
       seeded: seededKeys,
-      newPage: () => createMockPlatform(bus, trackedBacking, identity),
+      newPage: () => {
+        const page = createMockPlatform(bus, trackedBacking, identity);
+
+        if (manual !== null) {
+          page.clock = manual.clock;
+        }
+
+        return page;
+      },
       openWindow,
       stop,
     };
@@ -420,19 +443,118 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
     const until = clientOptions.until ?? options.until ?? 'loaded';
 
     if (until === 'live') {
-      await waitWithin(waitLimitMs, () => client.store.$sync.get().state === 'live');
+      if (manual === null) {
+        await waitWithin(waitLimitMs, () => client.store.$sync.get().state === 'live');
+      } else {
+        const deadline = Date.now() + waitLimitMs;
+
+        while (client.store.$sync.get().state !== 'live') {
+          if (Date.now() > deadline) {
+            throw new Error('the condition never became true');
+          }
+
+          await manual.advanceNext(() => client.store.$sync.get().state === 'live');
+        }
+      }
     }
 
     return client;
   }
 
   return {
+    now: () => manual?.clock.now() ?? Date.now(),
+    advance: async (milliseconds) => {
+      if (manual === null) {
+        throw new Error('advance requires a manual clock');
+      }
+
+      await manual.advance(milliseconds);
+    },
     openRoom,
     createClient,
     startClient,
     cleanup: (cleanup) => cleanups.push(cleanup),
     waitUntil: (condition) => waitWithin(waitLimitMs, condition),
     pause,
+  };
+}
+
+function createManualClock() {
+  let now = 1_700_000_000_000;
+  const timers = new Set<{ due: number; fire: () => void; cancel: () => void }>();
+  const turn = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+  const clock: Platform['clock'] = {
+    now: () => now,
+    schedule: (signal, milliseconds, callback) => {
+      if (signal.aborted) {
+        return () => undefined;
+      }
+
+      const timer = { due: now + Math.max(0, milliseconds), fire, cancel };
+
+      function cancel(): void {
+        timers.delete(timer);
+        signal.removeEventListener('abort', cancel);
+      }
+
+      function fire(): void {
+        cancel();
+        callback();
+      }
+
+      timers.add(timer);
+      signal.addEventListener('abort', cancel, { once: true });
+
+      return cancel;
+    },
+  };
+
+  async function advance(milliseconds: number): Promise<void> {
+    const target = now + milliseconds;
+    await turn();
+
+    while (true) {
+      const next = [...timers].sort((a, b) => a.due - b.due)[0];
+
+      if (next === undefined || next.due > target) {
+        break;
+      }
+
+      now = next.due;
+      next.fire();
+      await turn();
+    }
+
+    now = target;
+    await turn();
+  }
+
+  return {
+    clock,
+    advance,
+    advanceNext: async (done: () => boolean) => {
+      await turn();
+
+      if (done()) {
+        return;
+      }
+
+      const next = [...timers].sort((a, b) => a.due - b.due)[0];
+
+      if (next === undefined) {
+        throw new Error('manual clock has no timer while waiting for live');
+      }
+
+      await advance(next.due - now);
+    },
+    reset: () => {
+      for (const timer of timers) {
+        timer.cancel();
+      }
+
+      now = 1_700_000_000_000;
+    },
   };
 }
 
