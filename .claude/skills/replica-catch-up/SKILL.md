@@ -65,6 +65,8 @@ When the model describes the code again and `check.sh` passes, move the sync com
 3. **Unreadable GM shows online** (`findings/unreadable-gm-online.cfg`). `heard` counts every admitted GM message, and a GM with unreadable storage still sends pings from its ping timer. It answers no ping and no request (`canAnswer()` needs `vouches()`), but players keep `gmLink` online. Replayed on the module.
 4. **Adoption with no source** (`findings/adoption-without-source.cfg`). Known: the importer leaves and its room copy did not fit.
 
+The owner's verdicts, 2026-11-19. Finding 1 is TASK-120, low. Findings 2-4 are accepted: generations will settle once the preset format does, an unreadable GM storage is rare, and finding 4 is covered by TASK-117. Keep their configs as expected failures and do not report them again.
+
 ## Code map
 
 One step is one event that the engine hands to the module, together with the synchronous interpretation of the decision list it returns (`ApplyAll` = `runCatchUp` in `engine.ts`). Room copy and party reads are separate steps when they end; either may never end. A room message is one step after the sender lookup in `room-protocol.ts` `receive`. Timers have no clock: an armed timer can fire at any step, except where `TimingOK` keeps the order that the real delays give.
