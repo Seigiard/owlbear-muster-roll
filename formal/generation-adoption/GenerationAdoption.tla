@@ -130,6 +130,10 @@ SaveAdoption(r, fromCopy, ok) ==
 (* adoption is never saved again.                                           *)
 NoRetry(r) == Bug = "no-retry" /\ r.pending # "none"
 
+(* engine.ts `vouches`: a GM with saved records answers for them, except   *)
+(* while it imports, until its room copy is written (TASK-117).             *)
+Vouches(r) == r.persist # NONE /\ (~r.importing \/ Bug = "importer-answers")
+
 (* room-copy.ts mergeReadRoomCopy with generation-flow.ts adoptFromCopy.    *)
 ReadCopyInto(r, ok) ==
   LET adopting == IF copy.g > r.own THEN SeeGeneration(r, copy.g) ELSE r
@@ -226,7 +230,7 @@ Deliver(c) ==
       (* with a copy adoption pending, retries it as a copy save.           *)
       FromCopy == IF heard.pending = "copy" THEN BOOLEAN ELSE {FALSE}
       answers == m.t = "request" /\ sender # "NONE" /\ heard.role = "GM"
-                 /\ heard.persist # NONE /\ heard.phase = "live"
+                 /\ Vouches(heard) /\ heard.phase = "live"
   IN /\ r.open /\ inbox[c] # << >>
      /\ \E ok \in SaveOutcomes(r, (stages /\ ~NoRetry(heard)) \/ retries), fromCopy \in FromCopy :
           /\ CountFail(ok)
@@ -286,7 +290,7 @@ Ask(c) ==
 SpeakAlive(c) ==
   LET r == cl[c]
       m == Msg(c, "alive", r.own, {})
-  IN /\ r.open /\ r.role = "GM" /\ r.persist # NONE /\ r.phase = "live"
+  IN /\ r.open /\ r.role = "GM" /\ Vouches(r) /\ r.phase = "live"
      /\ Reaches(c, m)
      /\ inbox' = Broadcast(inbox, c, m)
      /\ UNCHANGED <<cl, copy, imports, roleChanges, closes, storeFails, copyFails, hi>>
