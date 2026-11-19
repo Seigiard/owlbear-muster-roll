@@ -1,9 +1,13 @@
+import type { Result } from 'better-result';
+import { PartyReadFailure } from '@/platform/ports';
 import type { CatchUp, CatchUpDecision, CatchUpTimer, PartyMember } from '@/replica/catch-up';
+import { MessageRejectedFailure, type ReplicaFailure } from '@/replica/failures';
 import type { Schedule } from '@/replica/timers';
 
 export type CatchUpEffectsPorts = {
   readonly signal: AbortSignal;
   readonly schedule: Schedule;
+  readonly report: (failure: ReplicaFailure) => void;
   readonly catchUp: Omit<Pick<CatchUp, 'fired' | 'roomCopyRead' | 'partyRead'>, 'partyRead'> & {
     readonly partyRead: (
       r: string,
@@ -13,7 +17,7 @@ export type CatchUpEffectsPorts = {
   readonly mergePersisted: () => void;
   readonly publish: () => void;
   readonly readRoomCopy: () => Promise<void>;
-  readonly readParty: () => Promise<readonly PartyMember[]>;
+  readonly readParty: () => Promise<Result<readonly PartyMember[], PartyReadFailure>>;
   readonly sendStateRequest: (r: string) => void;
   readonly sendStateAnswer: (r: string) => void;
   readonly sendAlive: () => void;
@@ -65,11 +69,11 @@ export function createCatchUpEffects(ports: CatchUpEffectsPorts): CatchUpEffects
       timers.delete(key);
 
       try {
-        void run(ports.catchUp.fired(timer)).catch(() => {
-          console.error('Muster Roll could not run a catch-up timer');
+        void run(ports.catchUp.fired(timer)).catch((error) => {
+          ports.report(new MessageRejectedFailure({ reason: String(error) }));
         });
-      } catch {
-        console.error('Muster Roll could not run a catch-up timer');
+      } catch (error) {
+        ports.report(new MessageRejectedFailure({ reason: String(error) }));
       }
     });
 
@@ -114,8 +118,8 @@ export function createCatchUpEffects(ports: CatchUpEffectsPorts): CatchUpEffects
                 // Merge is idempotent, so a copy read while an answer ended catch-up still merges.
                 return run(ports.catchUp.roomCopyRead(decision.r, decision.fresh));
               })
-              .catch(() => {
-                console.error('Muster Roll could not continue a room copy read');
+              .catch((error) => {
+                ports.report(new MessageRejectedFailure({ reason: String(error) }));
               }),
           );
           break;
@@ -123,15 +127,21 @@ export function createCatchUpEffects(ports: CatchUpEffectsPorts): CatchUpEffects
           reads.push(
             ports
               .readParty()
-              .then((players) => {
+              .then((result) => {
                 if (ports.signal.aborted) {
                   return Promise.resolve();
                 }
 
-                return run(ports.catchUp.partyRead(decision.r, players));
+                if (!result.isOk()) {
+                  ports.report(result.error);
+
+                  return;
+                }
+
+                return run(ports.catchUp.partyRead(decision.r, result.value));
               })
-              .catch(() => {
-                console.error('Muster Roll could not read the party');
+              .catch((error) => {
+                ports.report(new PartyReadFailure({ reason: String(error) }));
               }),
           );
           break;

@@ -1,5 +1,7 @@
 import type { JsonObject, JsonValue } from '@/core/json';
 import { z } from 'zod';
+import { Result } from 'better-result';
+import { MetadataFailure } from '@/platform/ports';
 import type {
   BroadcastEvent,
   BroadcastPort,
@@ -215,6 +217,22 @@ export async function createLiveCoordinator(runId: string): Promise<LiveCoordina
           ),
         'live-host',
       ),
+      partyReadFailure: unsupportedScenario(
+        'local-injection-only',
+        'The live harness cannot inject a party read failure.',
+      ),
+      playerRoleFailure: unsupportedScenario(
+        'local-injection-only',
+        'The live harness cannot inject a player role read failure.',
+      ),
+      metadataReadFailure: unsupportedScenario(
+        'local-injection-only',
+        'The live harness cannot inject a metadata read failure.',
+      ),
+      notificationFailure: unsupportedScenario(
+        'local-injection-only',
+        'The live harness cannot inject a notification failure.',
+      ),
     },
     waitForPeer: (timeoutMs = 30_000) => {
       if (peerRecord !== null) {
@@ -330,14 +348,18 @@ export async function startLivePeer(runId: string): Promise<LivePeer> {
     if (message.kind === 'metadata-read') {
       platform.metadata
         .getMetadata()
-        .then((metadata) =>
-          sendControl(controlChannel, {
+        .then((result) => {
+          if (!result.isOk()) {
+            throw result.error;
+          }
+
+          return sendControl(controlChannel, {
             kind: 'metadata-read-result',
             runId,
             requestId: message.requestId,
-            metadata,
-          }),
-        )
+            metadata: result.value,
+          });
+        })
         .catch((error) =>
           sendControl(controlChannel, {
             kind: 'rpc-error',
@@ -445,7 +467,11 @@ function createMetadataFixture(
 ): MetadataFixture {
   const reader: MetadataPort = {
     getRoomId: () => livePlatform.metadata.getRoomId(),
-    getMetadata: () => requestPeerMetadata(pendingReads, requestId(), controlChannel, namespace),
+    getMetadata: () =>
+      Result.tryPromise({
+        try: () => requestPeerMetadata(pendingReads, requestId(), controlChannel, namespace),
+        catch: (error) => new MetadataFailure({ operation: 'read', reason: String(error) }),
+      }),
     setMetadata: async () => {
       throw new Error('Live harness reader metadata writes are unsupported.');
     },

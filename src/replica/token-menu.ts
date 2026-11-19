@@ -9,6 +9,7 @@ import {
 } from '@/core/token-links';
 import type { PlayerRole } from '@/core/visibility';
 import type { ContextMenuContext, ContextMenuItem, Platform } from '@/platform/ports';
+import { MessageRejectedFailure, type FailureReporter } from '@/replica/failures';
 
 export const TOKEN_MENU_IDS: Readonly<Record<TokenMenuAction, string>> = {
   link: 'app.muster-roll/link-sheet',
@@ -58,7 +59,9 @@ export type TokenMenu = {
   stop: () => void;
 };
 
-type TokenMenuPorts = Pick<Platform, 'contextMenu' | 'popover'>;
+type TokenMenuPorts = Pick<Platform, 'contextMenu' | 'popover'> & {
+  report?: FailureReporter;
+};
 
 // AD-10: only the background page owns the token menu. Owlbear filters do not change once an item
 // is created, so the items are re-created from the current records and role when either changes.
@@ -67,6 +70,7 @@ export function createTokenMenu(
   copy: TokenMenuCopy,
   actions: TokenMenuActions,
 ): TokenMenu {
+  const report = ports.report ?? (() => undefined);
   // The filter each item was last created with, as JSON, by action.
   const created = new Map<TokenMenuAction, string>();
   // Items a failed call may have left in Owlbear, as they were or under an older filter. The next
@@ -85,7 +89,7 @@ export function createTokenMenu(
     call: () => Promise<void>,
   ): void {
     calls = calls.then(call).catch((error) => {
-      console.error('Muster Roll could not change the token menu', error);
+      report(new MessageRejectedFailure({ reason: String(error) }));
 
       if (created.get(action) === signature) {
         created.delete(action);
@@ -129,7 +133,7 @@ export function createTokenMenu(
             anchorElementId: elementId,
           })
           .catch((error) => {
-            console.error('Muster Roll could not open the link picker', error);
+            report(new MessageRejectedFailure({ reason: String(error) }));
           });
       },
     };

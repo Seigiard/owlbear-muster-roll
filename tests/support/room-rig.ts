@@ -518,6 +518,12 @@ export function sync(client: Pick<RigClient, 'store'>): SyncState {
   return client.store.$sync.get();
 }
 
+export function diagnostics(
+  client: Pick<RigClient, 'store'>,
+): readonly { tag: string; at: number; detail?: string }[] {
+  return client.store.$diagnostics.get();
+}
+
 export function rejection(
   client: Pick<RigClient, 'local' | 'commandOutcomes'>,
   id: string,

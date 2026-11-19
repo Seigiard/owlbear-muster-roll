@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import type { JsonObject } from '../../src/core/json';
 import { mergeRecords } from '../../src/core/merge';
 import type { VersionedRecord } from '../../src/core/records';
@@ -37,7 +38,7 @@ function createHeldWriteCopy() {
   let afterWrite: (() => void) | null = null;
 
   const metadataPort = {
-    getMetadata: async () => metadata,
+    getMetadata: async () => Result.ok(metadata),
     setMetadata: async (update: MetadataUpdate) => {
       writes += 1;
       activeWrites += 1;

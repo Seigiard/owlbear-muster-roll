@@ -594,3 +594,12 @@ Deviations from DESIGN.md that TASK-115.11 reconciles:
 - The engine owns one `AbortController` for the catch-up interpreter only; `stop()` aborts it. TASK-115.4 widens it to every module.
 - `src/replica/catch-up-effects.test.ts` 'a failed read logs its failure…' and 'a failed timer continuation logs its failure' observe `console.error`; TASK-115.6 moves those logs to `report`, and its merge ports the two tests.
 - `tests/link.e2e.ts:268` ("a scene change keeps the links of the scene left behind") failed once in a full browser run on the TASK-115.2 tip and passed 16 of 16 when repeated and 583 of 583 in a second full run.
+
+## Deferred from: TASK-115.6 (2026-11-19)
+
+- Two baseline test names changed with the lock: `send-queue.test.ts` "logs another send failure and goes on with the next message" is now "reports another send failure…", and the `engine-sync.test.ts` gate row "a type with no handler yet" (`ping`) is now "answers a valid v4 ping without reporting a rejection", because a v4 `ping` has had a liveness handler since TASK-115.1 and is not rejected.
+- Console spies that only silenced expected output were removed from `engine-{catch-up,import,no-gm,propose,room-copy,wipe}.test.ts`; those faults reach `diagnostics` but their tests do not assert the tag.
+- A rejected `action.setSize` reports `message-rejected`; the replica has no dedicated window-size failure class.
+- `metadata.setMetadata` still rejects on failure instead of returning `Result`: the ticket covered the reads and `notification.show` only.
+- The diagnostics list is published in the projection but not shown yet: TASK-115.7 adds the GM's «Диагностика» block in Settings.
+- Browser runs by the attempt-1 implementer saw `tests/open.e2e.ts:253` (focus) and `tests/builder-snapshot.e2e.ts:770` (download menu item detached) fail once each; both passed on rerun and the orchestrator's full run was 583/583.

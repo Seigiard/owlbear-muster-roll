@@ -23,7 +23,8 @@ import type { DiceTerm, DieFace } from '@/core/formula-evaluate';
 import type { JsonValue } from '@/core/json';
 import { Result } from 'better-result';
 import type { DiceExtensionTiming } from '@/core/timing';
-import type { BroadcastOptions, BroadcastPort } from '@/platform/ports';
+import { SendFailure, type BroadcastOptions, type BroadcastPort } from '@/platform/ports';
+import { taggedSendFailure, type FailureReporter } from '@/replica/failures';
 
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
 
@@ -85,6 +86,7 @@ export function createDiceExtension(
   timing: DiceExtensionTiming,
   newId: () => string,
   mayAskAccess: () => boolean,
+  report: FailureReporter = () => undefined,
 ): DiceExtension {
   // The latest answer to a probe, and when the latest probe started, on the monotonic clock.
   let lastReady = false;
@@ -203,13 +205,13 @@ export function createDiceExtension(
     broadcast.sendMessage(channel, message, LOCAL).then(
       (result) => {
         if (!result.isOk()) {
-          console.error('Muster Roll could not send to the dice extension', result.error);
+          report(taggedSendFailure(result.error));
         }
 
         then(result.isOk());
       },
       (error) => {
-        console.error('Muster Roll could not send to the dice extension', error);
+        report(new SendFailure({ kind: 'failed', reason: String(error), channel }));
         then(false);
       },
     );

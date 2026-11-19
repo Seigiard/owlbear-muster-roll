@@ -1,5 +1,6 @@
 import type { WindowSize } from '@/core/preset';
 import type { ActionPort } from '@/platform/ports';
+import { MessageRejectedFailure, type FailureReporter } from '@/replica/failures';
 
 export type WindowSizer = {
   apply: (size: WindowSize) => void;
@@ -13,9 +14,10 @@ type SizeRequest = { size: WindowSize; settled: boolean; wantedAgain: boolean };
 // is forgotten and `failed` is called, so the caller can ask again. A failed request whose size was
 // asked for again while it was in flight is sent again at once.
 export function createWindowSizer(
-  action: Pick<ActionPort, 'setSize'>,
+  action: Pick<ActionPort, 'setSize'> & { report?: FailureReporter },
   failed: () => void = () => {},
 ): WindowSizer {
+  const report = action.report ?? (() => undefined);
   let requested: SizeRequest | null = null;
 
   function send(size: WindowSize): void {
@@ -29,7 +31,7 @@ export function createWindowSizer(
       },
       (error) => {
         request.settled = true;
-        console.error('Muster Roll could not size its window', error);
+        report(new MessageRejectedFailure({ reason: String(error) }));
 
         if (requested !== request) {
           return;

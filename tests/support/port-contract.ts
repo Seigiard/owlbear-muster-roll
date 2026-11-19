@@ -3,7 +3,13 @@ import { Result } from 'better-result';
 import type {
   BroadcastEvent,
   BroadcastPort,
+  MetadataFailure,
   MetadataPort,
+  NotificationFailure,
+  PartyMember,
+  PartyReadFailure,
+  PlayerRole,
+  PlayerReadFailure,
   SendResult,
   StorageFailure,
   StorageOperation,
@@ -22,6 +28,10 @@ export const PORT_CONTRACT_SCENARIOS = {
   broadcastOrder: 'broadcast preserves one sender arrival order',
   broadcastRateLimit: 'a rate-limited send resolves and delivers no event',
   metadataMerge: 'metadata merges retained entries and deletes undefined entries',
+  partyReadFailure: 'party read returns its tagged failure',
+  playerRoleFailure: 'player role read returns its tagged failure',
+  metadataReadFailure: 'metadata read returns its tagged failure',
+  notificationFailure: 'notification returns its tagged failure',
 } as const;
 
 export type PortContractScenarioName =
@@ -75,6 +85,12 @@ export type MetadataFixture = {
   cleanup: () => void | Promise<void>;
 };
 
+export type PortFailureFixture<Value, Failure> = {
+  inject: () => void;
+  invoke: () => Promise<Result<Value, Failure>>;
+  cleanup: () => void | Promise<void>;
+};
+
 export type PortContractFactory = {
   storageLifecycle: ScenarioBinding<() => StorageFixture | Promise<StorageFixture>>;
   storageExternalFailure: ScenarioBinding<
@@ -85,6 +101,26 @@ export type PortContractFactory = {
     () => RateLimitedBroadcastFixture | Promise<RateLimitedBroadcastFixture>
   >;
   metadata: ScenarioBinding<() => MetadataFixture | Promise<MetadataFixture>>;
+  partyReadFailure: ScenarioBinding<
+    () =>
+      | PortFailureFixture<PartyMember[], PartyReadFailure>
+      | Promise<PortFailureFixture<PartyMember[], PartyReadFailure>>
+  >;
+  playerRoleFailure: ScenarioBinding<
+    () =>
+      | PortFailureFixture<PlayerRole, PlayerReadFailure>
+      | Promise<PortFailureFixture<PlayerRole, PlayerReadFailure>>
+  >;
+  metadataReadFailure: ScenarioBinding<
+    () =>
+      | PortFailureFixture<JsonObject, MetadataFailure>
+      | Promise<PortFailureFixture<JsonObject, MetadataFailure>>
+  >;
+  notificationFailure: ScenarioBinding<
+    () =>
+      | PortFailureFixture<string, NotificationFailure>
+      | Promise<PortFailureFixture<string, NotificationFailure>>
+  >;
 };
 
 export type ScenarioSupportReport =
@@ -154,6 +190,10 @@ export type MetadataObservation = {
   observedFinalSnapshot: JsonObject | null;
 };
 
+export type PortFailureObservation<Value, Failure> =
+  | { status: 'returned'; result: Result<Value, Failure> }
+  | { status: 'threw'; error: string };
+
 const SCENARIO_CAPABILITIES: readonly {
   name: PortContractScenarioName;
   capability: keyof PortContractFactory;
@@ -197,6 +237,22 @@ const SCENARIO_CAPABILITIES: readonly {
   {
     name: PORT_CONTRACT_SCENARIOS.metadataMerge,
     capability: 'metadata',
+  },
+  {
+    name: PORT_CONTRACT_SCENARIOS.partyReadFailure,
+    capability: 'partyReadFailure',
+  },
+  {
+    name: PORT_CONTRACT_SCENARIOS.playerRoleFailure,
+    capability: 'playerRoleFailure',
+  },
+  {
+    name: PORT_CONTRACT_SCENARIOS.metadataReadFailure,
+    capability: 'metadataReadFailure',
+  },
+  {
+    name: PORT_CONTRACT_SCENARIOS.notificationFailure,
+    capability: 'notificationFailure',
   },
 ];
 
@@ -292,6 +348,26 @@ export async function storageFailureIsReturnedForOperation(
     };
   } catch (error) {
     return { status: 'threw', error: String(error) };
+  }
+}
+
+export async function portFailureIsReturned<Value, Failure>(
+  binding: ScenarioBinding<
+    () => PortFailureFixture<Value, Failure> | Promise<PortFailureFixture<Value, Failure>>
+  >,
+  scenarioName: PortContractScenarioName,
+): Promise<PortFailureObservation<Value, Failure>> {
+  const create = requireSupported(binding, scenarioName);
+  const fixture = await create();
+
+  try {
+    fixture.inject();
+
+    return { status: 'returned', result: await fixture.invoke() };
+  } catch (error) {
+    return { status: 'threw', error: String(error) };
+  } finally {
+    await fixture.cleanup();
   }
 }
 
@@ -426,7 +502,13 @@ export async function metadataMergesRetainedEntriesAndDeletesUndefinedEntries(
       fixture.observationTimeoutMs,
     );
 
-    const read = normalizeOwnedMetadata(await fixture.reader.getMetadata(), fixture, {
+    const result = await fixture.reader.getMetadata();
+
+    if (result.isErr()) {
+      throw result.error;
+    }
+
+    const read = normalizeOwnedMetadata(result.value, fixture, {
       [retained]: 'retained',
       [removed]: 'removed',
       [added]: 'added',

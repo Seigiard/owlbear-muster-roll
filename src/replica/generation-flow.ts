@@ -24,6 +24,11 @@ import type {
   SnapshotCheckMessage,
 } from '@/core/ui-messages';
 import type { Preset } from '@/core/preset';
+import {
+  RecordTooLargeFailure,
+  recordStoreFailure,
+  type FailureReporter,
+} from '@/replica/failures';
 
 export type GenerationPersistence = {
   store: RecordStore;
@@ -31,6 +36,7 @@ export type GenerationPersistence = {
 };
 
 export type GenerationFlowPorts = {
+  report?: FailureReporter;
   initialPersistence: GenerationPersistence | null;
   connectionId: string;
   records: () => ReadonlyMap<string, VersionedRecord>;
@@ -124,6 +130,7 @@ export function generationRelation(
 }
 
 export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow {
+  const report = ports.report ?? (() => undefined);
   let persistence = ports.initialPersistence;
   let ownGeneration = persistence?.generation ?? INITIAL_GENERATION;
   let highestSeenGeneration = ownGeneration;
@@ -305,7 +312,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
       const removed = store.removeGeneration(generation);
 
       if (!removed.isOk()) {
-        console.error('Muster Roll could not remove a part saved generation', removed.error);
+        report(recordStoreFailure(removed.error));
       }
 
       ports.publish();
@@ -345,10 +352,10 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
       const removed = store.removeGenerationsBelow(generation);
 
       if (!removed.isOk()) {
-        console.error('Muster Roll could not remove the replaced records', removed.error);
+        report(recordStoreFailure(removed.error));
       }
 
-      removeOlderFormats(store);
+      removeOlderFormats(store, report);
     } finally {
       importing = false;
       // Deletions that waited out the import, whether it finished, stopped or was replaced.
@@ -402,7 +409,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
   function stage(records: readonly VersionedRecord[]): void {
     for (const record of records) {
       if (!recordFitsOneMessage(record)) {
-        console.error('Muster Roll dropped a remote record too large for one message', record.k);
+        report(new RecordTooLargeFailure({ key: record.k }));
         continue;
       }
 
@@ -445,7 +452,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
         const removed = store.removeGeneration(generation);
 
         if (!removed.isOk()) {
-          console.error('Muster Roll could not remove a part saved generation', removed.error);
+          report(recordStoreFailure(removed.error));
         }
 
         ports.publish();
@@ -458,12 +465,12 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
       const removed = store.removeGenerationsBelow(generation);
 
       if (!removed.isOk()) {
-        console.error('Muster Roll could not remove the replaced records', removed.error);
+        report(recordStoreFailure(removed.error));
       }
 
       // AD-9: a GM client that adopts a new generation, as after a wipe, drops this room's keys of
       // older storage formats too.
-      removeOlderFormats(store);
+      removeOlderFormats(store, report);
     }
 
     incoming = new Map();
@@ -497,7 +504,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
     const marked = store.markIncomplete(generation);
 
     if (!marked.isOk()) {
-      console.error('Muster Roll could not mark a new generation', marked.error);
+      report(recordStoreFailure(marked.error));
       ports.markGenerationSaveFailed();
 
       return false;
@@ -506,7 +513,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
     const kept = store.markGeneration(generation);
 
     if (!kept.isOk()) {
-      console.error('Muster Roll could not keep a new generation', kept.error);
+      report(recordStoreFailure(kept.error));
       ports.markGenerationSaveFailed();
 
       return false;
@@ -516,7 +523,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
       const written = store.write(generation, record);
 
       if (!written.isOk()) {
-        console.error('Muster Roll could not save a record of a new generation', written.error);
+        report(recordStoreFailure(written.error));
         ports.markGenerationSaveFailed();
 
         return false;
@@ -526,7 +533,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
     const complete = store.markComplete(generation);
 
     if (!complete.isOk()) {
-      console.error('Muster Roll could not mark a new generation complete', complete.error);
+      report(recordStoreFailure(complete.error));
       ports.markGenerationSaveFailed();
 
       return false;
@@ -556,10 +563,10 @@ function higherGeneration(first: Generation, second: Generation): Generation {
   return compareGenerations(first, second) >= 0 ? first : second;
 }
 
-function removeOlderFormats(store: RecordStore): void {
+function removeOlderFormats(store: RecordStore, report: FailureReporter): void {
   const removed = store.removeOlderFormats();
 
   if (!removed.isOk()) {
-    console.error('Muster Roll could not remove the records of an older format', removed.error);
+    report(recordStoreFailure(removed.error));
   }
 }

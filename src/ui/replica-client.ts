@@ -243,6 +243,7 @@ export function startReplicaClient(
       parts.flatMap((part) => part?.pending ?? []),
       lastPart.notices,
       lastPart.sync,
+      lastPart.diagnostics,
     );
     store.setRoomCopy(lastPart.roomCopy);
     store.setParty(lastPart.party);
@@ -286,7 +287,14 @@ export function startReplicaClient(
     }
 
     delivery = { ...delivery, seq: delta.seq };
-    store.applyDelta(delta.records, delta.pending, delta.withdrawn, delta.notices, delta.sync);
+    store.applyDelta(
+      delta.records,
+      delta.pending,
+      delta.withdrawn,
+      delta.notices,
+      delta.sync,
+      delta.diagnostics,
+    );
     store.setRoomCopy(delta.roomCopy);
     store.setParty(delta.party);
   }

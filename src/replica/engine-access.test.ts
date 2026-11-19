@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import type { PartyEntry } from '@/core/access';
 import { ownerOf } from '@/core/merge';
@@ -740,7 +741,9 @@ function holdInitialPartyRead(): HeldInitialPartyRead {
         getPlayers: () => {
           reads += 1;
 
-          return reads === 1 ? read.promise : platform.party.getPlayers();
+          return reads === 1
+            ? read.promise.then((players) => Result.ok(players))
+            : platform.party.getPlayers();
         },
       },
     }),

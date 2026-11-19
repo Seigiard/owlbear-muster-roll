@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { JsonValue } from '@/core/json';
 import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import { blockDataSchema, type Cells, type VersionedRecord } from '@/core/records';
@@ -51,6 +51,7 @@ type Sent = {
 type Rig = {
   queue: SendQueue;
   sent: Sent[];
+  reported: string[];
   release: () => void;
 };
 
@@ -61,6 +62,7 @@ afterEach(() => {
 function createRig(): Rig {
   const sent: Sent[] = [];
   const pauses: (() => void)[] = [];
+  const reported: string[] = [];
 
   const queue = createSendQueue(
     {
@@ -80,12 +82,19 @@ function createRig(): Rig {
   return {
     queue,
     sent,
+    reported,
     release: () => {
       for (const finish of pauses.splice(0)) {
         finish();
       }
     },
   };
+}
+
+function createOutbox(rig: Rig) {
+  return createCommitOutbox(rig.queue, () => GENERATION, {
+    report: (failure: { _tag: string }) => rig.reported.push(failure._tag),
+  });
 }
 
 function row(id: string, c: number, value: string | number = c): VersionedRecord {
@@ -135,7 +144,7 @@ describe('commit outbox', () => {
   test('sends only the newer record of a key added twice while the commit waits, and keeps the other keys', async () => {
     // #given
     const rig = createRig();
-    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const outbox = createOutbox(rig);
     await holdQueue(rig);
     // #when
     outbox.add([row('str', 1)]);
@@ -160,7 +169,7 @@ describe('commit outbox', () => {
   test('sends records over one message in parts that each fit, and the remainder after the first', async () => {
     // #given: each record is about 4000 bytes, so four do not fit one message.
     const rig = createRig();
-    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const outbox = createOutbox(rig);
     const records = ['a', 'b', 'c', 'd', 'e'].map((id) => row(id, 1, 'ы'.repeat(2000)));
     // #when
     outbox.add(records);
@@ -176,8 +185,7 @@ describe('commit outbox', () => {
   test('drops and logs only a record too large for one message, and sends the rest', async () => {
     // #given
     const rig = createRig();
-    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
-    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
+    const outbox = createOutbox(rig);
     // #when
     outbox.add([
       row('str', 1),
@@ -191,7 +199,7 @@ describe('commit outbox', () => {
     ]);
     await drained(rig);
     // #then
-    expect({ sent: rig.sent, logged: errors.mock.calls.length }).toEqual({
+    expect({ sent: rig.sent, reported: rig.reported }).toEqual({
       sent: [
         commit([
           {
@@ -206,13 +214,13 @@ describe('commit outbox', () => {
           },
         ]),
       ],
-      logged: 1,
+      reported: ['record-too-large'],
     });
   });
   test('sends nothing after stop, not even a commit already waiting in the queue', async () => {
     // #given
     const rig = createRig();
-    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const outbox = createOutbox(rig);
     await holdQueue(rig);
     outbox.add([row('str', 1)]);
     // #when
@@ -225,7 +233,7 @@ describe('commit outbox', () => {
   test('drop forgets a commit waiting in the queue, and the outbox still sends what comes after', async () => {
     // #given
     const rig = createRig();
-    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const outbox = createOutbox(rig);
     await holdQueue(rig);
     outbox.add([row('str', 1)]);
     // #when
@@ -239,7 +247,7 @@ describe('commit outbox', () => {
   test("a newer GM record of a proposed key still carries the player's (k, c, a) in its commit", async () => {
     // #given
     const rig = createRig();
-    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const outbox = createOutbox(rig);
 
     const proposed: VersionedRecord = {
       k: 'blk:brok',
@@ -266,7 +274,7 @@ describe('commit outbox', () => {
   test('echoes one proposal answered twice before the commit goes out once', async () => {
     // #given
     const rig = createRig();
-    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const outbox = createOutbox(rig);
 
     const proposed: VersionedRecord = {
       k: 'blk:brok',
@@ -288,7 +296,7 @@ describe('commit outbox', () => {
   test("keeps one ack per author of a key, that author's newest", async () => {
     // #given
     const rig = createRig();
-    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const outbox = createOutbox(rig);
 
     const record: VersionedRecord = {
       k: 'blk:brok',
@@ -316,7 +324,7 @@ describe('commit outbox', () => {
   test('sends a record again with the acks that did not fit one message with it', async () => {
     // #given: the record is about 13000 bytes and each ack about 640, so two acks fit with it.
     const rig = createRig();
-    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const outbox = createOutbox(rig);
     const record = row('big', 1, 'x'.repeat(13000));
 
     const acks = [0, 1, 2, 3, 4].map((index) => ({
@@ -344,7 +352,7 @@ describe('commit outbox', () => {
   test('puts each ack in the part that carries the record of its key', async () => {
     // #given: each record is about 4000 bytes, so the five need two messages.
     const rig = createRig();
-    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const outbox = createOutbox(rig);
     const records = ['a', 'b', 'c', 'd', 'e'].map((id) => row(id, 1, 'ы'.repeat(2000)));
     const lastAck = { k: 'blk:brok', c: 1, a: 'gm-a' };
     await holdQueue(rig);
@@ -365,7 +373,7 @@ describe('commit outbox', () => {
   test('flush hands every held record to the queue, so its flushNow sends them at once', async () => {
     // #given: the queue holds, and the records need two messages.
     const rig = createRig();
-    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const outbox = createOutbox(rig);
     const records = ['a', 'b', 'c', 'd', 'e'].map((id) => row(id, 1, 'ы'.repeat(2000)));
     await holdQueue(rig);
     outbox.add(records);

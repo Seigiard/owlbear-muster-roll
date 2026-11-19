@@ -1,7 +1,7 @@
 import type { JsonValue } from '@/core/json';
 import { assembleRecords } from '@/core/merge';
 import { fixtureRecord } from '../../tests/support/block-fixtures';
-import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 import { jsonByteLength } from '@/core/message-size';
 import { decodePreset, encodePreset, type Preset } from '@/core/preset';
 import { presetDataSchema, type VersionedRecord } from '@/core/records';
@@ -77,6 +77,7 @@ type Harness = {
   source: WindowPublisherState;
   publisher: WindowPublisher;
   messages: EngineMessage[];
+  reported: string[];
   openWindow: (id: string) => {
     client: RigPage['window'];
     store: RigPage['store'];
@@ -190,7 +191,6 @@ describe('window publisher', () => {
     // #given
     const oversized = record('blk:large', { value: 'ы'.repeat(7000) });
     const harness = publisherHarness(source('GM', [oversized]));
-    const error = spyOn(console, 'error').mockImplementation(() => undefined);
     harness.source.party = party(100);
     // #when
     const rejected = harness.publisher.project('retry');
@@ -200,10 +200,9 @@ describe('window publisher', () => {
     // #then
     expect({
       answers: [rejected, accepted],
-      errors: error.mock.calls.length,
+      reported: harness.reported,
       projections: harness.messages.filter((message) => message.t === 'projection').length,
-    }).toEqual({ answers: [false, true], errors: 1, projections: 1 });
-    error.mockRestore();
+    }).toEqual({ answers: [false, true], reported: ['record-too-large'], projections: 1 });
   });
   test('sends only a changed record and leaves the window at the new version', async () => {
     // #given
@@ -473,7 +472,6 @@ describe('window publisher', () => {
     const harness = publisherHarness(source('GM'));
     const window = harness.openWindow('too-large');
     await settle();
-    const error = spyOn(console, 'error').mockImplementation(() => undefined);
     harness.source.party = Array.from({ length: 100 }, (_, index) => ({
       id: `player-${index}`,
       name: 'Player',
@@ -487,15 +485,14 @@ describe('window publisher', () => {
     await settle();
     // #then
     expect({
-      errors: error.mock.calls.length,
+      reported: harness.reported,
       deltas: deltas(harness.messages),
       window: [...window.store.$records.get().values()],
     }).toEqual({
-      errors: 1,
+      reported: ['record-too-large'],
       deltas: [{ records: [later], pending: [], withdrawn: [] }],
       window: [later],
     });
-    error.mockRestore();
   });
   test('rejects a delta with an oversized pending record but sends the fitting control', async () => {
     // #given
@@ -512,25 +509,23 @@ describe('window publisher', () => {
     rejected.source.pendingView = records(oversized);
     control.source.replica = records(changed);
     control.source.pendingView = records(fitting);
-    const error = spyOn(console, 'error').mockImplementation(() => undefined);
     // #when
     rejected.publisher.publish();
     control.publisher.publish();
     await settle();
     // #then
     expect({
-      errors: error.mock.calls.length,
+      reported: rejected.reported,
       rejected: deltas(rejected.messages),
       control: deltas(control.messages),
     }).toEqual({
-      errors: 1,
+      reported: ['record-too-large'],
       rejected: [],
       control: [
         { records: [changed], pending: [], withdrawn: [] },
         { records: [], pending: [fitting], withdrawn: [] },
       ],
     });
-    error.mockRestore();
   });
   test('rejects a counter-sized projection and sends the nearby fitting control', async () => {
     // #given
@@ -540,7 +535,6 @@ describe('window publisher', () => {
     const control = publisherHarness(source('GM', fitting.replica, fitting.pending));
     rejected.source.party = party(100);
     control.source.party = party(100);
-    const error = spyOn(console, 'error').mockImplementation(() => undefined);
     // #when
     const rejectedAnswer = rejected.publisher.project('counter-projection');
     const controlAnswer = control.publisher.project('counter-projectioz');
@@ -561,7 +555,7 @@ describe('window publisher', () => {
     );
 
     expect({
-      errors: error.mock.calls.length,
+      reported: rejected.reported,
       rejected: { answer: rejectedAnswer, sends: rejected.messages.length },
       control: {
         answer: controlAnswer,
@@ -569,7 +563,7 @@ describe('window publisher', () => {
         messageBytes: controlMessages.map(jsonByteLength),
       },
     }).toEqual({
-      errors: 1,
+      reported: ['record-too-large'],
       rejected: { answer: false, sends: 0 },
       control: {
         answer: true,
@@ -578,7 +572,6 @@ describe('window publisher', () => {
       },
     });
     expect(controlMessages.every((message) => jsonByteLength(message) < 15000)).toBe(true);
-    error.mockRestore();
   });
   test('rejects a counter-sized delta and sends the nearby fitting control', async () => {
     // #given
@@ -595,7 +588,6 @@ describe('window publisher', () => {
     rejected.source.pendingView = records(...boundary.pending);
     control.source.replica = records(...fitting.replica);
     control.source.pendingView = records(...fitting.pending);
-    const error = spyOn(console, 'error').mockImplementation(() => undefined);
     // #when
     rejected.publisher.publish();
     control.publisher.publish();
@@ -616,14 +608,14 @@ describe('window publisher', () => {
     );
 
     expect({
-      errors: error.mock.calls.length,
+      reported: rejected.reported,
       rejected: { sends: deltas(rejected.messages).length },
       control: {
         envelopeBytes: controlMessages.map(bodyFreeMessageBytes),
         messageBytes: controlMessages.map(jsonByteLength),
       },
     }).toEqual({
-      errors: 1,
+      reported: ['record-too-large'],
       rejected: { sends: 0 },
       control: {
         envelopeBytes: [5366, 5366, 5366, 5366, 5366, 5366, 5366, 5366, 5366, 5367],
@@ -631,7 +623,6 @@ describe('window publisher', () => {
       },
     });
     expect(controlMessages.every((message) => jsonByteLength(message) < 15000)).toBe(true);
-    error.mockRestore();
   });
   test('sends a restart cue once and stays silent until the next projection', async () => {
     // #given
@@ -799,12 +790,14 @@ function publisherHarness(
   const sendQueue = createSendQueue(engine, { ...TIMING, sendSpacingMs: 0 });
   const currentState = initial;
   const messages: EngineMessage[] = [];
+  const reported: string[] = [];
 
   const publisher = createWindowPublisher({
     send: (message) => sendQueue.enqueue(UI_CHANNEL, message, { destination: 'LOCAL' }),
     newId,
     presetOf,
     state: () => currentState,
+    report: (failure: { _tag: string }) => reported.push(failure._tag),
   });
 
   const unlistenMessages = bus.subscribe(UI_CHANNEL, (event) => {
@@ -829,6 +822,7 @@ function publisherHarness(
     source: currentState,
     publisher,
     messages,
+    reported,
     openWindow: (id) => {
       const store = createProjectionStore();
 

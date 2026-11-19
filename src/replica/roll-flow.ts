@@ -24,6 +24,12 @@ import { Result } from 'better-result';
 import type { Generation } from '@/core/storage-key';
 import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
 import { rollShownTo, rollTargetShownTo, type PlayerRole } from '@/core/visibility';
+import { DiceExtensionFailure } from '@/platform/ports';
+import {
+  MessageRejectedFailure,
+  RecordTooLargeFailure,
+  type FailureReporter,
+} from '@/replica/failures';
 
 const RECENT_REQUEST_ID_LIMIT = 256;
 
@@ -58,6 +64,7 @@ export type RollDicePort = {
 };
 
 export type RollFlowPorts = {
+  report?: FailureReporter;
   pendingView: () => ReadonlyMap<string, VersionedRecord>;
   presetOf: (record: VersionedRecord | undefined) => Preset | null;
   role: () => PlayerRole;
@@ -83,6 +90,7 @@ export type RollFlow = {
 // The roll pipeline is independent from the room, window, and platform adapters. The engine wires
 // these ports to its live state and transport.
 export function createRollFlow(ports: RollFlowPorts): RollFlow {
+  const report = ports.report ?? (() => undefined);
   const recentRequestIds = createBoundedIdSet(RECENT_REQUEST_ID_LIMIT);
   const recentRollIds = createBoundedIdSet(RECENT_ROLL_ID_LIMIT);
 
@@ -167,7 +175,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     try {
       roller = await ports.playerName();
     } catch (error) {
-      console.error('Muster Roll could not read the player name for a roll', error);
+      report(new MessageRejectedFailure({ reason: String(error) }));
       ports.replyOutcome(requestId, { code: 'failed' });
 
       return;
@@ -229,10 +237,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
         return;
       }
 
-      console.error(
-        'Muster Roll rolled locally, as the dice extension gave no faces:',
-        faces.error.reason,
-      );
+      report(new DiceExtensionFailure({ reason: faces.error.reason }));
       console.info('Muster Roll rolled locally: the dice extension gave no faces');
       await sendRoll(requestId, local, roller);
 
@@ -248,7 +253,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     try {
       evaluated = evaluatedWith(prepared, listedFaces(faces.value));
     } catch (error) {
-      console.error('Muster Roll could not apply the dice extension faces', error);
+      report(new MessageRejectedFailure({ reason: String(error) }));
       ports.replyOutcome(requestId, { code: 'failed' });
 
       return;
@@ -284,8 +289,17 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     const message = rollMessage(ports.generation(), { id: ports.newId(), roller, ...evaluated });
 
     // A roll a receiver would drop, or one too large to send, never goes out.
-    if (!parseRoomMessage(message).isOk() || !fitsOneMessage(message)) {
-      console.error('Muster Roll built a roll the room would not take');
+    const parsed = parseRoomMessage(message);
+
+    if (!parsed.isOk()) {
+      report(new MessageRejectedFailure({ reason: parsed.error }));
+      ports.replyOutcome(requestId, { code: 'failed' });
+
+      return;
+    }
+
+    if (!fitsOneMessage(message)) {
+      report(new RecordTooLargeFailure({}));
       ports.replyOutcome(requestId, { code: 'failed' });
 
       return;
@@ -328,7 +342,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     const text = rollNotificationText({ ...message, roller }, ports.rollCopy);
 
     Promise.resolve(ports.notify(text)).catch((error) => {
-      console.error('Muster Roll could not show a roll', error);
+      report(new MessageRejectedFailure({ reason: String(error) }));
     });
   }
 

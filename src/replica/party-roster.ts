@@ -1,5 +1,6 @@
 import type { PartyEntry } from '@/core/access';
-import type { PartyMember, PartyPort, PlayerRole } from '@/platform/ports';
+import { type PartyMember, type PartyPort, type PlayerRole } from '@/platform/ports';
+import type { FailureReporter } from '@/replica/failures';
 
 // `name` is the player name the party lists for the connection.
 export type RoomSender = { role: PlayerRole; playerId: string; name: string };
@@ -15,7 +16,12 @@ export type PartyRoster = {
 // AD-5: a room message names its sender only by connection id, and the party port maps it to a role
 // and a player id. Another GM connection of the same account is a member of its own. `onReplace`
 // hears every new read of the party.
-export function createPartyRoster(party: PartyPort, onReplace?: () => void): PartyRoster {
+export function createPartyRoster(
+  party: PartyPort & { report?: FailureReporter },
+  onReplace?: () => void,
+  reportOverride?: FailureReporter,
+): PartyRoster {
+  const report = reportOverride ?? party.report ?? (() => undefined);
   let members = new Map<string, RoomSender>();
   // Counts party changes, so a read that started before one cannot bring the older list back.
   let epoch = 0;
@@ -38,11 +44,11 @@ export function createPartyRoster(party: PartyPort, onReplace?: () => void): Par
     try {
       const players = await party.getPlayers();
 
-      if (epoch === started) {
-        replace(players);
+      if (players.isErr()) {
+        report(players.error);
+      } else if (epoch === started) {
+        replace(players.value);
       }
-    } catch (error) {
-      console.error('Muster Roll could not read the party', error);
     } finally {
       reading = null;
     }

@@ -1,5 +1,5 @@
 import { fixtureRecord } from '../../tests/support/block-fixtures';
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import { NOTHING_ERASED } from '@/core/preset-migrate';
@@ -202,7 +202,6 @@ async function settle(): Promise<void> {
 describe('writer triggers', () => {
   test('a failed multi-record command does not owe an unchanged room-copy write', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     const gate = createGate();
 
@@ -227,7 +226,6 @@ describe('writer triggers', () => {
   });
   test('catch-up with no replayed records does not owe an unchanged room-copy write', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     const gate = createGate();
 
@@ -249,7 +247,6 @@ describe('writer triggers', () => {
   });
   test('a failed preset batch does not owe an unchanged room-copy write', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     const gate = createGate();
 
@@ -420,7 +417,6 @@ describe('writer read and merge', () => {
     'a copy with %s stops the write, keeps the copy and raises its notices',
     async (_name, value, expectedNotices) => {
       // #given
-      spyOn(console, 'error').mockImplementation(() => undefined);
       const room = roomRig.openRoom();
       const client = await startClient(room, 'gm-a', { until: 'live' });
       room.room.setMetadata({ [KEY]: value });
@@ -444,7 +440,6 @@ describe('a room copy of an older format', () => {
     'format %i: a GM that reads it at catch-up shows the older-format notice and outcome older, and its writes never replace it',
     async (format) => {
       // #given
-      spyOn(console, 'error').mockImplementation(() => undefined);
       const room = roomRig.openRoom();
       const gate = createGate();
       const older = copyValue(INITIAL, [MIRA], format);
@@ -481,7 +476,6 @@ describe('a room copy of an older format', () => {
     'format %i: a player with no GM gets outcome older and no older-format notice',
     async (format) => {
       // #given
-      spyOn(console, 'error').mockImplementation(() => undefined);
       const room = roomRig.openRoom();
       room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], format) });
 
@@ -888,7 +882,6 @@ describe('review cases', () => {
   });
   test('a rejected write raises the notice and the failed state', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     const gate = createGate();
     const client = await startClient(room, 'gm-a', { platform: gated(gate), until: 'live' });
@@ -955,7 +948,6 @@ describe('review cases', () => {
   });
   test('a GM that cannot read the copy at catch-up shows the failed state', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     room.room.setMetadata({ [KEY]: { v: 4, data: 'bm90IGRlZmxhdGU=' } });
     // #when

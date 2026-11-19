@@ -1,10 +1,12 @@
 import { SCENE_READ_RETRY_MS } from '@/core/timing';
 import { removedItemIds } from '@/core/token-links';
 import type { ScenePort } from '@/platform/ports';
+import { MessageRejectedFailure, type FailureReporter } from '@/replica/failures';
 
 export type SceneWatch = { stop: () => void };
 
 export type SceneWatchHandlers = {
+  report?: FailureReporter;
   // Item ids that left the ready scene, once the scene answered that it is still ready.
   removed: (itemIds: string[]) => void;
   // Every item list of the ready scene, the first one of each ready period included.
@@ -21,6 +23,7 @@ export function watchSceneRemovals(
   handlers: SceneWatchHandlers,
   retryMs = SCENE_READ_RETRY_MS,
 ): SceneWatch {
+  const reportFailure = handlers.report ?? (() => undefined);
   let stopped = false;
   let ready = false;
   // Counts readiness changes, so a read or a check that one of them overtook is dropped.
@@ -53,7 +56,7 @@ export function watchSceneRemovals(
         }
       },
       (error) => {
-        console.error('Muster Roll could not read whether the scene is ready', error);
+        reportFailure(new MessageRejectedFailure({ reason: String(error) }));
 
         if (period === 0) {
           later(readReady);
@@ -82,7 +85,7 @@ export function watchSceneRemovals(
         }
       },
       (error) => {
-        console.error('Muster Roll could not read the scene items', error);
+        reportFailure(new MessageRejectedFailure({ reason: String(error) }));
 
         if (started === period && seen === null) {
           later(() => {
@@ -159,7 +162,7 @@ export function watchSceneRemovals(
       },
       (error) => {
         asking = false;
-        console.error('Muster Roll could not read whether the scene is ready', error);
+        reportFailure(new MessageRejectedFailure({ reason: String(error) }));
         // The removal keeps waiting, and the scene is asked again.
         later(confirm);
       },

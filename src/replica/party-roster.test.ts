@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
-import type { PartyMember, PartyPort } from '@/platform/ports';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { Result } from 'better-result';
+import { PartyReadFailure, type PartyMember, type PartyPort } from '@/platform/ports';
 import { createPartyRoster } from '@/replica/party-roster';
 
 type FakeParty = PartyPort & {
@@ -34,18 +35,18 @@ function createFakeParty(players: PartyMember[] = []): FakeParty {
       party.reads += 1;
 
       if (party.failReads) {
-        return Promise.reject(new Error('party read failed'));
+        return Promise.resolve(Result.err(new PartyReadFailure({ reason: 'party read failed' })));
       }
 
       const seen = [...party.players];
 
       if (!party.holdReads) {
-        return Promise.resolve(seen);
+        return Promise.resolve(Result.ok(seen));
       }
 
       return new Promise((resolve) => {
         held.push(() => {
-          resolve(seen);
+          resolve(Result.ok(seen));
         });
       });
     },
@@ -205,26 +206,43 @@ describe('party roster', () => {
   });
   test('returns null and does not throw when the party read fails', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const party = createFakeParty([member('gm-b', 'GM')]);
+    const reported: string[] = [];
     party.failReads = true;
-    const roster = createPartyRoster(party);
+
+    const roster = createPartyRoster({
+      ...party,
+      report: (failure: { _tag: string }) => reported.push(failure._tag),
+    });
+
     // #when
     const sender = await roster.senderOf('gm-b');
+
     // #then
-    expect(sender).toBeNull();
+    expect({ sender, reported }).toEqual({
+      sender: null,
+      reported: ['PartyReadFailure'],
+    });
   });
   test('stops following party changes once stopped', async () => {
     // #given
     const party = createFakeParty();
-    const roster = createPartyRoster(party);
+    const reported: string[] = [];
+
+    const roster = createPartyRoster({
+      ...party,
+      report: (failure: { _tag: string }) => reported.push(failure._tag),
+    });
+
     await settled();
     roster.stop();
     party.failReads = true;
-    spyOn(console, 'error').mockImplementation(() => undefined);
     // #when
     party.change([member('gm-b', 'GM')]);
     // #then
-    expect(await roster.senderOf('gm-b')).toBeNull();
+    expect({ sender: await roster.senderOf('gm-b'), reported }).toEqual({
+      sender: null,
+      reported: ['PartyReadFailure'],
+    });
   });
 });

@@ -35,6 +35,14 @@ export const noticeSchema = z.enum([
   'new-version',
 ]);
 
+export const diagnosticSchema = z.strictObject({
+  tag: z.string(),
+  at: z.number().int().nonnegative(),
+  detail: z.string().optional(),
+});
+
+export type Diagnostic = z.infer<typeof diagnosticSchema>;
+
 // What the last catch-up found in the room copy: `read` a copy of this client's generation, merged;
 // `none` no copy; `unreadable` a copy that does not decode, one of another generation, or a failed
 // read with no outcome known yet; `newer` a copy of a newer build, left unread; `older` a copy of
@@ -103,6 +111,7 @@ const projectionSchema = z
     // (AD-4), which stand in until answered.
     pending: z.array(recordSchema),
     notices: z.array(noticeSchema),
+    diagnostics: z.array(diagnosticSchema).max(20).optional(),
     sync: syncSchema,
     roomCopy: roomCopySchema,
     party: partySchema,
@@ -121,6 +130,7 @@ const deltaSchema = z.strictObject({
   // again, and keys the role no longer sees.
   withdrawn: z.array(z.string()),
   notices: z.array(noticeSchema),
+  diagnostics: z.array(diagnosticSchema).max(20).optional(),
   sync: syncSchema,
   roomCopy: roomCopySchema,
   party: partySchema,

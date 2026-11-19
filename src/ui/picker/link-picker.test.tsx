@@ -1,3 +1,5 @@
+import { Result } from 'better-result';
+import { NotificationFailure } from '@/platform/ports';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { act, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -646,10 +648,13 @@ async function openPicker(options: PickerOptions): Promise<Harness> {
   };
 
   const notification = {
-    show: (message: string, variant?: NotificationVariant): Promise<string> => {
+    show: (message: string, variant?: NotificationVariant) => {
       steps.push({ kind: 'notify', message, variant });
 
-      return answer(options.notify, 'notification');
+      return Result.tryPromise({
+        try: () => answer(options.notify, 'notification'),
+        catch: (error) => new NotificationFailure({ reason: String(error) }),
+      });
     },
   };
 
@@ -924,7 +929,7 @@ describe('ported reverse-picker and command outcome contracts', () => {
           store={store}
           sendCommand={async () => ({ kind: 'answered', answer: undefined })}
           scene={{ getItemLabel: async () => '', setItemLabel: async () => undefined }}
-          notification={{ show: async () => 'notice' }}
+          notification={{ show: async () => Result.ok('notice') }}
           onLinked={async () => undefined}
         />,
       );
@@ -1572,7 +1577,7 @@ describe('ported linked-target naming contracts', () => {
               writes.push(label);
             },
           }}
-          notification={{ show: async () => 'notice' }}
+          notification={{ show: async () => Result.ok('notice') }}
           onLinked={async () => undefined}
         />,
       );
