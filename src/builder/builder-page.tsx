@@ -258,7 +258,7 @@ export function BuilderPage({
     const file = attachedFile(kind);
 
     if (file?.reference !== null && file?.reference !== undefined) {
-      // oxlint-disable-next-line react/immutability -- This hoisted queue helper is called by the clear event handler.
+      // oxlint-disable-next-line react/immutability -- enqueueWrite mutates the write-queue ref; this runs in the clear event handler, never during render.
       enqueueWrite(kind, file, text, text);
     }
 
