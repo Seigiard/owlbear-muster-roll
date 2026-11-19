@@ -1,11 +1,11 @@
 ---
 id: TASK-115.3
 title: 'Step 1: better-result replaces core/result across the project'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-18T19:41:00Z'
-updated_date: '2026-11-19T08:17:00Z'
+updated_date: '2026-11-19T15:33:00Z'
 labels:
   - architecture
 dependencies:
@@ -25,9 +25,9 @@ ordinal: 146000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `src/core/result.ts` is deleted and no file imports it; `better-result` is pinned in `package.json`
-- [ ] #2 `bun test` and `bun run test:browser` junit lists equal the baseline
-- [ ] #3 The background page grows by at most 4 KB gzip in `bun run build`
+- [x] #1 `src/core/result.ts` is deleted and no file imports it; `better-result` is pinned in `package.json`
+- [x] #2 `bun test` and `bun run test:browser` junit lists equal the baseline
+- [x] #3 The background page grows by at most 4 KB gzip in `bun run build`
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -45,3 +45,9 @@ ordinal: 146000
 <!-- SECTION:NOTES:BEGIN -->
 Implemented on branch task-115-3-better-result (965d26f): better-result 3.0.1 pinned, src/core/result.ts deleted, every in-memory result ported; plain shapes kept at external boundaries (the browser port-contract adapter converts before page.evaluate). Checks on the tip: oxfmt, lint, typecheck, bun test 3501 pass/1 skip with 0 baseline lines missing, browser 583 lines with 0 missing (one focus flake in tests/open.e2e.ts:253 passed 3/3 on rerun), build. Background page gzip 102292 -> 105366 bytes (+3074, limit 4096). Engine-test literal hunks recorded in deferred-work.md as a deviation.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+better-result 3.0.1 replaced src/core/result.ts in one mechanical PR (#58). Unit and browser junit lists matched the baseline; background page gzip grew 102292 -> 105366 bytes (+3074, limit 4096).
+<!-- SECTION:FINAL_SUMMARY:END -->

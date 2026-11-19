@@ -1,11 +1,11 @@
 ---
 id: TASK-115.10
 title: 'Step 7: judge pending-edits and room-protocol for tables'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-18T19:41:00Z'
-updated_date: '2026-11-19T12:58:00Z'
+updated_date: '2026-11-19T15:33:00Z'
 labels:
   - architecture
   - replica
@@ -27,8 +27,8 @@ DESIGN.md leaves `pending-edits` (per-entry waiting, sent, denied-quiet) and `ro
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 For each of the two modules, either a `TransitionTable` with its generated diagram exists, or DESIGN.md records the reason it stays a linear function
-- [ ] #2 `engine-propose`, `engine-client` and `engine-no-gm` pass; engine suite junit list equals the baseline
+- [x] #1 For each of the two modules, either a `TransitionTable` with its generated diagram exists, or DESIGN.md records the reason it stays a linear function
+- [x] #2 `engine-propose`, `engine-client` and `engine-no-gm` pass; engine suite junit list equals the baseline
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -47,3 +47,9 @@ Note 2026-11-19 (architecture review candidate 4): whether proposal-queue folds 
 
 Judged both modules (report by a high-tier reviewer, accepted by the orchestrator): pending-edits keeps two live states per key (waiting, versioned) and a denial quiet window that spans keys, so a per-entry table would add rows without owning the cross-module ordering rules (formal/edit-delivery covers those); room-protocol's 'assembling' belongs to one fragment key, AD-5 already lists the admitted messages, and the roomMessages chain owns ordering. Both stay linear functions; DESIGN.md records why (catalog rows and two paragraphs). No runtime change.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+pending-edits and room-protocol stay linear functions; DESIGN.md records why (PR #73): two live states per key and a cross-key quiet window in pending-edits; per-key assembly in room-protocol, whose ordering the roomMessages chain owns. No runtime change.
+<!-- SECTION:FINAL_SUMMARY:END -->

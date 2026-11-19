@@ -1,11 +1,11 @@
 ---
 id: TASK-115.2
 title: 'Step 0b: move the catch-up interpreter and timer registry out of the engine'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-18T19:41:00Z'
-updated_date: '2026-11-19T09:44:00Z'
+updated_date: '2026-11-19T15:33:00Z'
 labels:
   - architecture
   - replica
@@ -26,10 +26,10 @@ The 17-branch `runCatchUp`, `catchUpTimers` keyed by string, `armCatchUpTimer` a
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `src/replica/catch-up-effects.ts` interprets every `CatchUpDecision`; `engine.ts` holds no catch-up timer map and no `runCatchUp` body
-- [ ] #2 `src/replica/timers.ts` exports `schedule(signal, ms, fn)` returning a cancel function; a fired or cancelled timer never calls `fn` after `signal` aborts
-- [ ] #3 Interpreter tests run on a fake helper with no real time
-- [ ] #4 Engine suite junit list equals the baseline; `engine.ts` shrinks by about 180 lines
+- [x] #1 `src/replica/catch-up-effects.ts` interprets every `CatchUpDecision`; `engine.ts` holds no catch-up timer map and no `runCatchUp` body
+- [x] #2 `src/replica/timers.ts` exports `schedule(signal, ms, fn)` returning a cancel function; a fired or cancelled timer never calls `fn` after `signal` aborts
+- [x] #3 Interpreter tests run on a fake helper with no real time
+- [x] #4 Engine suite junit list equals the baseline; `engine.ts` shrinks by about 180 lines
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -47,3 +47,9 @@ The 17-branch `runCatchUp`, `catchUpTimers` keyed by string, `armCatchUpTimer` a
 <!-- SECTION:NOTES:BEGIN -->
 Implemented on task-115-2-catch-up-effects (f3cbd18): src/replica/timers.ts schedule(signal, ms, fn) with cancel and abort; src/replica/catch-up-effects.ts createCatchUpEffects(ports).run interprets every CatchUpDecision and owns the CatchUpTimer key map; engine.ts wires it with one AbortController aborted in stop() and lost runCatchUp, catchUpTimers, armCatchUpTimer, disarmCatchUpTimer (1505 -> 1377 lines). Tests: timers.test.ts on bun fake timers, catch-up-effects.test.ts on a fake schedule (15 new). Checks: oxfmt, lint, typecheck, build; bun test 0 baseline lines missing; browser 583/583 (one link.e2e.ts flake in the first run, recorded in deferred-work.md). Calibrated both false-green rows.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The catch-up interpreter and its timer registry moved out of engine.ts into catch-up-effects.ts (PR #66); engine.ts shrank 1505 -> 1377 lines. Interpreter tests run on a fake scheduler; the one schedule(signal, ms, fn) helper later moved to src/platform/schedule.ts with the clock port (TASK-115.5). Junit baseline held.
+<!-- SECTION:FINAL_SUMMARY:END -->

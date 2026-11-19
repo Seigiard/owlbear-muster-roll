@@ -3,9 +3,10 @@ id: TASK-115
 title: >-
   Epic: replica machines as complete transition tables, failures as tagged
   results
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-18T19:41:00Z'
+updated_date: '2026-11-19T15:33:00Z'
 labels:
   - epic
   - architecture
@@ -31,7 +32,13 @@ ADR-0004 (accepted 2026-11-18) answers the owner request for a simpler sync core
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every subtask is Done and the engine suite junit list equals the baseline at the epic tip
-- [ ] #2 ADR-0004 and DESIGN.md match the code at epic close; the spine Replica row names `machine.ts`, the table rule, the signal and the clock port
-- [ ] #3 `GLOSSARY.md` carries Online GM (by messages) and GM in party (by the list)
+- [x] #1 Every subtask is Done and the engine suite junit list equals the baseline at the epic tip
+- [x] #2 ADR-0004 and DESIGN.md match the code at epic close; the spine Replica row names `machine.ts`, the table rule, the signal and the clock port
+- [x] #3 `GLOSSARY.md` carries Online GM (by messages) and GM in party (by the list)
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Replica machines are complete transition tables and port failures are tagged results (epic PR #63, steps #58, #62, #66-#75). Catch-up, liveness, room copy and generation are TransitionTables checked by machine-check with generated diagrams; pending-edits and room-protocol stay linear with recorded reasons; one AbortController, a clock port, a failure sink with GM-only diagnostics, better-result. At the epic tip: fmt, lint, typecheck, build, bun test with no baseline line lost, browser 587/587. The closing review fixed three regressions (denial cause, ignored digest, failed-window-send loop); on the owner's decision one more (answersOwn in the adopting phase) ships as TASK-129, and the remaining minor findings are listed in PR #63.
+<!-- SECTION:FINAL_SUMMARY:END -->

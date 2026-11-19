@@ -1,11 +1,11 @@
 ---
 id: TASK-115.7
 title: 'Step 4b: show the diagnostics notice to the GM in the settings'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-18T19:41:00Z'
-updated_date: '2026-11-19T12:05:00Z'
+updated_date: '2026-11-19T15:33:00Z'
 labels:
   - ui
 dependencies:
@@ -25,9 +25,9 @@ Step 4 publishes recent replica failures as the `diagnostics` notice in the proj
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A GM window shows a collapsed «Диагностика» block in the settings listing the recent failures from the notice
-- [ ] #2 A player window renders no new banner or block for `diagnostics`; the e2e suite for a player is unchanged
-- [ ] #3 All interface text for the block is in `src/copy.ts`
+- [x] #1 A GM window shows a collapsed «Диагностика» block in the settings listing the recent failures from the notice
+- [x] #2 A player window renders no new banner or block for `diagnostics`; the e2e suite for a player is unchanged
+- [x] #3 All interface text for the block is in `src/copy.ts`
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -44,3 +44,9 @@ Step 4 publishes recent replica failures as the `diagnostics` notice in the proj
 <!-- SECTION:NOTES:BEGIN -->
 Implemented on task-115-7-diagnostics-ui. Settings ends with a native <details> «Диагностика», closed by default; its summary adds «Сбоев: N» when failures exist; opened, it lists the projection's diagnostics newest first as 'HH:MM:SS · tag · detail' (time by Intl.DateTimeFormat ru-RU), or «Сбоев нет». Text in copy.diagnostics. Players see no change (Settings is GM-only). Tests: diagnostics-text.test.ts and tests/diagnostics.e2e.ts (GM with a failure, GM with none, player). Checks: fmt, lint, typecheck, bun test, build; browser 586/586.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+A GM sees a collapsed «Диагностика» block in Settings with the recent failures, newest first, time formatted by Intl.DateTimeFormat (PR #69); players get nothing new; text in src/copy.ts. Verified by tests/diagnostics.e2e.ts and diagnostics-text.test.ts.
+<!-- SECTION:FINAL_SUMMARY:END -->

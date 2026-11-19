@@ -626,3 +626,17 @@ Deviations from DESIGN.md that TASK-115.11 reconciles:
 
 - Only `engine-catch-up`, `engine-liveness` and `engine-no-gm` run on the manual clock (`createRoomRig({ clock: 'manual' })`, `rig.advance(ms)`); every other engine file keeps real time and `pause()`. Migrate the rest file by file.
 - Three expectations in `engine-catch-up.test.ts` read elapsed time from `roomRig.now()` instead of `Date.now()`; their numeric bounds did not change.
+
+## Deferred from: the TASK-115 closing review (2026-11-19)
+
+Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic: the denial cause reaches the notice on the fresh-edit and stale-reject paths; a repeated ignored digest stays ignored; a failed send on the window channel no longer republishes. Shipped on the owner's decision: `answersOwn` ignores the `adopting` phase (TASK-129). Deferred as minor:
+
+- A failed `removeIncomplete` at load starts a GM with no persistence; base logged and loaded the complete generation (`engine.ts` `loadReplica`).
+- A failed startup role read starts the engine as a player; `background-main.ts` no longer catches startup rejections.
+- Window send queues (`src/ui/main.tsx`, `src/ui/picker/main.tsx`) have no reporter, so their send failures leave no trace.
+- Diagnostics travel in every window envelope and eat into the 512-byte reserve of `recordFitsOneMessage`; one ~14 KB cell can stop reaching the window, and `publish` advances `held` after a failed split.
+- `engine-catch-up.test.ts:476-480`: the delay check became true by construction on the manual clock.
+- Port failure shapes: `SendFailureData` and `StorageFailureData` keep plain-data members for older test doubles; `StorageFailure` has three names; `DiceExtensionFailure` sits in `ports.ts` but is a replica failure; the ports.ts comment says adapters always return the tagged class.
+- `failures.ts`: the free function `report` shares its name with `FailureSink.report`; `Diagnostic` and the limit duplicate the wire schema; the `limit` option has no caller. `send-queue.ts` keeps a dead `onFailure` parameter.
+- `roll-flow.ts` uses `message-rejected` as a catch-all tag; `catchUpRunner` in `room-protocol.ts` is a pass-through.
+- The table rewrite removed about 190 comment lines of AD rationale from `catch-up.ts`, `room-copy.ts` and `generation-flow.ts`; decide which belong back in code.

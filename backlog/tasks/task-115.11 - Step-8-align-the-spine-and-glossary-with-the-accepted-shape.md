@@ -1,11 +1,11 @@
 ---
 id: TASK-115.11
 title: 'Step 8: align the spine and glossary with the accepted shape'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-18T19:41:00Z'
-updated_date: '2026-11-19T13:33:00Z'
+updated_date: '2026-11-19T15:33:00Z'
 labels:
   - docs
 dependencies:
@@ -31,9 +31,9 @@ At epic close the architecture spine must match the code: the Replica row and di
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The spine Replica row, dependency diagram and AD-6/AD-7 rules name the table modules, `machine.ts`, the signal and the clock port
-- [ ] #2 `GLOSSARY.md` defines Online GM (by messages) and GM in party (by the list) with avoid-lists
-- [ ] #3 DESIGN.md migration table marks every step done with its PR
+- [x] #1 The spine Replica row, dependency diagram and AD-6/AD-7 rules name the table modules, `machine.ts`, the signal and the clock port
+- [x] #2 `GLOSSARY.md` defines Online GM (by messages) and GM in party (by the list) with avoid-lists
+- [x] #3 DESIGN.md migration table marks every step done with its PR
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -50,3 +50,9 @@ At epic close the architecture spine must match the code: the Replica row and di
 <!-- SECTION:NOTES:BEGIN -->
 Aligned docs with the code (PR #75): ARCHITECTURE-SPINE Replica and Platform rows, dependency diagram, AD-6/AD-7 rules name catch-up-table (catchUpTable, livenessTable), room-copy-table, generation-table, machine.ts, the shared AbortSignal, the clock port and failures.ts. DESIGN.md migration table marks every step done with its PR, and the deviations from deferred-work (stop discards held commits, room-copy stopped phase, nonce check in catch-up, effects keyed by type, liveness starts offline) are written into DESIGN and ADR-0004. GLOSSARY.md already defined Online GM and GM in party with avoid-lists.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The architecture spine, DESIGN.md and ADR-0004 match the code (PR #75): the Replica row, diagram and AD-6/AD-7 rules name the tables, machine.ts, the signal, the clock port and the failure sink; every migration step is marked done with its PR; recorded deviations reconciled. GLOSSARY.md already had both GM terms.
+<!-- SECTION:FINAL_SUMMARY:END -->
