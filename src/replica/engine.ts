@@ -449,8 +449,11 @@ export async function startReplicaEngine(
     }),
     report,
   });
-  failures.subscribe(() => {
-    if (diagnosticsPublishPending) {
+  failures.subscribe((_entry, failure) => {
+    if (
+      diagnosticsPublishPending ||
+      (failure._tag === 'SendFailure' && failure.channel === UI_CHANNEL)
+    ) {
       return;
     }
 

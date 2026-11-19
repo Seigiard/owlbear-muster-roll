@@ -519,13 +519,7 @@ function catchUpAlive(phase: LivePhase, event: EventOf<'alive'>): Step<Phase, Ef
   const ignored = findDigest(withDigest.ignoredDigests, event.sender);
 
   if (ignored === event.message.digest) {
-    return {
-      phase: {
-        ...withDigest,
-        ignoredDigests: removeSender(withDigest.ignoredDigests, event.sender),
-      },
-      effects: [],
-    };
+    return { phase: withDigest, effects: [] };
   }
 
   const withoutIgnored = {

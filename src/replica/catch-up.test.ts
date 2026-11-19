@@ -719,19 +719,23 @@ describe('catch-up', () => {
     timeout.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
     timeout.setNow(123);
 
-    const decisions = [
-      answered.catchUp.aliveReceived(alive(11), 'gm-a', 'equal'),
-      timeout.catchUp.aliveReceived(alive(11), 'gm-a', 'equal'),
-    ];
+    const answeredSecond = answered.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    const timeoutSecond = timeout.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    answered.setNow(164);
+    const answeredThird = answered.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    answered.setNow(205);
+    const answeredFourth = answered.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
 
     // #then
-    expect(decisions).toEqual([
+    expect([answeredSecond, timeoutSecond, answeredThird, answeredFourth]).toEqual([
       [],
       [
         { type: 'entered', trigger: 'drift', fresh: true },
         { type: 'arm', timer: { kind: 'catch-up' }, delayMs: 100 },
         { type: 'read-room-copy', r: 'r-3', fresh: true },
       ],
+      [],
+      [],
     ]);
   });
   test('a higher generation adopts, forgets drift, and enters with a fresh nonce', () => {
