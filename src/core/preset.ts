@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
+import type { BlockAddress } from '@/core/block-address';
 import { isFieldId, isTemplateId } from '@/core/field-id';
 import { PRESET_FORMAT_VERSION as FORMAT_VERSION } from '@/core/format-version';
 import { parseFormula, type FormulaExpression, type FormulaTree } from '@/core/formula';
@@ -163,9 +164,7 @@ export type PresetCell = z.infer<typeof cell>;
 export type PresetFieldCell = z.infer<typeof fieldCell>;
 
 export type TabBlock = {
-  scopeId: string;
-  instanceId: string;
-  path: readonly string[];
+  block: BlockAddress;
   name: string;
 };
 
@@ -404,31 +403,6 @@ export function repeatTabById(layout: TemplateLayout, id: string): RepeatTabPlac
   return tab === undefined ? null : { place: { tabIndex }, tab };
 }
 
-export function repeatSectionById(layout: TemplateLayout, id: string): PresetSection | null {
-  const scope = repeatScopeById(layout, id);
-
-  if (scope !== null) {
-    return scope.row === null
-      ? scope.section
-      : { ...scope.section, repeat: scope.row.repeat, rows: [scope.row] };
-  }
-
-  const tab = repeatTabById(layout, id);
-
-  if (tab === null) return null;
-
-  return {
-    title: tab.tab.title,
-    visibility: tab.tab.visibility,
-    repeat: tab.tab.repeat,
-    rows: tab.tab.sections.flatMap((candidate) =>
-      candidate.repeat === undefined
-        ? candidate.rows.filter((row) => row.repeat === undefined)
-        : [],
-    ),
-  };
-}
-
 export function repeatSectionByPath(
   layout: TemplateLayout,
   scopePath: readonly string[],
@@ -499,11 +473,11 @@ function tabAsSection(tab: PresetTab): PresetSection {
   };
 }
 
-export function repeatSectionPlace(
+export function repeatSectionPlaceByPath(
   layout: TemplateLayout,
-  id: string,
-): { place: TemplateSectionPlace; section: PresetSection } | null {
-  const scope = repeatScopeById(layout, id);
+  scopePath: readonly string[],
+): { place: TemplateSectionPlace; section: PresetSection | undefined } | null {
+  const scope = repeatScopeByPath(layout, scopePath);
 
   if (scope !== null) {
     return {
@@ -515,18 +489,7 @@ export function repeatSectionPlace(
     };
   }
 
-  const tab = repeatTabById(layout, id);
-
-  if (tab === null) return null;
-
-  const section = repeatSectionById(layout, id);
-
-  if (section === null) return null;
-
-  return {
-    place: { tabIndex: tab.place.tabIndex, sectionIndex: 0 },
-    section,
-  };
+  return null;
 }
 
 export type RepeatScope = {
@@ -543,6 +506,14 @@ export function repeatScopeByPath(
 
   for (const [tabIndex, tab] of layout.tabs.entries()) {
     if (tab.repeat?.id === tabScopeId) {
+      if (scopePath.length === 1) {
+        return {
+          place: { tabIndex, sectionIndex: 0 },
+          section: tabAsSection(tab),
+          row: null,
+        };
+      }
+
       for (const [sectionIndex, section] of tab.sections.entries()) {
         if (childScopeId !== undefined && section.repeat?.id === childScopeId) {
           if (scopePath.length === 2) {
@@ -594,7 +565,7 @@ export function repeatScopeByPath(
   return null;
 }
 
-export function repeatScopeById(layout: TemplateLayout, id: string): RepeatScope | null {
+function scopeFallback(layout: TemplateLayout, id: string): RepeatScope | null {
   for (const { place, section } of placedSections(layout)) {
     if (section.repeat?.id === id) return { place, section, row: null };
 
@@ -680,10 +651,17 @@ export function repeatScopePathAt(layout: TemplateLayout, from: TemplateRowPlace
   return repeatScopeIdsAt(layout, from).reverse();
 }
 
-export function scopeFields(layout: TemplateLayout, scopeId: string): PresetFieldCell[] {
-  const section = repeatSectionById(layout, scopeId);
+function scopeFieldsByIdFallback(layout: TemplateLayout, scopeId: string): PresetFieldCell[] {
+  const scope = scopeFallback(layout, scopeId);
 
-  return section === null ? [] : sectionFields(section);
+  if (scope === null) return [];
+
+  const section =
+    scope.row === null
+      ? scope.section
+      : { ...scope.section, repeat: scope.row.repeat, rows: [scope.row] };
+
+  return sectionFields(section);
 }
 
 export function scopeFieldsAt(
@@ -759,7 +737,7 @@ export function scopeFieldsAt(
     );
   }
 
-  return scopeFields(layout, scopeId);
+  return scopeFieldsByIdFallback(layout, scopeId);
 }
 
 export function presetProblems(preset: Preset): PresetProblem[] {

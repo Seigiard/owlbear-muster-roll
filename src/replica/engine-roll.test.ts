@@ -7,7 +7,7 @@ import type { RollOutcome } from '@/core/ui-messages';
 import type { MockRoom } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
 import { copy } from '@/copy';
-import { createRoomRig, type RigClient, waitUntil } from '../../tests/support/room-rig';
+import { createRoomRig, sendWire, type RigClient, waitUntil } from '../../tests/support/room-rig';
 
 const GHOST = 'ghost-gm';
 
@@ -622,7 +622,7 @@ describe('the value a roll uses', () => {
     gm.engine.catchUp();
     await waitUntil(() => gm.store.$sync.get().state === 'catching-up');
     // #when
-    gm.window.sendCommand({
+    sendWire(gm.window, {
       type: 'field-patch',
       sheetId: 'brok',
       target: { kind: 'row', rowId: 'str' },
@@ -645,7 +645,7 @@ describe("the value a player's roll uses", () => {
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
     const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
-    gm.window.sendCommand({
+    sendWire(gm.window, {
       type: 'acl-set',
       sheetId: 'brok',
       playerId: 'player',
@@ -655,7 +655,7 @@ describe("the value a player's roll uses", () => {
     await waitUntil(() => player.store.$records.get().get('acl:brok:player')?.d != null);
     gm.engine.stop();
     // #when: str 4 makes the target 2.
-    player.window.sendCommand({
+    sendWire(player.window, {
       type: 'field-patch',
       sheetId: 'brok',
       target: { kind: 'row', rowId: 'str' },

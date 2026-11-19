@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { blockAddress, blockIdOf, blockPathSchema, parseBlockKey } from '@/core/block-address';
 import { FORMAT_VERSION } from '@/core/format-version';
 import type { Preset } from '@/core/preset';
 import {
@@ -8,7 +9,6 @@ import {
   cellValues,
   fieldValuesSchema,
   keySegmentSchema,
-  parseBlockPathKey,
   templateIdSchema,
   type VersionedRecord,
 } from '@/core/records';
@@ -18,10 +18,7 @@ import { liveLinks, tokenIdSchema } from '@/core/token-links';
 export const SNAPSHOT_FILE_TYPE = 'muster-roll/snapshot';
 
 const blockSchema = z.strictObject({
-  path: z
-    .array(keySegmentSchema)
-    .min(2)
-    .refine((parts) => parts.length % 2 === 0),
+  path: blockPathSchema,
   order: z.number(),
   cells: fieldValuesSchema,
 });
@@ -39,11 +36,7 @@ const sheetSchema = z
 const linkSchema = z.strictObject({
   tokenId: tokenIdSchema,
   sheetId: keySegmentSchema,
-  path: z
-    .array(keySegmentSchema)
-    .min(2)
-    .refine((parts) => parts.length % 2 === 0)
-    .optional(),
+  path: blockPathSchema.optional(),
   cellId: keySegmentSchema,
 });
 
@@ -69,7 +62,8 @@ export const snapshotFileSchema = fileSchema.superRefine((file, context) => {
 
     for (const [blockIndex, block] of sheet.blocks.entries()) {
       const path = block.path.join(':');
-      const instance = block.path.at(-1) ?? '';
+      const address = blockAddress(sheet.id, block.path);
+      const instance = address === null ? '' : (blockIdOf(address) ?? '');
 
       if (paths.has(path))
         context.addIssue({
@@ -137,12 +131,12 @@ export function encodeSnapshotFile(
       const blocks: SnapshotFile['sheets'][number]['blocks'] = [];
 
       for (const record of records.values()) {
-        const parts = parseBlockPathKey(record.k);
+        const parts = parseBlockKey(record.k);
         const data = blockDataSchema.safeParse(record.d).data;
 
-        if (parts?.sheetId === sheet.sheetId && data !== undefined) {
+        if (parts?.sheetId === sheet.sheetId && parts.path.length > 0 && data !== undefined) {
           blocks.push({
-            path: parts.path,
+            path: [...parts.path],
             order: data.order,
             cells: sorted(cellValues(data.cells)),
           });
@@ -163,11 +157,13 @@ export function encodeSnapshotFile(
 
   const links = [...liveLinks(records, preset)]
     .sort(([a], [b]) => compare(a, b))
-    .map(([tokenId, { target }]) =>
-      target.path === null || target.path === undefined
-        ? { tokenId, sheetId: target.sheetId, cellId: target.cellId ?? '' }
-        : { tokenId, sheetId: target.sheetId, path: target.path, cellId: target.cellId ?? '' },
-    );
+    .map(([tokenId, { target }]) => {
+      const block = target.block;
+
+      return block.path.length === 0
+        ? { tokenId, sheetId: block.sheetId, cellId: target.cellId ?? '' }
+        : { tokenId, sheetId: block.sheetId, path: [...block.path], cellId: target.cellId ?? '' };
+    });
 
   return { v: FORMAT_VERSION, type: SNAPSHOT_FILE_TYPE, sheets, links };
 }

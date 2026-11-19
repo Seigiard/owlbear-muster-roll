@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { blockKeyOf, parseBlockKey, type BlockAddress } from '@/core/block-address';
 import {
   plainRowIdOf,
   sectionFields,
@@ -9,12 +10,10 @@ import {
   type Template,
 } from '@/core/preset';
 import {
-  blockPathKey,
   blockDataSchema,
   blockKey,
   linkDataSchema,
   repDataSchema,
-  repKey,
   rowKey,
   sheetDataSchema,
   type FieldValue,
@@ -152,11 +151,13 @@ export function liveSheets(
   const sheets: SheetSummary[] = [];
 
   for (const record of records) {
-    if (!record.k.startsWith('blk:') || record.k.split(':').length !== 2) {
+    const block = parseBlockKey(record.k);
+
+    if (block === null || block.path.length !== 0) {
       continue;
     }
 
-    const sheetId = record.k.slice('blk:'.length);
+    const sheetId = block.sheetId;
     const data = sheetDataSchema.safeParse(record.d);
 
     if (data.success && data.data.set === setId && !templateIds.has(sheetId)) {
@@ -208,10 +209,8 @@ export function sheetName(
 // A repeat block is named by its repeat scope's explicit nameField value, "" when it has none.
 export function repeatBlockName(
   records: ReadonlyMap<string, VersionedRecord>,
-  sheetId: string,
+  block: BlockAddress,
   section: PresetSection,
-  instanceId: string,
-  path?: readonly string[],
 ): string {
   const nameField = section.repeat?.nameField ?? null;
 
@@ -219,18 +218,13 @@ export function repeatBlockName(
     return '';
   }
 
-  const key =
-    path === undefined
-      ? repKey(sheetId, section.repeat.id, instanceId)
-      : blockPathKey(sheetId, path);
-
-  const block = repDataSchema.safeParse(records.get(key)?.d);
+  const data = repDataSchema.safeParse(records.get(blockKeyOf(block))?.d);
 
   const named = sectionFields(section).find((field) => field.id === nameField);
 
   return named === undefined
     ? ''
-    : nameText(named.type, block.data?.cells[nameField]?.[0] ?? undefined);
+    : nameText(named.type, data.data?.cells[nameField]?.[0] ?? undefined);
 }
 
 // True for a live record the sheet's deletion must tombstone with it. A tombstone needs no second

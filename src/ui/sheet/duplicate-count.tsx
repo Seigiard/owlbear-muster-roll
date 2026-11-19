@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { FieldError, Input, Label, TextField } from 'react-aria-components';
 
+import type { BlockAddress } from '@/core/block-address';
 import type { Command } from '@/core/ui-messages';
 import { DUPLICATE_COUNT_MIN, parseDuplicateCount } from '@/core/repeat-block-duplicate';
 import { copy } from '@/copy';
@@ -10,10 +11,7 @@ import type { CommandOutcomePromise } from '@/ui/replica-client';
 
 type DuplicateCountProps = {
   // The repeat block to duplicate.
-  sheetId: string;
-  sectionId: string;
-  instanceId: string;
-  path?: readonly string[];
+  block: BlockAddress;
   sendCommand: (
     command: Extract<Command, { type: 'repeat-block-duplicate' }>,
   ) => CommandOutcomePromise<undefined>;
@@ -33,10 +31,7 @@ type Problem = 'invalid' | 'failed' | null;
 // dialog. A bad count stays in the field with its message, and nothing is sent. A sent count keeps
 // the block open until its own command answers, so a failure can still show under the field.
 export function DuplicateCount({
-  sheetId,
-  sectionId,
-  instanceId,
-  path,
+  block,
   sendCommand,
   focusRequest,
   onDone,
@@ -97,15 +92,10 @@ export function DuplicateCount({
 
     const command: Extract<Command, { type: 'repeat-block-duplicate' }> = {
       type: 'repeat-block-duplicate',
-      sheetId,
-      sectionId,
-      instanceId,
+      sheetId: block.sheetId,
+      block,
       count: count.value,
     };
-
-    if (path !== undefined) {
-      command.path = [...path];
-    }
 
     setSent({
       outcome: sendCommand(command),

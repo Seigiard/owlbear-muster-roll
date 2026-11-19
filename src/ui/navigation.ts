@@ -1,4 +1,5 @@
-import type { OpenSheetRequest } from '@/core/ui-messages';
+import { blockAddress, sameAddress, type BlockAddress } from '@/core/block-address';
+import type { WireOpenSheetRequest } from '@/core/ui-messages';
 import type { CommandOutcome } from '@/ui/replica-client';
 
 export const SETTINGS_TAB = 'settings';
@@ -9,7 +10,7 @@ export type NavigationDeleteAsk = { sheet: string; request: number };
 
 export type NavigationBlockReveal = {
   sheet: string;
-  path: readonly string[] | null;
+  block: BlockAddress | null;
   cellId: string;
   focus: boolean;
 };
@@ -20,7 +21,12 @@ export type NavigationFocusAfterLoss =
 
 export type NavigationTabReveal = { tab: string; focus: boolean };
 
-export type TemplateTabSelection = number | string;
+export type TemplateTabSelection =
+  | number
+  | {
+      sourceIndex: number;
+      block: BlockAddress | null;
+    };
 
 export type NavigationState = {
   selectedTab: string;
@@ -44,7 +50,7 @@ export type NavigationEvent =
       type: 'select-template-tab';
       sheet: string;
       index: number;
-      key?: string;
+      tab?: TemplateTabSelection;
       visible: boolean;
     }
   | { type: 'create-sent'; sheet: string; isGm: boolean; presetState: PresetState }
@@ -60,18 +66,18 @@ export type NavigationEvent =
     }
   | {
       type: 'open-request';
-      request: OpenSheetRequest;
+      request: WireOpenSheetRequest;
       focusInWindow: boolean;
-      tab: string | null;
+      sheet: string | null;
       blockTab: number | null;
       cellTab: number | null;
-      tabKey?: string;
+      tab?: TemplateTabSelection;
       ready: boolean;
     }
   | { type: 'name-focused'; sheet: string }
   | { type: 'actions-focused'; sheet: string }
   | { type: 'focus-actions'; sheet: string }
-  | { type: 'block-revealed'; sheet: string; path: readonly string[] | null }
+  | { type: 'block-revealed'; sheet: string; block: BlockAddress | null }
   | { type: 'tab-revealed' }
   | { type: 'focus-loss-handled' };
 
@@ -109,7 +115,7 @@ export function transition(state: NavigationState, event: NavigationEvent): Navi
             ...state,
             chosenTemplateTabs: new Map(state.chosenTemplateTabs).set(
               event.sheet,
-              event.key ?? event.index,
+              event.tab ?? event.index,
             ),
           }
         : state;
@@ -150,7 +156,7 @@ export function transition(state: NavigationState, event: NavigationEvent): Navi
         : { ...state, focusActionsOf: event.sheet };
     case 'block-revealed':
       return state.blockReveal?.sheet === event.sheet &&
-        samePath(state.blockReveal.path, event.path)
+        sameBlock(state.blockReveal.block, event.block)
         ? { ...state, blockReveal: null }
         : state;
     case 'tab-revealed':
@@ -263,36 +269,41 @@ function openRequestTransition(
     return state;
   }
 
-  if (event.tab === null) {
+  if (event.sheet === null) {
     // A request this window does not list is still taken, so no other window gets it.
     return { ...state, takenOpen: event.request.id };
   }
 
+  const block = blockAddress(event.request.sheetId, event.request.path ?? []);
+
   const blockReveal = {
-    sheet: event.tab,
-    path: event.request.path ?? null,
+    sheet: event.sheet,
+    block: block === null || block.path.length === 0 ? null : block,
     cellId: event.request.cellId,
     focus: event.focusInWindow,
   };
 
   const nextFocusName =
-    state.focusNameOf !== null && state.focusNameOf !== event.tab ? null : state.focusNameOf;
+    state.focusNameOf !== null && state.focusNameOf !== event.sheet ? null : state.focusNameOf;
 
   return {
     ...state,
     takenOpen: event.request.id,
-    selectedTab: event.tab,
+    selectedTab: event.sheet,
     blockReveal,
-    tabReveal: { tab: event.tab, focus: event.focusInWindow && blockReveal === null },
+    tabReveal: { tab: event.sheet, focus: false },
     chosenTemplateTabs:
-      event.tabKey !== undefined
-        ? new Map(state.chosenTemplateTabs).set(event.tab, event.tabKey)
+      event.tab !== undefined
+        ? new Map(state.chosenTemplateTabs).set(event.sheet, event.tab)
         : (event.blockTab ?? event.cellTab) === null
           ? state.chosenTemplateTabs
-          : new Map(state.chosenTemplateTabs).set(event.tab, event.blockTab ?? event.cellTab ?? 0),
+          : new Map(state.chosenTemplateTabs).set(
+              event.sheet,
+              event.blockTab ?? event.cellTab ?? 0,
+            ),
     // Another tab, a sheet deleted elsewhere, or a role that cannot delete closes the confirmation
     // for good, so returning to the tab does not bring it back.
-    deleteAsk: state.deleteAsk?.sheet === event.tab ? state.deleteAsk : null,
+    deleteAsk: state.deleteAsk?.sheet === event.sheet ? state.deleteAsk : null,
     focusNameOf: nextFocusName,
   };
 }
@@ -301,10 +312,10 @@ function assertNever(value: never): never {
   throw new Error(`Unknown navigation event: ${JSON.stringify(value)}`);
 }
 
-function samePath(first: readonly string[] | null, second: readonly string[] | null): boolean {
+function sameBlock(first: BlockAddress | null, second: BlockAddress | null): boolean {
   if (first === null || second === null) {
     return first === second;
   }
 
-  return first.length === second.length && first.every((part, index) => part === second[index]);
+  return sameAddress(first, second);
 }

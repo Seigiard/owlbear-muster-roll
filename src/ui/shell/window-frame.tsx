@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import type { Key, ReactNode } from 'react';
 import { Button, Tab, TabList, Tabs } from 'react-aria-components';
 
+import { blockKeyOf } from '@/core/block-address';
 import type { RenderedTab } from '@/core/preset';
 import { copy } from '@/copy';
 import { Banner } from '@/ui/primitives/banner';
@@ -41,25 +42,11 @@ export function templateTabKey(value: number | TemplateTabIdentity): string {
 
   return block === null
     ? `template-tab-${value.sourceIndex}-root`
-    : `template-tab-${value.sourceIndex}-block-${encodeURIComponent(
-        block.scopeId,
-      )}-${encodeURIComponent(block.instanceId)}`;
+    : `template-tab-${value.sourceIndex}-block-${encodeURIComponent(blockKeyOf(block.block))}`;
 }
 
 function isLegacyTemplateTabKeyInput(value: number | TemplateTabIdentity): value is number {
   return Number.isInteger(value);
-}
-
-export function templateTabSourceIndexFromKey(key: string): number | null {
-  const prefix = 'template-tab-';
-
-  if (!key.startsWith(prefix)) {
-    return null;
-  }
-
-  const sourceIndex = Number(key.slice(prefix.length).split('-')[0]);
-
-  return Number.isInteger(sourceIndex) && sourceIndex >= 0 ? sourceIndex : null;
 }
 
 export function templateIndexFromKey(key: string): number | null {

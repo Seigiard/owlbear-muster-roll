@@ -6,7 +6,7 @@ import type { VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
-import type { Command } from '@/core/ui-messages';
+import type { WireCommand } from '@/core/ui-messages';
 import type { MockPlatform, WindowSizeCall, MockRoom } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
 import {
@@ -361,7 +361,7 @@ function presetRecord(preset: Preset): VersionedRecord {
 }
 
 // An upload that erases nothing, as every preset of this file keeps the same fields.
-function upload(preset: Preset): Command {
+function upload(preset: Preset): WireCommand {
   return {
     type: 'preset-upload',
     data: encodePreset(preset),

@@ -1,8 +1,19 @@
 import { z } from 'zod';
 
 import { PARTY_LIMIT, PLAYER_NAME_MAX_LENGTH, type PartyEntry } from '@/core/access';
+import {
+  blockAddress,
+  blockAddressOfWireTarget,
+  wireBlockPathSchema,
+  wireBlockTargetOf,
+  wireFieldPatchTargetOf,
+  wireOpenSheetPathSchema,
+  wirePathOf,
+  fieldPatchTargetOf,
+  type BlockAddress,
+} from '@/core/block-address';
 import { dicePlaceSchema, shownValueSchema } from '@/core/dice-roll';
-import { fieldPatchTargetWireSchema, type FieldPatchTarget } from '@/core/field-patch';
+import { fieldPatchTargetWireSchema } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
 import { playerIdSchema, recordSchema } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
@@ -131,31 +142,64 @@ const sheetDeleteSchema = z.strictObject({
   sheetId: z.string(),
 });
 
-// CAP-30: the engine picks the new ids and the numbered first field values, so the command carries
-// only the source repeat block and the count. The count is any number, so the engine rejects a bad
-// one instead of the schema dropping it.
-const repeatBlockDuplicateSchema = z.strictObject({
-  type: z.literal('repeat-block-duplicate'),
+type RepeatBlockWireCommand = {
+  sheetId: string;
+  sectionId: string;
+  instanceId: string;
+  path?: readonly string[];
+};
+
+function repeatBlockTargetOf(command: RepeatBlockWireCommand): BlockAddress {
+  return blockAddressOfWireTarget(command.sheetId, command)!;
+}
+
+const repeatBlockTargetSchema = z.object({
   sheetId: z.string(),
   sectionId: z.string(),
   instanceId: z.string(),
-  path: z
-    .array(z.string())
-    .min(2)
-    .refine((parts) => parts.length % 2 === 0)
-    .optional(),
-  count: z.number(),
+  path: wireBlockPathSchema.optional(),
 });
+
+const repeatBlockWireSchema = repeatBlockTargetSchema.strict();
+
+type RepeatBlockFields = Parameters<typeof repeatBlockWireSchema.extend>[0];
+
+function repeatBlockSchema<T extends RepeatBlockFields>(fields: T) {
+  return repeatBlockWireSchema.extend(fields).refine((command) => {
+    const wire = repeatBlockTargetSchema.safeParse(command);
+
+    return wire.success && blockAddressOfWireTarget(wire.data.sheetId, wire.data) !== null;
+  });
+}
+
+// CAP-30: the engine picks the new ids and the numbered first field values, so the command carries
+// only the source repeat block and the count. The count is any number, so the engine rejects a bad
+// one instead of the schema dropping it.
+const repeatBlockDuplicateSchema = repeatBlockSchema({
+  type: z.literal('repeat-block-duplicate'),
+  count: z.number(),
+}).transform((command) => ({
+  type: command.type,
+  sheetId: command.sheetId,
+  count: command.count,
+  block: repeatBlockTargetOf(command),
+}));
 
 // AD-19: a token links to one sheet, or with a repeat-scope path to one repeat block of it, and one
 // token cell. A new link replaces the token's old one. The engine checks the token id and target.
-const linkSetSchema = z.strictObject({
-  type: z.literal('link-set'),
-  tokenId: z.string(),
-  sheetId: z.string(),
-  path: z.array(z.string()).min(2).optional(),
-  cellId: z.string(),
-});
+const linkSetSchema = z
+  .strictObject({
+    type: z.literal('link-set'),
+    tokenId: z.string(),
+    sheetId: z.string(),
+    path: wireBlockPathSchema.optional(),
+    cellId: z.string(),
+  })
+  .refine(({ sheetId, path }) => blockAddress(sheetId, path ?? []) !== null)
+  .transform(({ path, ...command }) => ({
+    ...command,
+    block: blockAddress(command.sheetId, path ?? [])!,
+  }));
 
 // Tombstones the token's link. The sheet and the token stay.
 const linkClearSchema = z.strictObject({
@@ -215,40 +259,40 @@ const snapshotImportSchema = z.strictObject({
 
 // One field, one value or a clear as `null`. The value is any JSON, so the engine, which knows
 // the field's type, rejects a wrong one instead of the schema dropping it in silence.
-const fieldPatchSchema = z.strictObject({
-  type: z.literal('field-patch'),
-  sheetId: z.string(),
-  target: fieldPatchTargetWireSchema,
-  fieldId: z.string(),
-  value: z.json(),
-});
+const fieldPatchSchema = z
+  .strictObject({
+    type: z.literal('field-patch'),
+    sheetId: z.string(),
+    target: fieldPatchTargetWireSchema,
+    fieldId: z.string(),
+    value: z.json(),
+  })
+  .refine(
+    ({ sheetId, target }) => target.kind === 'row' || fieldPatchTargetOf(sheetId, target) !== null,
+  )
+  .transform(({ target, ...command }) => ({
+    ...command,
+    target: target.kind === 'row' ? target : fieldPatchTargetOf(command.sheetId, target)!,
+  }));
 
 // The window picks the instanceId, so it can focus the new repeat block when the delta arrives. The
 // engine composes the order and the empty cells.
-const repeatBlockAddSchema = z.strictObject({
+const repeatBlockAddSchema = repeatBlockSchema({
   type: z.literal('repeat-block-add'),
-  sheetId: z.string(),
-  sectionId: z.string(),
-  instanceId: z.string(),
-  path: z
-    .array(z.string())
-    .min(2)
-    .refine((parts) => parts.length % 2 === 0)
-    .optional(),
-});
+}).transform((command) => ({
+  type: command.type,
+  sheetId: command.sheetId,
+  block: repeatBlockTargetOf(command),
+}));
 
 // AD-19: the engine also removes the token links of the repeat block.
-const repeatBlockDeleteSchema = z.strictObject({
+const repeatBlockDeleteSchema = repeatBlockSchema({
   type: z.literal('repeat-block-delete'),
-  sheetId: z.string(),
-  sectionId: z.string(),
-  instanceId: z.string(),
-  path: z
-    .array(z.string())
-    .min(2)
-    .refine((parts) => parts.length % 2 === 0)
-    .optional(),
-});
+}).transform((command) => ({
+  type: command.type,
+  sheetId: command.sheetId,
+  block: repeatBlockTargetOf(command),
+}));
 
 // AD-9, CAP-31: erases all room data in a new generation. The window asks its one confirmation
 // first, so the command carries nothing more.
@@ -440,13 +484,20 @@ const rollOutcomeSchema = z.strictObject({
 // FR14: "Открыть лист" asks a window to show a sheet and its token cell. `path` names the repeat
 // block when the cell is inside one. The engine holds the request and sends it again after each
 // projection until a window acknowledges its id. A new press replaces it.
-const openSheetSchema = z.strictObject({
+const openSheetWireSchema = z.strictObject({
   t: z.literal('open-sheet'),
   id: idSchema,
   sheetId: idSchema,
-  path: z.array(idSchema).min(2).optional(),
+  path: wireOpenSheetPathSchema.optional(),
   cellId: idSchema,
 });
+
+const openSheetSchema = openSheetWireSchema
+  .refine(({ sheetId, path }) => blockAddress(sheetId, path ?? []) !== null)
+  .transform(({ path, sheetId, ...message }) => ({
+    ...message,
+    block: blockAddress(sheetId, path ?? [])!,
+  }));
 
 // The window took the request: it selected the sheet's tab, or found no tab to select.
 const openSheetAckSchema = z.strictObject({
@@ -489,15 +540,17 @@ export type RoomCopyOutcome = z.infer<typeof roomCopyOutcomeSchema>;
 
 export type PartyList = z.infer<typeof partySchema>;
 
-type WireCommand = z.infer<typeof commandIntentSchema>;
+export type WireCommand = z.input<typeof commandIntentSchema>;
 
-type ReadonlyFieldPatchCommand = Omit<Extract<WireCommand, { type: 'field-patch' }>, 'target'> & {
-  target: FieldPatchTarget;
+export type Command = z.output<typeof commandIntentSchema>;
+
+export type CommandMessage = z.output<typeof commandSchema>;
+
+export type WireCommandMessage = {
+  t: 'command';
+  id: string;
+  command: WireCommand;
 };
-
-export type Command = Exclude<WireCommand, { type: 'field-patch' }> | ReadonlyFieldPatchCommand;
-
-export type CommandMessage = z.infer<typeof commandSchema>;
 
 export type CommandRejectedMessage = z.infer<typeof commandRejectedSchema>;
 
@@ -533,10 +586,30 @@ export type RollOutcomeMessage = z.infer<typeof rollOutcomeSchema>;
 
 export type RollOutcome = RollOutcomeMessage['outcome'];
 
-export type OpenSheetMessage = z.infer<typeof openSheetSchema>;
+export type OpenSheetMessage = z.output<typeof openSheetSchema>;
 
-// An open request as the engine holds it and a window keeps it.
-export type OpenSheetRequest = Omit<OpenSheetMessage, 't'>;
+export type OpenSheetTarget = {
+  id: string;
+  block: BlockAddress;
+  cellId: string;
+};
+
+// An open-sheet request in either form a reader may hold: the wire fields `sheetId` and `path`, or
+// the parsed `block`. The window stores `WireOpenSheetRequest`.
+export type OpenSheetRequest = {
+  id: string;
+  sheetId?: string;
+  path?: readonly string[];
+  cellId: string;
+  block?: BlockAddress;
+};
+
+export type WireOpenSheetRequest = {
+  id: string;
+  sheetId: string;
+  path?: readonly string[];
+  cellId: string;
+};
 
 export type OpenSheetAckMessage = z.infer<typeof openSheetAckSchema>;
 
@@ -544,28 +617,128 @@ export type ProjectionMessage = z.infer<typeof projectionSchema>;
 
 export type DeltaMessage = z.infer<typeof deltaSchema>;
 
-type WireWindowMessage = z.infer<typeof windowMessageSchema>;
+export type WindowMessage = z.output<typeof windowMessageSchema>;
 
-type PublicCommandMessage = Omit<Extract<WireWindowMessage, { t: 'command' }>, 'command'> & {
-  command: Command;
-};
+export type ParsedEngineMessage = z.output<typeof engineMessageSchema>;
 
-export type WindowMessage = Exclude<WireWindowMessage, { t: 'command' }> | PublicCommandMessage;
+export type WireWindowMessage =
+  | Exclude<z.input<typeof windowMessageSchema>, { t: 'command' }>
+  | WireCommandMessage;
 
-export type EngineMessage = z.infer<typeof engineMessageSchema>;
+export type WireEngineMessage = z.input<typeof engineMessageSchema>;
+
+export type EngineMessage =
+  | Exclude<ParsedEngineMessage, { t: 'open-sheet' }>
+  | z.input<typeof openSheetWireSchema>;
 
 export type UiMessageFailure = 'invalid-message';
 
+type EngineMessageCandidate = JsonValue | EngineMessage | ParsedEngineMessage | WireEngineMessage;
+
+export function parseCommand(wire: WireCommand): Command {
+  return commandIntentSchema.parse(wire);
+}
+
+export function wireCommandOf(command: Command): WireCommand {
+  switch (command.type) {
+    case 'repeat-block-add':
+    case 'repeat-block-delete':
+    case 'repeat-block-duplicate': {
+      const { block, ...rest } = command;
+
+      const target = wireBlockTargetOf(block);
+
+      return target.path === undefined
+        ? { ...rest, ...target }
+        : { ...rest, ...target, path: [...target.path] };
+    }
+
+    case 'link-set': {
+      const { block, ...rest } = command;
+      const path = wirePathOf(block);
+
+      return path === undefined ? rest : { ...rest, path: [...path] };
+    }
+
+    case 'field-patch': {
+      const { target, ...rest } = command;
+
+      return {
+        ...rest,
+        target:
+          target.kind === 'row'
+            ? target
+            : (() => {
+                const wireTarget = wireFieldPatchTargetOf(target);
+
+                return wireTarget.path === undefined
+                  ? { kind: 'rep', ...wireTarget }
+                  : { kind: 'rep', ...wireTarget, path: [...wireTarget.path] };
+              })(),
+      };
+    }
+
+    default:
+      return command;
+  }
+}
+
+export type WireOpenSheetMessage = z.input<typeof openSheetWireSchema>;
+
+type WireOpenSheetInput = {
+  t: string;
+  id: string;
+  sheetId: string;
+  path?: readonly string[];
+  cellId: string;
+};
+
+type OpenSheetInput = OpenSheetMessage | OpenSheetTarget;
+
+export function wireOpenSheetOf(request: OpenSheetMessage): WireOpenSheetInput;
+
+export function wireOpenSheetOf(request: OpenSheetTarget): WireOpenSheetMessage;
+
+export function wireOpenSheetOf(
+  request: OpenSheetInput,
+): WireOpenSheetMessage | WireOpenSheetInput {
+  const source = 't' in request ? request : { t: 'open-sheet' as const, ...request };
+  const path = wirePathOf(source.block);
+
+  return path === undefined
+    ? {
+        t: source.t,
+        id: source.id,
+        sheetId: source.block.sheetId,
+        cellId: source.cellId,
+      }
+    : {
+        t: source.t,
+        id: source.id,
+        sheetId: source.block.sheetId,
+        path: [...path],
+        cellId: source.cellId,
+      };
+}
+
 export function parseWindowMessage(
-  candidate: JsonValue | WindowMessage,
+  candidate: JsonValue | WireWindowMessage | WindowMessage,
 ): Result<WindowMessage, UiMessageFailure> {
   const parsed = windowMessageSchema.safeParse(candidate);
 
   return parsed.success ? ok(parsed.data) : err('invalid-message');
 }
 
-export function parseEngineMessage(candidate: JsonValue): Result<EngineMessage, UiMessageFailure> {
+export function parseEngineMessage(
+  candidate: EngineMessageCandidate,
+): Result<ParsedEngineMessage, UiMessageFailure> {
   const parsed = engineMessageSchema.safeParse(candidate);
 
   return parsed.success ? ok(parsed.data) : err('invalid-message');
+}
+
+export function parseInternalEngineMessage(
+  candidate: EngineMessageCandidate,
+): Result<ParsedEngineMessage, UiMessageFailure> {
+  return parseEngineMessage(candidate);
 }

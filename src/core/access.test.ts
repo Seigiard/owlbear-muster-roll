@@ -29,6 +29,75 @@ import { resolveSheet, type SheetPolicy } from '@/core/sheets';
 // The GM's own player id, which never gets a row.
 const OWN = 'p-own';
 
+const VISIBLE_EDIT_PRESET: ProposalContext['preset'] = {
+  v: 4,
+  templates: [
+    {
+      id: 'journal',
+      title: 'Журнал',
+      players: 'edit',
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                { cells: [{ kind: 'field', type: 'text', id: 'public_note' }] },
+                {
+                  visibility: 'gm',
+                  cells: [{ kind: 'field', type: 'text', id: 'secret_note' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const VISIBLE_EDIT_ROOT: VersionedRecord = {
+  k: 'blk:journal',
+  d: {
+    order: 0,
+    cells: {
+      public_note: ['До', 1, 'gm-a'],
+      secret_note: ['Тайна', 1, 'gm-a'],
+    },
+  },
+  c: 1,
+  a: 'gm-a',
+  l: [1, 'seed'],
+};
+
+describe('inherited edit visibility', () => {
+  test('admits a visible edit and denies an edit under a hidden row in the same sheet', () => {
+    // #given
+    const context: ProposalContext = {
+      preset: VISIBLE_EDIT_PRESET,
+      records: assembleRecords([VISIBLE_EDIT_ROOT]),
+    };
+
+    const sender = { playerId: 'p-1', author: 'p-conn' };
+
+    // #when
+    const verdicts = [
+      checkProposal(
+        context,
+        sender,
+        fixturePatch(VISIBLE_EDIT_ROOT, { public_note: 'После' }, 2, 'p-conn'),
+      ),
+      checkProposal(
+        context,
+        sender,
+        fixturePatch(VISIBLE_EDIT_ROOT, { secret_note: 'Украдено' }, 2, 'p-conn'),
+      ),
+    ];
+
+    // #then
+    expect(verdicts).toEqual([{ kind: 'commit' }, { kind: 'denied' }]);
+  });
+});
+
 describe('accessRows', () => {
   test('lists the players in the room by name, with no GM, and no access yet', () => {
     // #given

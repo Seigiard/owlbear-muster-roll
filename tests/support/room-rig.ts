@@ -10,9 +10,10 @@ import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 import {
   parseEngineMessage,
-  type Command,
+  parseCommand,
   type CommandRejectedMessage,
   type SyncState,
+  type WireCommand,
 } from '@/core/ui-messages';
 import type { ReplicaEngineOptions, ReplicaEngine } from '@/replica/engine';
 import {
@@ -459,9 +460,16 @@ export function pause(milliseconds: number): Promise<void> {
 
 export function send(
   client: Pick<RigClient, 'window' | 'mintedIds' | 'commandOutcomes'>,
-  command: Command,
+  command: WireCommand,
 ): string {
-  return trackWindowOutcome(client, () => client.window.sendCommand(command));
+  return trackWindowOutcome(client, () => client.window.sendCommand(parseCommand(command)));
+}
+
+export function sendWire(
+  client: Pick<ReplicaClient, 'sendCommand'>,
+  command: WireCommand,
+): ReturnType<ReplicaClient['sendCommand']> {
+  return client.sendCommand(parseCommand(command));
 }
 
 export function requestPresetDiff(

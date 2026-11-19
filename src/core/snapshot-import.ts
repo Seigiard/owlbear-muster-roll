@@ -2,7 +2,15 @@ import { z } from 'zod';
 
 import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
 import { FORMAT_VERSION } from '@/core/format-version';
-import { blockIndex, linkDataOf, liveLinkTarget } from '@/core/link-target';
+import {
+  blockAddress,
+  blockIdOf,
+  blockKeyOf,
+  parentOf,
+  scopePathOf,
+  sectionIdOf,
+} from '@/core/block-address';
+import { linkDataOf, liveLinkTarget } from '@/core/link-target';
 import { recordFitsOneMessage } from '@/core/message-size';
 import {
   PRESET_FILE_BYTE_LIMIT,
@@ -13,7 +21,6 @@ import {
 import { erasedDigest, keptValues, templateScopes } from '@/core/preset-migrate';
 import {
   blockKey,
-  blockPathKey,
   recordSchema,
   versionCells,
   type FieldValues,
@@ -135,8 +142,11 @@ export function importSnapshot(
       dropped.push(`${blockKey(sheet.id)}\u0000`);
       filter(blockKey(sheet.id), sheet.cells, []);
 
-      for (const block of sheet.blocks)
-        filter(`blk:${sheet.id}:${block.path.join(':')}`, block.cells, []);
+      for (const block of sheet.blocks) {
+        const address = blockAddress(sheet.id, block.path);
+        filter(address === null ? blockKey(sheet.id) : blockKeyOf(address), block.cells, []);
+      }
+
       continue;
     }
 
@@ -166,19 +176,27 @@ export function importSnapshot(
     );
 
     for (const block of blocks) {
-      const scope = block.path.at(-2);
-      const parentPath = block.path.slice(0, -2);
-      const parentScopePath = parentPath.filter((_part, index) => index % 2 === 0);
-      const fullPathKey = block.path.join(':');
-      const pathKey = block.path.length === 2 ? (block.path[1] ?? '') : fullPathKey;
-      const key = blockPathKey(sheet.id, block.path);
+      const address = blockAddress(sheet.id, block.path);
+
+      if (address === null) {
+        filter(blockKey(sheet.id), block.cells, []);
+        continue;
+      }
+
+      const parent = parentOf(address);
+      const scope = sectionIdOf(address);
+      const parentScopePath = parent === null ? [] : scopePathOf(parent);
+      const fullPathKey = blockKeyOf(address);
+      const pathKey = parent?.path.length === 0 ? (blockIdOf(address) ?? '') : fullPathKey;
+      const key = blockKeyOf(address);
 
       const fields =
-        scope === undefined || scopes === null
+        scope === null || scopes === null
           ? undefined
           : scopes.sectionsByPath.get([...parentScopePath, scope].join(':'));
 
-      const parentExists = parentPath.length === 0 || acceptedPaths.has(parentPath.join(':'));
+      const parentExists =
+        parent === null || parent.path.length === 0 || acceptedPaths.has(blockKeyOf(parent));
 
       if (fields === undefined || !parentExists || claimed.has(pathKey)) {
         filter(key, block.cells, []);
@@ -211,17 +229,15 @@ export function importSnapshot(
   }
 
   const placed = new Map(records.map((record) => [record.k, record]));
-  const blocks = blockIndex(records);
 
   for (const link of file.links) {
-    const target = {
-      sheetId: link.sheetId,
-      path: link.path ?? null,
-      instanceId: link.path?.at(-1) ?? null,
-      cellId: link.cellId,
-    };
+    const block = blockAddress(link.sheetId, link.path ?? []);
 
-    if (liveLinkTarget(placed, current.preset, target, blocks) !== null) {
+    if (block === null) continue;
+
+    const target = { block, cellId: link.cellId };
+
+    if (liveLinkTarget(placed, current.preset, target) !== null) {
       records.push({ k: `link:${link.tokenId}`, d: linkDataOf(target), c: 1, a: author });
     }
   }
