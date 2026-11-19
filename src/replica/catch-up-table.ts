@@ -166,6 +166,16 @@ export type LivenessPhase = { readonly kind: 'offline' } | { readonly kind: 'onl
 
 export type LivenessEvent = Extract<Event, { readonly kind: 'heard' | 'fired' | 'watch' }>;
 
+type EventOf<K extends Event['kind']> = Extract<Event, { readonly kind: K }>;
+
+type InitializingPhase = Extract<Phase, { readonly kind: 'initializing' }>;
+
+type CatchingUpPhase = Extract<Phase, { readonly kind: 'catching-up' }>;
+
+type AdoptingPhase = Extract<Phase, { readonly kind: 'adopting' }>;
+
+type LivePhase = Extract<Phase, { readonly kind: 'live' }>;
+
 export function initialPhase(): Phase {
   return { kind: 'initializing', ...emptyMemory() };
 }
@@ -174,31 +184,120 @@ export function initialLiveness(): LivenessPhase {
   return { kind: 'offline' };
 }
 
-const catchUpRow = {
-  enter: catchUpEnter,
+const initializingRow = {
+  enter: (phase: InitializingPhase, event: EventOf<'enter'>) => catchUpEnter(phase, event),
   watch: 'ignore',
-  'room-copy-read': catchUpRoomCopyRead,
-  'party-read': catchUpPartyRead,
-  'generation-heard': catchUpGenerationHeard,
-  'generation-read': catchUpGenerationRead,
-  'adoption-staged': catchUpAdoptionStaged,
-  heard: catchUpHeard,
-  'state-requested': catchUpStateRequested,
-  ping: catchUpPing,
-  alive: catchUpAlive,
-  'state-merged': catchUpStateMerged,
-  fired: catchUpFired,
-  closing: catchUpClosing,
-  'party-changed': catchUpPartyChanged,
-  'replica-replaced': catchUpReplicaReplaced,
-  'adoption-saved': catchUpAdoptionSaved,
+  'room-copy-read': 'ignore',
+  'party-read': 'ignore',
+  'generation-heard': (phase: InitializingPhase, event: EventOf<'generation-heard'>) =>
+    catchUpGenerationHeard(phase, event),
+  'generation-read': (phase: InitializingPhase, event: EventOf<'generation-read'>) =>
+    catchUpGenerationRead(phase, event),
+  'adoption-staged': 'ignore',
+  heard: 'ignore',
+  'state-requested': (phase: InitializingPhase, event: EventOf<'state-requested'>) =>
+    catchUpStateRequested(phase, event),
+  ping: 'ignore',
+  alive: (phase: InitializingPhase, event: EventOf<'alive'>) => rememberAlive(phase, event),
+  'state-merged': (phase: InitializingPhase, event: EventOf<'state-merged'>) =>
+    catchUpStateMerged(phase, event),
+  fired: (phase: InitializingPhase, event: EventOf<'fired'>) => catchUpFired(phase, event),
+  closing: 'ignore',
+  'party-changed': (phase: InitializingPhase, event: EventOf<'party-changed'>) =>
+    catchUpPartyChanged(phase, event),
+  'replica-replaced': (phase: InitializingPhase, event: EventOf<'replica-replaced'>) =>
+    catchUpReplicaReplaced(phase, event),
+  'adoption-saved': 'ignore',
 } satisfies TransitionTable<Phase, Event, Effect>['initializing'];
 
+const catchingUpRow = {
+  enter: (phase: CatchingUpPhase, event: EventOf<'enter'>) => catchUpEnter(phase, event),
+  watch: 'ignore',
+  'room-copy-read': (phase: CatchingUpPhase, event: EventOf<'room-copy-read'>) =>
+    catchUpRoomCopyRead(phase, event),
+  'party-read': (phase: CatchingUpPhase, event: EventOf<'party-read'>) =>
+    catchUpPartyRead(phase, event),
+  'generation-heard': (phase: CatchingUpPhase, event: EventOf<'generation-heard'>) =>
+    catchUpGenerationHeard(phase, event),
+  'generation-read': (phase: CatchingUpPhase, event: EventOf<'generation-read'>) =>
+    catchUpGenerationRead(phase, event),
+  'adoption-staged': 'ignore',
+  heard: (phase: CatchingUpPhase, event: EventOf<'heard'>) => catchUpHeard(phase, event),
+  'state-requested': (phase: CatchingUpPhase, event: EventOf<'state-requested'>) =>
+    catchUpStateRequested(phase, event),
+  ping: 'ignore',
+  alive: (phase: CatchingUpPhase, event: EventOf<'alive'>) => rememberAlive(phase, event),
+  'state-merged': (phase: CatchingUpPhase, event: EventOf<'state-merged'>) =>
+    catchUpStateMerged(phase, event),
+  fired: (phase: CatchingUpPhase, event: EventOf<'fired'>) => catchUpFired(phase, event),
+  closing: (phase: CatchingUpPhase, event: EventOf<'closing'>) => catchUpClosing(phase, event),
+  'party-changed': (phase: CatchingUpPhase, event: EventOf<'party-changed'>) =>
+    catchUpPartyChanged(phase, event),
+  'replica-replaced': (phase: CatchingUpPhase, event: EventOf<'replica-replaced'>) =>
+    catchUpReplicaReplaced(phase, event),
+  'adoption-saved': 'ignore',
+} satisfies TransitionTable<Phase, Event, Effect>['catching-up'];
+
+const adoptingRow = {
+  enter: (phase: AdoptingPhase, event: EventOf<'enter'>) => catchUpEnter(phase, event),
+  watch: 'ignore',
+  'room-copy-read': (phase: AdoptingPhase, event: EventOf<'room-copy-read'>) =>
+    catchUpRoomCopyRead(phase, event),
+  'party-read': 'ignore',
+  'generation-heard': (phase: AdoptingPhase, event: EventOf<'generation-heard'>) =>
+    catchUpGenerationHeard(phase, event),
+  'generation-read': (phase: AdoptingPhase, event: EventOf<'generation-read'>) =>
+    catchUpGenerationRead(phase, event),
+  'adoption-staged': (phase: AdoptingPhase, event: EventOf<'adoption-staged'>) =>
+    catchUpAdoptionStaged(phase, event),
+  heard: (phase: AdoptingPhase, event: EventOf<'heard'>) => catchUpHeard(phase, event),
+  'state-requested': (phase: AdoptingPhase, event: EventOf<'state-requested'>) =>
+    catchUpStateRequested(phase, event),
+  ping: 'ignore',
+  alive: (phase: AdoptingPhase, event: EventOf<'alive'>) => rememberAlive(phase, event),
+  'state-merged': (phase: AdoptingPhase, event: EventOf<'state-merged'>) =>
+    catchUpStateMerged(phase, event),
+  fired: (phase: AdoptingPhase, event: EventOf<'fired'>) => catchUpFired(phase, event),
+  closing: 'ignore',
+  'party-changed': (phase: AdoptingPhase, event: EventOf<'party-changed'>) =>
+    catchUpPartyChanged(phase, event),
+  'replica-replaced': (phase: AdoptingPhase, event: EventOf<'replica-replaced'>) =>
+    catchUpReplicaReplaced(phase, event),
+  'adoption-saved': (phase: AdoptingPhase, event: EventOf<'adoption-saved'>) =>
+    catchUpAdoptionSaved(phase, event),
+} satisfies TransitionTable<Phase, Event, Effect>['adopting'];
+
+const liveRow = {
+  enter: (phase: LivePhase, event: EventOf<'enter'>) => catchUpEnter(phase, event),
+  watch: 'ignore',
+  'room-copy-read': 'ignore',
+  'party-read': 'ignore',
+  'generation-heard': (phase: LivePhase, event: EventOf<'generation-heard'>) =>
+    catchUpGenerationHeard(phase, event),
+  'generation-read': (phase: LivePhase, event: EventOf<'generation-read'>) =>
+    catchUpGenerationRead(phase, event),
+  'adoption-staged': 'ignore',
+  heard: (phase: LivePhase, event: EventOf<'heard'>) => catchUpHeard(phase, event),
+  'state-requested': (phase: LivePhase, event: EventOf<'state-requested'>) =>
+    catchUpStateRequested(phase, event),
+  ping: (phase: LivePhase, event: EventOf<'ping'>) => catchUpPing(phase, event),
+  alive: (phase: LivePhase, event: EventOf<'alive'>) => catchUpAlive(phase, event),
+  'state-merged': (phase: LivePhase, event: EventOf<'state-merged'>) =>
+    catchUpStateMerged(phase, event),
+  fired: (phase: LivePhase, event: EventOf<'fired'>) => catchUpFired(phase, event),
+  closing: 'ignore',
+  'party-changed': (phase: LivePhase, event: EventOf<'party-changed'>) =>
+    catchUpPartyChanged(phase, event),
+  'replica-replaced': (phase: LivePhase, event: EventOf<'replica-replaced'>) =>
+    catchUpReplicaReplaced(phase, event),
+  'adoption-saved': 'ignore',
+} satisfies TransitionTable<Phase, Event, Effect>['live'];
+
 export const catchUpTable: TransitionTable<Phase, Event, Effect> = {
-  initializing: catchUpRow,
-  'catching-up': catchUpRow,
-  adopting: catchUpRow,
-  live: catchUpRow,
+  initializing: initializingRow,
+  'catching-up': catchingUpRow,
+  adopting: adoptingRow,
+  live: liveRow,
 };
 
 export const livenessTable: TransitionTable<LivenessPhase, LivenessEvent, Effect> = {
@@ -214,11 +313,7 @@ export const livenessTable: TransitionTable<LivenessPhase, LivenessEvent, Effect
   },
 };
 
-function catchUpEnter(phase: Phase, event: Event): Step<Phase, Effect> {
-  if (event.kind !== 'enter') {
-    return same(phase);
-  }
-
+function catchUpEnter(phase: Phase, event: EventOf<'enter'>): Step<Phase, Effect> {
   const keepsNonce = event.trigger === 'page-return' && isCatchingUp(phase);
 
   if (keepsNonce && isCatchingUp(phase)) {
@@ -274,11 +369,10 @@ function catchUpEnter(phase: Phase, event: Event): Step<Phase, Effect> {
   };
 }
 
-function catchUpRoomCopyRead(phase: Phase, event: Event): Step<Phase, Effect> {
-  if (event.kind !== 'room-copy-read' || !isCatchingUp(phase) || phase.active.nonce !== event.r) {
-    return same(phase);
-  }
-
+function catchUpRoomCopyRead(
+  phase: CatchingUpPhase | AdoptingPhase,
+  event: EventOf<'room-copy-read'>,
+): Step<Phase, Effect> {
   const effects: Effect[] = [];
   let next: Phase = phase;
 
@@ -295,15 +389,11 @@ function catchUpRoomCopyRead(phase: Phase, event: Event): Step<Phase, Effect> {
   return { phase: next, effects };
 }
 
-function catchUpPartyRead(phase: Phase, event: Event): Step<Phase, Effect> {
-  if (
-    event.kind !== 'party-read' ||
-    event.players === null ||
-    !isCatchingUp(phase) ||
-    phase.active.nonce !== event.r ||
-    event.env.role !== 'GM' ||
-    isAdopting(phase)
-  ) {
+function catchUpPartyRead(
+  phase: CatchingUpPhase,
+  event: EventOf<'party-read'>,
+): Step<Phase, Effect> {
+  if (event.players === null || phase.active.nonce !== event.r || event.env.role !== 'GM') {
     return same(phase);
   }
 
@@ -312,31 +402,35 @@ function catchUpPartyRead(phase: Phase, event: Event): Step<Phase, Effect> {
     : leave(phase, event.env, 'unanswered');
 }
 
-function catchUpGenerationHeard(phase: Phase, event: Event): Step<Phase, Effect> {
-  return event.kind === 'generation-heard'
-    ? enterFromGeneration(phase, event.generation, event.keepNonce, event.env)
-    : same(phase);
+function catchUpGenerationHeard(
+  phase: Phase,
+  event: EventOf<'generation-heard'>,
+): Step<Phase, Effect> {
+  return enterFromGeneration(phase, event.generation, event.keepNonce, event.env);
 }
 
-function catchUpGenerationRead(phase: Phase, event: Event): Step<Phase, Effect> {
-  return event.kind === 'generation-read'
-    ? enterFromGeneration(phase, event.generation, isCatchingUp(phase), event.env)
-    : same(phase);
+function catchUpGenerationRead(
+  phase: Phase,
+  event: EventOf<'generation-read'>,
+): Step<Phase, Effect> {
+  return enterFromGeneration(phase, event.generation, isCatchingUp(phase), event.env);
 }
 
-function catchUpAdoptionStaged(phase: Phase, event: Event): Step<Phase, Effect> {
-  if (!isAdopting(phase) || event.kind !== 'adoption-staged') {
-    return same(phase);
-  }
-
+function catchUpAdoptionStaged(
+  phase: AdoptingPhase,
+  _event: EventOf<'adoption-staged'>,
+): Step<Phase, Effect> {
   return {
     phase: { ...phase, pendingAdoption: { fromCopy: true, responder: null } },
     effects: [],
   };
 }
 
-function catchUpHeard(phase: Phase, event: Event): Step<Phase, Effect> {
-  if (event.kind !== 'heard' || event.senderRole !== 'GM') {
+function catchUpHeard(
+  phase: CatchingUpPhase | AdoptingPhase | LivePhase,
+  event: EventOf<'heard'>,
+): Step<Phase, Effect> {
+  if (event.senderRole !== 'GM') {
     return same(phase);
   }
 
@@ -371,11 +465,10 @@ function catchUpHeard(phase: Phase, event: Event): Step<Phase, Effect> {
   return same(phase);
 }
 
-function catchUpStateRequested(phase: Phase, event: Event): Step<Phase, Effect> {
-  if (event.kind !== 'state-requested') {
-    return same(phase);
-  }
-
+function catchUpStateRequested(
+  phase: Phase,
+  event: EventOf<'state-requested'>,
+): Step<Phase, Effect> {
   const memory = {
     ...phase,
     answeredNonces: removeValue(phase.answeredNonces, event.r),
@@ -388,23 +481,38 @@ function catchUpStateRequested(phase: Phase, event: Event): Step<Phase, Effect> 
   return scheduleAnswer(memory, event.r, event.env);
 }
 
-function catchUpPing(phase: Phase, event: Event): Step<Phase, Effect> {
-  return event.kind === 'ping' && canAnswer(phase, event.env) && phase.kind === 'live'
-    ? { phase, effects: [{ type: 'alive' }] }
-    : same(phase);
+function catchUpPing(phase: LivePhase, event: EventOf<'ping'>): Step<Phase, Effect> {
+  return canAnswer(phase, event.env) ? { phase, effects: [{ type: 'alive' }] } : same(phase);
 }
 
-function catchUpAlive(phase: Phase, event: Event): Step<Phase, Effect> {
-  if (event.kind !== 'alive' || event.relation !== 'equal') {
+function rememberAlive(
+  phase: Exclude<Phase, LivePhase>,
+  event: EventOf<'alive'>,
+): Step<Phase, Effect> {
+  if (event.relation !== 'equal') {
     return same(phase);
   }
 
-  const withDigest = {
+  return {
+    phase: {
+      ...phase,
+      lastAliveDigests: setDigest(phase.lastAliveDigests, event.sender, event.message.digest),
+    },
+    effects: [],
+  };
+}
+
+function catchUpAlive(phase: LivePhase, event: EventOf<'alive'>): Step<Phase, Effect> {
+  if (event.relation !== 'equal') {
+    return same(phase);
+  }
+
+  const withDigest: LivePhase = {
     ...phase,
     lastAliveDigests: setDigest(phase.lastAliveDigests, event.sender, event.message.digest),
   };
 
-  if (phase.kind !== 'live' || (event.env.role === 'GM' && event.env.commitsUnsent)) {
+  if (event.env.role === 'GM' && event.env.commitsUnsent) {
     return { phase: withDigest, effects: [] };
   }
 
@@ -469,11 +577,7 @@ function catchUpAlive(phase: Phase, event: Event): Step<Phase, Effect> {
   );
 }
 
-function catchUpStateMerged(phase: Phase, event: Event): Step<Phase, Effect> {
-  if (event.kind !== 'state-merged') {
-    return same(phase);
-  }
-
+function catchUpStateMerged(phase: Phase, event: EventOf<'state-merged'>): Step<Phase, Effect> {
   let next = phase;
   const effects: Effect[] = [];
 
@@ -539,11 +643,7 @@ function catchUpStateMerged(phase: Phase, event: Event): Step<Phase, Effect> {
   return { phase: completed, effects };
 }
 
-function catchUpFired(phase: Phase, event: Event): Step<Phase, Effect> {
-  if (event.kind !== 'fired') {
-    return same(phase);
-  }
-
+function catchUpFired(phase: Phase, event: EventOf<'fired'>): Step<Phase, Effect> {
   switch (event.timer.kind) {
     case 'catch-up':
       if (!isCatchingUp(phase)) {
@@ -604,17 +704,11 @@ function catchUpFired(phase: Phase, event: Event): Step<Phase, Effect> {
   return same(phase);
 }
 
-function catchUpClosing(phase: Phase, event: Event): Step<Phase, Effect> {
-  return event.kind === 'closing' && phase.kind === 'catching-up'
-    ? leave(phase, event.env, 'unanswered')
-    : same(phase);
+function catchUpClosing(phase: CatchingUpPhase, event: EventOf<'closing'>): Step<Phase, Effect> {
+  return leave(phase, event.env, 'unanswered');
 }
 
-function catchUpPartyChanged(phase: Phase, event: Event): Step<Phase, Effect> {
-  if (event.kind !== 'party-changed') {
-    return same(phase);
-  }
-
+function catchUpPartyChanged(phase: Phase, event: EventOf<'party-changed'>): Step<Phase, Effect> {
   const present = new Set(event.players.map((player) => player.connectionId));
 
   return {
@@ -628,14 +722,18 @@ function catchUpPartyChanged(phase: Phase, event: Event): Step<Phase, Effect> {
   };
 }
 
-function catchUpReplicaReplaced(phase: Phase, event: Event): Step<Phase, Effect> {
-  return event.kind === 'replica-replaced'
-    ? { phase: forgetDigests(phase), effects: [] }
-    : same(phase);
+function catchUpReplicaReplaced(
+  phase: Phase,
+  _event: EventOf<'replica-replaced'>,
+): Step<Phase, Effect> {
+  return { phase: forgetDigests(phase), effects: [] };
 }
 
-function catchUpAdoptionSaved(phase: Phase, event: Event): Step<Phase, Effect> {
-  if (event.kind !== 'adoption-saved' || !isAdopting(phase) || phase.pendingAdoption === null) {
+function catchUpAdoptionSaved(
+  phase: AdoptingPhase,
+  event: EventOf<'adoption-saved'>,
+): Step<Phase, Effect> {
+  if (phase.pendingAdoption === null) {
     return same(phase);
   }
 
@@ -667,8 +765,8 @@ function catchUpAdoptionSaved(phase: Phase, event: Event): Step<Phase, Effect> {
   );
 }
 
-function livenessHeard(phase: LivenessPhase, event: LivenessEvent): Step<LivenessPhase, Effect> {
-  if (event.kind !== 'heard' || event.senderRole !== 'GM') {
+function livenessHeard(phase: LivenessPhase, event: EventOf<'heard'>): Step<LivenessPhase, Effect> {
+  if (event.senderRole !== 'GM') {
     return { phase, effects: [] };
   }
 
@@ -690,11 +788,7 @@ function livenessHeard(phase: LivenessPhase, event: LivenessEvent): Step<Livenes
   return { phase: { kind: 'online' }, effects };
 }
 
-function livenessFired(phase: LivenessPhase, event: LivenessEvent): Step<LivenessPhase, Effect> {
-  if (event.kind !== 'fired') {
-    return { phase, effects: [] };
-  }
-
+function livenessFired(phase: LivenessPhase, event: EventOf<'fired'>): Step<LivenessPhase, Effect> {
   switch (event.timer.kind) {
     case 'gm-silence':
       return phase.kind === 'online'
@@ -713,16 +807,14 @@ function livenessFired(phase: LivenessPhase, event: LivenessEvent): Step<Livenes
   }
 }
 
-function livenessWatch(phase: LivenessPhase, event: LivenessEvent): Step<LivenessPhase, Effect> {
-  return event.kind === 'watch'
-    ? {
-        phase,
-        effects: [
-          { type: 'arm', timer: { kind: 'ping' }, delayMs: pingDelay(event.env) },
-          { type: 'arm', timer: { kind: 'gm-silence' }, delayMs: event.env.timing.gmLinkTimeoutMs },
-        ],
-      }
-    : { phase, effects: [] };
+function livenessWatch(phase: LivenessPhase, event: EventOf<'watch'>): Step<LivenessPhase, Effect> {
+  return {
+    phase,
+    effects: [
+      { type: 'arm', timer: { kind: 'ping' }, delayMs: pingDelay(event.env) },
+      { type: 'arm', timer: { kind: 'gm-silence' }, delayMs: event.env.timing.gmLinkTimeoutMs },
+    ],
+  };
 }
 
 function enterFromGeneration(

@@ -1,66 +1,48 @@
 stateDiagram-v2
   initializing --> catching-up: enter
-  initializing --> initializing: room-copy-read
-  initializing --> initializing: party-read
   initializing --> adopting: generation-heard
   initializing --> adopting: generation-read
-  initializing --> initializing: adoption-staged
-  initializing --> initializing: heard
   initializing --> initializing: state-requested
-  initializing --> initializing: ping
   initializing --> initializing: alive
   initializing --> initializing: state-merged
   initializing --> initializing: fired
-  initializing --> initializing: closing
   initializing --> initializing: party-changed
   initializing --> initializing: replica-replaced
-  initializing --> initializing: adoption-saved
   catching-up --> catching-up: enter
   catching-up --> catching-up: room-copy-read
   catching-up --> catching-up: party-read
   catching-up --> adopting: generation-heard
   catching-up --> adopting: generation-read
-  catching-up --> catching-up: adoption-staged
   catching-up --> catching-up: heard
   catching-up --> catching-up: state-requested
-  catching-up --> catching-up: ping
   catching-up --> catching-up: alive
   catching-up --> live: state-merged
   catching-up --> live: fired
   catching-up --> live: closing
   catching-up --> catching-up: party-changed
   catching-up --> catching-up: replica-replaced
-  catching-up --> catching-up: adoption-saved
   adopting --> adopting: enter
   adopting --> adopting: room-copy-read
-  adopting --> adopting: party-read
   adopting --> adopting: generation-heard
   adopting --> adopting: generation-read
   adopting --> adopting: adoption-staged
   adopting --> adopting: heard
   adopting --> adopting: state-requested
-  adopting --> adopting: ping
   adopting --> adopting: alive
   adopting --> adopting: state-merged
   adopting --> adopting: fired
-  adopting --> adopting: closing
   adopting --> adopting: party-changed
   adopting --> adopting: replica-replaced
   adopting --> adopting: adoption-saved
   adopting --> catching-up: adoption-saved
   live --> catching-up: enter
-  live --> live: room-copy-read
-  live --> live: party-read
   live --> adopting: generation-heard
   live --> adopting: generation-read
-  live --> live: adoption-staged
   live --> catching-up: heard
   live --> live: state-requested
   live --> live: ping
   live --> live: alive
   live --> live: state-merged
   live --> live: fired
-  live --> live: closing
   live --> live: party-changed
   live --> live: replica-replaced
-  live --> live: adoption-saved
