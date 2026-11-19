@@ -594,7 +594,8 @@ export type OpenSheetTarget = {
   cellId: string;
 };
 
-// The wire-shaped request the window stores after it receives an open-sheet message.
+// An open-sheet request in either form a reader may hold: the wire fields `sheetId` and `path`, or
+// the parsed `block`. The window stores `WireOpenSheetRequest`.
 export type OpenSheetRequest = {
   id: string;
   sheetId?: string;
