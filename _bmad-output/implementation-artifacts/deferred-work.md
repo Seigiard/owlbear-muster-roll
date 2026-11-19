@@ -603,3 +603,10 @@ Deviations from DESIGN.md that TASK-115.11 reconciles:
 - `metadata.setMetadata` still rejects on failure instead of returning `Result`: the ticket covered the reads and `notification.show` only.
 - The diagnostics list is published in the projection but not shown yet: TASK-115.7 adds the GM's «Диагностика» block in Settings.
 - Browser runs by the attempt-1 implementer saw `tests/open.e2e.ts:253` (focus) and `tests/builder-snapshot.e2e.ts:770` (download menu item detached) fail once each; both passed on rerun and the orchestrator's full run was 583/583.
+
+## Deferred from: TASK-115.4 (2026-11-19)
+
+- DESIGN correction: TASK-115.4 AC #3 says `engine.stop()` "aborts the signal and flushes the outbox". Today `stop()` discarded held commits (`outbox.stop()`), and `engine-client.test.ts` 'does not release a held commit after stop' locks that. The step kept the behavior: `stop()` is one `abort()`, the outbox discards its held records and acks on that abort, and only `flushNow` (page hide) sends everything.
+- AC #1's grep `rg "\bstopped\b" src/replica` still finds, besides the room-copy phase name, the dice result literal `'stopped'` (`dice-extension.ts`, `roll-flow.ts`) and prose comments. The literal is a dice outcome, not a lifecycle flag, and stays; no option, port, variable or getter named `stopped` remains.
+- Eight baseline test names changed with the lock ("stopped" → "its signal aborts" / "aborted"); each renamed test passes.
+- `createPartyRoster` takes one options object `{ ...party, report, signal, onReplace? }`; `report` is required and the `reportOverride` parameter from TASK-115.6 is gone.

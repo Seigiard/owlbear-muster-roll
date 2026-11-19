@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-18T19:41:00Z'
-updated_date: '2026-11-19T09:46:00Z'
+updated_date: '2026-11-19T12:03:00Z'
 labels:
   - architecture
   - replica
@@ -41,3 +41,9 @@ Stopping is a `stopped` flag in six modules read at 126 places, four styles of t
 4. Module tests port from stopped getters to an AbortController; engine suite against the baseline.
 5. tdd chain (run ~/.claude/artifacts/task-115-20261119/TASK-115.4); the implementer starts after TASK-115.6 is merged, since both rewrite the same lines; full check.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented on task-115-4-abort-signal (f218c62). The engine owns one AbortController; every replica module takes signal in place of a stopped getter, and every timer goes through schedule(signal, ms, fn): setTimeout has one call site under src/replica (timers.ts). Subscriptions and module stop work hang on abort; engine.stop() is one abort(); the outbox discards held records on abort as it did on stop (DESIGN correction in deferred-work.md). The five epoch counters are unchanged. Checks: fmt, lint, typecheck, build; browser 583/583; bun: 8 lock renames, nothing else lost. Calibrated the three false-green rows.
+<!-- SECTION:NOTES:END -->
