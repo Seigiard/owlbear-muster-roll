@@ -23,6 +23,7 @@ pass	builder-snapshot.e2e.ts › Escape exits select editing while keeping its f
 pass	builder-snapshot.e2e.ts › a bad snapshot is refused and preserves the current preset and snapshot
 pass	builder-snapshot.e2e.ts › a failed snapshot draft write uses the existing failed status
 pass	builder-snapshot.e2e.ts › a preset edit drops values silently, and undo and redo restore the complete step
+pass	builder-snapshot.e2e.ts › a preset problem makes preview fields read-only until fixed
 pass	builder-snapshot.e2e.ts › a preview checkbox writes its exact snapshot patch
 pass	builder-snapshot.e2e.ts › a schema-valid snapshot with an oversized record is refused and preserves current data
 pass	builder-snapshot.e2e.ts › a selected dice cell rolls only on the second click through its formula
@@ -128,7 +129,6 @@ pass	delete.e2e.ts › the keyboard presses "Удалить лист" and lands 
 pass	dice-choice-field.e2e.ts › a GM picks d8, saves it, and the damage roll notification names 1d8
 pass	dice-choice-field.e2e.ts › a saved d1 survives option removal and both pages restarting, and still rolls one
 pass	dice-choice-field.e2e.ts › an empty dice-choice field shows its labelled field error and sends no roll
-pass	dice-choice-field.e2e.ts › the preview sample value is the first dice option
 pass	dice-extension.e2e.ts › a dice button says it is rolling while it waits for the dice
 pass	dice-extension.e2e.ts › a dice button says it waits for the GM's answer, and rolls with the extension once the GM allows
 pass	dice-extension.e2e.ts › a roll with a dice extension shows the extension's face on every client
