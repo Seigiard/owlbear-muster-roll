@@ -4,6 +4,7 @@ title: 'Step 1: better-result replaces core/result across the project'
 status: To Do
 assignee: []
 created_date: '2026-11-18T19:41:00Z'
+updated_date: '2026-11-19T08:01:00Z'
 labels:
   - architecture
 dependencies:
@@ -27,3 +28,9 @@ ordinal: 146000
 - [ ] #2 `bun test` and `bun run test:browser` junit lists equal the baseline
 - [ ] #3 The background page grows by at most 4 KB gzip in `bun run build`
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Note 2026-11-19 (TASK-121.1): composers.ts and version-minter.ts move to src/core before this step; take the per-layer import counts and the background-page size baseline after TASK-121.1 lands.
+<!-- SECTION:NOTES:END -->

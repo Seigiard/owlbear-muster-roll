@@ -556,4 +556,11 @@ not optional scope. Evidence: `task-79-window5-review.md`.
 
 ## Deferred from: TASK-114.1 (2026-11-18)
 
-- The Builder preview command handler in `src/builder/preview-pane.tsx` and `src/preview/` keep the wire form until architecture-review candidate 3 replaces the preview with the engine.
+- The Builder preview command handler in `src/builder/preview-pane.tsx` and `src/preview/` keep the wire form until TASK-121 (ADR-0005) has the preview compose through the shared `src/core/compose.ts` module. (Corrected 2026-11-19: the earlier text said the engine would replace the preview; that route was rejected.)
+
+## Deferred from: TASK-121 (2026-11-19)
+
+- The Builder preview rolls a dice cell through `rollDiceCell` but shows no result: `src/ui/sheet/dice-button.tsx` has no text for the `rolled` outcome outside the window, and the preview has no notification port. A preview author cannot see what a formula rolls. Out of ADR-0005's scope; needs a small UI decision on where the result shows.
+- `src/ui/sheet/preset-section.tsx` offers «Дублировать…» only through `BlockTools`, which the preview passes as `null` (AD-23: no block tools). The shared composer handles `repeat-block-duplicate`, so offering it in the preview is a UI decision: a `BlockTools` whose token-link part is inert. Not part of ADR-0005.
+- `src/builder/builder-store.ts` `addSheet` mints its own `sheet:` record (`nanoid(8)`, `c: 1`, `a: 'builder'`) while the composer has `sheet-create`. The store's `apply` wants a synchronous step and a chosen id; a later task can hand it `createComposers('builder').compose` with a `ComposeContext` over `step.records` the same way the preview does.
+- Entries above that cite `preview.html` or `src/preview/themes.ts` are historical: both were deleted (f3291a7, 43f31ef) and `src/preview/` goes with TASK-121.2.
