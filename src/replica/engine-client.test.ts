@@ -523,6 +523,29 @@ describe('player start', () => {
 });
 
 describe('open window', () => {
+  test('records a failed window delta without publishing another delta', async () => {
+    // #given
+    const rig = createRoomRig({ clock: 'manual', until: 'live' });
+    const room = rig.openRoom();
+    const gm = await rig.startClient(room, 'gm');
+    await rig.advance(0);
+    const sendMessage = spyOn(gm.platform.broadcast, 'sendMessage');
+    gm.platform.failNextSends([{ kind: 'failed', channel: UI_CHANNEL }]);
+
+    // #when
+    room.join('player', 'PLAYER');
+    await rig.advance(100);
+    const attempts = sendMessage.mock.calls.filter(([channel]) => channel === UI_CHANNEL).length;
+    const secondWindow = gm.openWindow();
+    await rig.waitUntil(() => secondWindow.store.$loaded.get());
+
+    // #then
+    expect({
+      attempts,
+      diagnostics: diagnostics(secondWindow).map(({ tag }) => tag),
+    }).toEqual({ attempts: 1, diagnostics: ['SendFailure'] });
+  });
+
   test('receives a full projection echoing its nonce, then deltas', async () => {
     // #given
     const rig = createRig();
