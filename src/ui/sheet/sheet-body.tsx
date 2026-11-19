@@ -165,7 +165,14 @@ export function SheetBody({
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- Keep the prior committed tab for the disappearance transition.
-    setPreviousRenderedTab(renderedTab);
+    setPreviousRenderedTab((previous) =>
+      previous !== null &&
+      renderedTab !== null &&
+      sameRenderedTab(previous, renderedTab) &&
+      previous.block?.name === renderedTab.block?.name
+        ? previous
+        : renderedTab,
+    );
 
     if (vanishedTab) {
       // oxlint-disable-next-line react/set-state-in-effect -- Record which rendered tab completed the disappearance transition.
