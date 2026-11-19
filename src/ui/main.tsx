@@ -519,11 +519,14 @@ function WindowRoot({
     const instanceId = newInstanceId();
 
     setCreatingBlock({ sheet: tab.id, scopeId, instanceId });
+    const block = blockAddress(tab.sheetId, [scopeId, instanceId]);
+
+    if (block === null) return;
+
     void sendCommand({
       type: 'repeat-block-add',
       sheetId: tab.sheetId,
-      sectionId: scopeId,
-      instanceId,
+      block,
     })
       .then((outcome) => {
         if (outcome.kind !== 'answered') setCreatingBlock(null);

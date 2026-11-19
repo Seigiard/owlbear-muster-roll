@@ -1,4 +1,4 @@
-import type { OpenSheetRequest } from '@/core/ui-messages';
+import type { WireOpenSheetRequest } from '@/core/ui-messages';
 import type { CommandOutcome } from '@/ui/replica-client';
 
 export const SETTINGS_TAB = 'settings';
@@ -60,7 +60,7 @@ export type NavigationEvent =
     }
   | {
       type: 'open-request';
-      request: OpenSheetRequest;
+      request: WireOpenSheetRequest;
       focusInWindow: boolean;
       tab: string | null;
       blockTab: number | null;

@@ -18,7 +18,7 @@ import type { CatchUp, CatchUpDecision } from '@/replica/catch-up';
 import type { RecordStore } from '@/replica/record-store';
 import type { RoomCopy } from '@/replica/room-copy';
 import type {
-  Command,
+  InternalCommand,
   EngineMessage,
   RejectionReason,
   SnapshotCheckMessage,
@@ -80,7 +80,7 @@ export type GenerationFlow = {
   persistence: () => GenerationPersistence | null;
   importFromSnapshot: (
     id: string,
-    command: Extract<Command, { type: 'snapshot-import' }>,
+    command: Extract<InternalCommand, { type: 'snapshot-import' }>,
   ) => Promise<void>;
   wipe: (id: string) => Promise<void>;
   checkSnapshot: (message: SnapshotCheckMessage) => void;
@@ -173,7 +173,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
   // part saved goes, so nothing changes. A copy that cannot be saved does not stop the import.
   async function importFromSnapshot(
     id: string,
-    command: Extract<Command, { type: 'snapshot-import' }>,
+    command: Extract<InternalCommand, { type: 'snapshot-import' }>,
   ): Promise<void> {
     if (importing) {
       ports.reject(id, 'importing');

@@ -176,8 +176,6 @@ export function blockPathKey(sheetId: string, path: readonly string[]): string {
   return blockKeyOf(address);
 }
 
-export type RepKeyParts = { sheetId: string; sectionId: string; instanceId: string };
-
 export type BlockPathParts = { sheetId: string; path: string[] };
 
 export function parseBlockPathKey(key: string): BlockPathParts | null {
@@ -186,21 +184,6 @@ export function parseBlockPathKey(key: string): BlockPathParts | null {
   return parsed === null || parsed.path.length < 2
     ? null
     : { sheetId: parsed.sheetId, path: [...parsed.path] };
-}
-
-// The ids of one repeat level, or null for a root, nested block, or another key form.
-export function parseRepKey(key: string): RepKeyParts | null {
-  const parsed = parseBlockKey(key);
-
-  if (parsed === null || parsed.path.length !== 2) {
-    return null;
-  }
-
-  const [sectionId, instanceId] = parsed.path;
-
-  return sectionId === undefined || instanceId === undefined
-    ? null
-    : { sheetId: parsed.sheetId, sectionId, instanceId };
 }
 
 // The key prefix of every `plink:` of one sheet. It ends with ":", so a sheet "a" never reads the

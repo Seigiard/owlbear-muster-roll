@@ -701,12 +701,9 @@ function linkSet(name: TargetName): Command {
     type: 'link-set',
     tokenId: TOKEN,
     sheetId: target.block.sheetId,
+    block: target.block,
     cellId: target.cellId ?? '',
   };
-
-  if (target.block.path.length > 0) {
-    command.path = [...target.block.path];
-  }
 
   return command;
 }

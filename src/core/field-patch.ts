@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-import { blockKeyOf, blockPathSchema, scopePathOf, type BlockAddress } from '@/core/block-address';
+import {
+  blockKeyOf,
+  blockPathSchema,
+  scopePathOf,
+  type BlockAddress,
+  wireBlockPathSchema,
+} from '@/core/block-address';
 import type { JsonValue } from '@/core/json';
 import { recordFitsOneMessage } from '@/core/message-size';
 import {
@@ -43,7 +49,7 @@ export const fieldPatchTargetWireSchema = z.discriminatedUnion('kind', [
     kind: z.literal('rep'),
     sectionId: targetIdSchema,
     instanceId: targetIdSchema,
-    path: blockPathSchema.optional(),
+    path: wireBlockPathSchema.optional(),
   }),
 ]);
 

@@ -4,7 +4,12 @@ import { fixtureSnapshotCells, fixtureSnapshotBlocks } from '../../tests/support
 import { describe, expect, test } from 'bun:test';
 import type { Preset } from '@/core/preset';
 import { err } from '@/core/result';
-import { blockDataSchema, cellValues, parseRepKey, type VersionedRecord } from '@/core/records';
+import {
+  blockDataSchema,
+  cellValues,
+  parseBlockPathKey,
+  type VersionedRecord,
+} from '@/core/records';
 import { encodeSnapshotFile, type SnapshotFile } from '@/core/snapshot-file';
 import {
   decodeSnapshotFileData,
@@ -185,7 +190,11 @@ function dataOf(records: ReadonlyMap<string, VersionedRecord>, key: string): Jso
   if (data === undefined) return null;
   const values = cellValues(data.cells);
 
-  return parseRepKey(key) === null ? values : { order: data.order, cells: values };
+  const parsed = parseBlockPathKey(key);
+
+  return parsed === null || parsed.path.length !== 2
+    ? values
+    : { order: data.order, cells: values };
 }
 
 describe('importSnapshot', () => {

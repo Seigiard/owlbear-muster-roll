@@ -1,15 +1,19 @@
 import { nanoid } from 'nanoid';
 
 import { fitsOneMessage } from '@/core/message-size';
+import { mutableJson, type ReadonlyJsonValue } from '@/core/json';
 import type { Timing } from '@/core/timing';
 import {
-  parseEngineMessage,
+  parseInternalEngineMessage,
+  wireCommandOf,
+  wireOpenSheetOf,
   UI_CHANNEL,
   type Command,
-  type CommandMessage,
+  type WireCommandMessage,
   type CommandRejectedMessage,
   type DeltaMessage,
-  type EngineMessage,
+  type ParsedCommand,
+  type ParsedEngineMessage,
   type PresetDiffResultMessage,
   type PresetUploadedMessage,
   type ProjectionMessage,
@@ -17,37 +21,13 @@ import {
   type RollOutcome,
   type SnapshotCheckResultMessage,
   type WindowMessage,
+  type WireWindowMessage,
 } from '@/core/ui-messages';
 import type { BroadcastOptions, BroadcastPort } from '@/platform/ports';
 import type { SendQueue } from '@/platform/send-queue';
 import type { ProjectionStore } from '@/ui/projection-store';
 
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
-
-function wireCommand(command: Command): CommandMessage['command'] {
-  if (command.type === 'field-patch') {
-    if (command.target.kind === 'row') {
-      return {
-        ...command,
-        target: { kind: 'row', rowId: command.target.rowId },
-      };
-    }
-
-    const target: Extract<CommandMessage['command'], { type: 'field-patch' }>['target'] = {
-      kind: 'rep',
-      sectionId: command.target.sectionId,
-      instanceId: command.target.instanceId,
-    };
-
-    if (command.target.path !== undefined) {
-      target.path = [...command.target.path];
-    }
-
-    return { ...command, target };
-  }
-
-  return command;
-}
 
 type Assembly = {
   engine: string;
@@ -76,7 +56,14 @@ export type CommandOutcomePromise<Answer> = {
   readonly [Symbol.toStringTag]: string;
 };
 
-type AnswerFor<CommandType extends Command> = CommandType extends {
+type SendableCommand = Command | ParsedCommand;
+
+function readonlyJsonOf(value: WireWindowMessage): ReadonlyJsonValue {
+  // SAFETY: transport messages are built only from JSON-compatible wire schemas and values.
+  return value as ReadonlyJsonValue;
+}
+
+type AnswerFor<CommandType extends SendableCommand> = CommandType extends {
   type: 'preset-upload';
 }
   ? Pick<PresetUploadedMessage, 'count' | 'sheets'>
@@ -85,13 +72,13 @@ type AnswerFor<CommandType extends Command> = CommandType extends {
 type FinalRollOutcome = Exclude<RollOutcome, { code: 'waiting-access' }>;
 
 type AnswerMessage =
-  | Extract<EngineMessage, { t: 'command-rejected' }>
-  | Extract<EngineMessage, { t: 'command-done' }>
+  | Extract<ParsedEngineMessage, { t: 'command-rejected' }>
+  | Extract<ParsedEngineMessage, { t: 'command-done' }>
   | PresetDiffResultMessage
   | PresetUploadedMessage
   | SnapshotCheckResultMessage
-  | Extract<EngineMessage, { t: 'snapshot-imported' | 'wiped' }>
-  | Extract<EngineMessage, { t: 'roll-outcome' }>;
+  | Extract<ParsedEngineMessage, { t: 'snapshot-imported' | 'wiped' }>
+  | Extract<ParsedEngineMessage, { t: 'roll-outcome' }>;
 
 type DeliveryState =
   | {
@@ -118,7 +105,7 @@ type PendingOutcome = {
 };
 
 export type ReplicaClient = {
-  sendCommand: <C extends Command>(
+  sendCommand: <C extends SendableCommand>(
     command: C,
     options?: SendCommandOptions,
   ) => CommandOutcomePromise<AnswerFor<C>>;
@@ -154,11 +141,8 @@ export function startReplicaClient(
   let repeatTimer: ReturnType<typeof setTimeout> | undefined;
   let incompleteTimer: ReturnType<typeof setTimeout> | undefined;
 
-  function send(message: WindowMessage): Promise<void> {
-    const wireMessage: Exclude<WindowMessage, { t: 'command' }> | CommandMessage =
-      message.t === 'command' ? { ...message, command: wireCommand(message.command) } : message;
-
-    return sendQueue.enqueue(UI_CHANNEL, wireMessage, LOCAL);
+  function send(message: WireWindowMessage): Promise<void> {
+    return sendQueue.enqueue(UI_CHANNEL, mutableJson(readonlyJsonOf(message)), LOCAL);
   }
 
   function sendRequest(): void {
@@ -396,7 +380,7 @@ export function startReplicaClient(
     return promise as CommandOutcomePromise<Answer>;
   }
 
-  function timeoutForCommand(command: Command): number {
+  function timeoutForCommand(command: Pick<SendableCommand, 'type'>): number {
     switch (command.type) {
       case 'preset-upload':
         return timing.presetRequestTimeoutMs;
@@ -415,19 +399,16 @@ export function startReplicaClient(
     }
   }
 
-  function handleMessage(message: EngineMessage): void {
+  function handleMessage(message: ParsedEngineMessage): void {
     if (message.t === 'projection') {
       receiveProjectionPart(message);
     } else if (message.t === 'open-sheet') {
       // Only a window that holds the records can find the sheet. The engine sends the request
       // again after the projection this window waits for.
       if (delivery.phase === 'live') {
-        store.setOpenRequest({
-          id: message.id,
-          sheetId: message.sheetId,
-          path: message.path,
-          cellId: message.cellId,
-        });
+        const { t: _type, ...request } = wireOpenSheetOf(message);
+
+        store.setOpenRequest(request);
       }
     } else if (isAnswerMessage(message)) {
       if (delivery.phase === 'live') {
@@ -444,7 +425,7 @@ export function startReplicaClient(
 
   const unsubscribe = broadcast.onMessage(UI_CHANNEL, (event) => {
     // Echoes of a window's own requests and commands fail this schema and stop here.
-    const parsed = parseEngineMessage(event.data);
+    const parsed = parseInternalEngineMessage(event.data);
 
     if (parsed.ok) {
       handleMessage(parsed.value);
@@ -456,11 +437,19 @@ export function startReplicaClient(
   return {
     // SAFETY: the implementation handles every `Command` with its corresponding `AnswerFor`
     // result; this assertion exposes that relationship through the generic public method.
-    sendCommand: ((command: Command, options?: SendCommandOptions) => {
+    sendCommand: ((command: SendableCommand, options?: SendCommandOptions) => {
       const id = newId();
-      const message: CommandMessage = { t: 'command', id, command: wireCommand(command) };
+      const wireCommand = wireCommandOf(command);
 
-      if (!fitsOneMessage(message)) {
+      const message: WireCommandMessage = {
+        t: 'command',
+        id,
+        command: wireCommand,
+      };
+
+      const transportMessage = mutableJson(readonlyJsonOf(message));
+
+      if (!fitsOneMessage(transportMessage)) {
         const outcome = Promise.resolve({
           kind: 'refused',
           rejection: { t: 'command-rejected', id, reason: 'too-large' },
@@ -473,7 +462,9 @@ export function startReplicaClient(
         id,
         timeoutForCommand(command),
         () =>
-          options?.urgent === true ? sendQueue.sendNow(UI_CHANNEL, message, LOCAL) : send(message),
+          options?.urgent === true
+            ? sendQueue.sendNow(UI_CHANNEL, transportMessage, LOCAL)
+            : send(message),
         undefined,
         options?.urgent === true,
       );
@@ -542,7 +533,7 @@ export function startReplicaClient(
   };
 }
 
-function isAnswerMessage(message: EngineMessage): message is AnswerMessage {
+function isAnswerMessage(message: ParsedEngineMessage): message is AnswerMessage {
   return (
     message.t === 'command-rejected' ||
     message.t === 'command-done' ||

@@ -1,12 +1,11 @@
 import { blockDataSchema, type VersionedRecord } from '@/core/records';
 import { mergeRecords } from '@/core/merge';
 import type {
-  Command,
+  InternalCommand,
   CommandMessage,
   EngineMessage,
   PresetDiffMessage,
   RejectionReason,
-  WindowMessage,
 } from '@/core/ui-messages';
 import type { PlayerRole } from '@/core/visibility';
 import type { ComposeContext, Composers } from '@/replica/composers';
@@ -31,7 +30,7 @@ export type CommandRoute =
 
 export function decideCommandRoute(
   context: CommandRouteContext,
-  command: Pick<Command, 'type'>,
+  command: Pick<InternalCommand, 'type'>,
 ): CommandRoute {
   if (context.role !== 'GM') {
     return { kind: 'player' };
@@ -129,15 +128,15 @@ export type CommandRoutingPorts = {
   roomCopyEdited: () => void;
   importFromSnapshot: (
     id: string,
-    command: Extract<Command, { type: 'snapshot-import' }>,
+    command: Extract<InternalCommand, { type: 'snapshot-import' }>,
   ) => Promise<void>;
   wipe: (id: string) => Promise<void>;
   reply: (message: EngineMessage) => void;
 };
 
 export type CommandRouting = {
-  handleCommand: (message: CommandMessage | Extract<WindowMessage, { t: 'command' }>) => void;
-  runCommand: (id: string, command: Command) => void;
+  handleCommand: (message: CommandMessage) => void;
+  runCommand: (id: string, command: InternalCommand) => void;
   handlePresetDiff: (message: PresetDiffMessage) => void;
   pendingView: () => Map<string, VersionedRecord>;
   pendingViewRecords: () => Map<string, VersionedRecord>;
@@ -165,13 +164,13 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
     };
   }
 
-  function handleCommand(message: CommandMessage | Extract<WindowMessage, { t: 'command' }>): void {
+  function handleCommand(message: CommandMessage): void {
     if (ports.acceptCommand(message.id)) {
       runCommand(message.id, message.command);
     }
   }
 
-  function runCommand(id: string, command: Command): void {
+  function runCommand(id: string, command: InternalCommand): void {
     // AD-4: a player never merges its own edit, which would beat later GM edits of its key. Its
     // field and repeat block edits wait for a GM client's check. Nothing else is a player's to
     // write.
@@ -256,7 +255,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
     ports.reply({ t: 'preset-diff-result', id: message.id, ...diff.value });
   }
 
-  function composeCommand(id: string, command: Command): void {
+  function composeCommand(id: string, command: InternalCommand): void {
     const composed = ports.composers.compose(ports.liveContext(), command);
 
     if (!composed.ok) {
@@ -282,7 +281,10 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
   // under new keys, `preset`, then tombstones of old keys and stripped rows. A failed write stops
   // the batch there, so a closure or a failure at any point leaves values readable under one of
   // the two presets. The generation does not change.
-  function uploadPreset(id: string, command: Extract<Command, { type: 'preset-upload' }>): void {
+  function uploadPreset(
+    id: string,
+    command: Extract<InternalCommand, { type: 'preset-upload' }>,
+  ): void {
     const batch = ports.composers.composePresetUpload(ports.liveContext(), command);
 
     if (!batch.ok) {
@@ -328,7 +330,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
 
   // AD-4: the pending-edits module checks and queues a player's edit. The engine reports only the
   // immediate command rejection or the notification the module returns.
-  function handlePlayerCommand(id: string, command: Command): void {
+  function handlePlayerCommand(id: string, command: InternalCommand): void {
     const result = ports.pendingEdits.edit(command, pendingView());
 
     if (!result.ok) {
@@ -347,7 +349,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
 
   // AD-7: an intent made during catch-up waits and takes `c` on exit. It is checked now against the
   // pending view, so a refusal comes at once.
-  function queueIntent(id: string, command: Command): void {
+  function queueIntent(id: string, command: InternalCommand): void {
     const dry = ports.composers.compose(
       { ...ports.dryContext(pendingView()), newRecordId: pendingIdsOf(id) },
       command,
@@ -503,7 +505,7 @@ function pendingRecord(
   };
 }
 
-function isCatchUpRejected(commandType: Command['type']): boolean {
+function isCatchUpRejected(commandType: InternalCommand['type']): boolean {
   return (
     commandType === 'preset-upload' || commandType === 'snapshot-import' || commandType === 'wipe'
   );
