@@ -116,7 +116,7 @@ Sync commit: `19232ad`. At that commit the model describes:
 
 - `src/replica/pending-edits.ts`: `edit`, `answered`, `rejected`, `caughtUp`, `recordsChanged` (revoke only), `gmBack`, `proposeEntry`, `rebuiltRecord`, `denial`, `deniesEdit`
 - `src/replica/proposal-queue.ts`: `sendNow`, `armResend`, `propose`, `put`, `hold`, `drop`, `matching`, `resendAll`, `proposedRecord` (fields only)
-- `src/replica/version-minter.ts`: `mint`
+- `src/core/version-minter.ts`: `mint`
 - `src/replica/commit-outbox.ts`: `add`, `withAck`, `schedule`, `take`, `nextChunk` (one part)
 - `src/replica/room-protocol.ts`: `dispatchRoomMessage` (`commit`, `reject`), `receiveProposal` (one part), `receiveReject`
 - `src/core/access.ts`: `checkProposal` (`denied`, `commit`, `commit-existing`, `stale`)
