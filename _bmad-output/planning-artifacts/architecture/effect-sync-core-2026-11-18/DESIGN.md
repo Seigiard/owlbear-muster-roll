@@ -203,7 +203,7 @@ The implementation PRs land in `epic/task-115`. The [epic PR #63](https://github
 | 5 | TASK-115.8 | Done [#71](https://github.com/Seigiard/owlbear-muster-roll/pull/71) | `room-copy-table.ts` | room-copy table, shell and engine tests, including completion of a write sent before stop |
 | 6 | TASK-115.9 | Done [#74](https://github.com/Seigiard/owlbear-muster-roll/pull/74) | `generation-table.ts`. Synchronous adoption and the catch-up nonce check stay at their module boundaries | generation table, shell and engine tests |
 | 7 | TASK-115.10 | Done [#73](https://github.com/Seigiard/owlbear-muster-roll/pull/73) | Kept `pending-edits` and `room-protocol` linear and left `proposal-queue` separate | existing module and engine tests |
-| 8 | TASK-115.11 | Done, tracked in [epic PR #63](https://github.com/Seigiard/owlbear-muster-roll/pull/63) | Aligned the architecture spine, DESIGN, and ADR-0004 with the code. The glossary already defined both GM terms | docs checks |
+| 8 | TASK-115.11 | Done [#75](https://github.com/Seigiard/owlbear-muster-roll/pull/75) | Aligned the architecture spine, DESIGN, and ADR-0004 with the code. The glossary already defined both GM terms | docs checks |
 | Rig | TASK-116 | Done [#72](https://github.com/Seigiard/owlbear-muster-roll/pull/72) | Three engine test files moved to manual time. The rest can migrate file by file | unchanged elapsed-time bounds in `engine-catch-up` |
 
 The baseline records test names, not unchanged source literals. Steps 2 and 4 include the renames noted above. `deferred-work.md` records isolated browser reruns for steps 0b, 1, and 4. They do not change the replica design.

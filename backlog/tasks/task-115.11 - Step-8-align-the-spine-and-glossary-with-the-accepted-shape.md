@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-18T19:41:00Z'
-updated_date: '2026-11-19T13:32:00Z'
+updated_date: '2026-11-19T13:33:00Z'
 labels:
   - docs
 dependencies:
@@ -48,7 +48,5 @@ At epic close the architecture spine must match the code: the Replica row and di
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Aligned docs with the code (PR #75
-
-1): ARCHITECTURE-SPINE Replica and Platform rows, dependency diagram, AD-6/AD-7 rules name catch-up-table (catchUpTable, livenessTable), room-copy-table, generation-table, machine.ts, the shared AbortSignal, the clock port and failures.ts. DESIGN.md migration table marks every step done with its PR, and the deviations from deferred-work (stop discards held commits, room-copy stopped phase, nonce check in catch-up, effects keyed by type, liveness starts offline) are written into DESIGN and ADR-0004. GLOSSARY.md already defined Online GM and GM in party with avoid-lists.
+Aligned docs with the code (PR #75): ARCHITECTURE-SPINE Replica and Platform rows, dependency diagram, AD-6/AD-7 rules name catch-up-table (catchUpTable, livenessTable), room-copy-table, generation-table, machine.ts, the shared AbortSignal, the clock port and failures.ts. DESIGN.md migration table marks every step done with its PR, and the deviations from deferred-work (stop discards held commits, room-copy stopped phase, nonce check in catch-up, effects keyed by type, liveness starts offline) are written into DESIGN and ADR-0004. GLOSSARY.md already defined Online GM and GM in party with avoid-lists.
 <!-- SECTION:NOTES:END -->
