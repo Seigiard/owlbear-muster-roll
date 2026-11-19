@@ -150,13 +150,7 @@ type RepeatBlockWireCommand = {
 };
 
 function repeatBlockTargetOf(command: RepeatBlockWireCommand): BlockAddress {
-  const block = blockAddressOfWireTarget(command.sheetId, command);
-
-  if (block === null) {
-    throw new Error('The repeat command does not name its own block');
-  }
-
-  return block;
+  return blockAddressOfWireTarget(command.sheetId, command)!;
 }
 
 const repeatBlockTargetSchema = z.object({
@@ -201,13 +195,10 @@ const linkSetSchema = z
     path: wireBlockPathSchema.optional(),
     cellId: z.string(),
   })
+  .refine(({ sheetId, path }) => blockAddress(sheetId, path ?? []) !== null)
   .transform(({ path, ...command }) => ({
     ...command,
-    block:
-      blockAddress(command.sheetId, path ?? []) ??
-      (() => {
-        throw new Error('The link command has an odd block path');
-      })(),
+    block: blockAddress(command.sheetId, path ?? [])!,
   }));
 
 // Tombstones the token's link. The sheet and the token stay.
@@ -276,15 +267,12 @@ const fieldPatchSchema = z
     fieldId: z.string(),
     value: z.json(),
   })
+  .refine(
+    ({ sheetId, target }) => target.kind === 'row' || fieldPatchTargetOf(sheetId, target) !== null,
+  )
   .transform(({ target, ...command }) => ({
     ...command,
-    target:
-      target.kind === 'row'
-        ? target
-        : (fieldPatchTargetOf(command.sheetId, target) ??
-          (() => {
-            throw new Error('The field patch does not name its own block');
-          })()),
+    target: target.kind === 'row' ? target : fieldPatchTargetOf(command.sheetId, target)!,
   }));
 
 // The window picks the instanceId, so it can focus the new repeat block when the delta arrives. The
@@ -504,15 +492,12 @@ const openSheetWireSchema = z.strictObject({
   cellId: idSchema,
 });
 
-const openSheetSchema = openSheetWireSchema.transform(({ path, sheetId, ...message }) => {
-  const block = blockAddress(sheetId, path ?? []);
-
-  if (block === null) {
-    throw new Error('The open-sheet message has an odd block path');
-  }
-
-  return { ...message, block };
-});
+const openSheetSchema = openSheetWireSchema
+  .refine(({ sheetId, path }) => blockAddress(sheetId, path ?? []) !== null)
+  .transform(({ path, sheetId, ...message }) => ({
+    ...message,
+    block: blockAddress(sheetId, path ?? [])!,
+  }));
 
 // The window took the request: it selected the sheet's tab, or found no tab to select.
 const openSheetAckSchema = z.strictObject({
