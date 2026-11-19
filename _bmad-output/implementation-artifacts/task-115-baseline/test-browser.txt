@@ -1,6 +1,6 @@
-pass	access.e2e.ts › "Может править" writes acl: at once and the player header turns to "Можно править", and back
-pass	access.e2e.ts › "Доступ" opens the panel inline under the header on surface-raised, with a hairline border and rounded-lg
 pass	access.e2e.ts › "Esc" in the panel closes it and gives the focus back to "Доступ"
+pass	access.e2e.ts › "Доступ" opens the panel inline under the header on surface-raised, with a hairline border and rounded-lg
+pass	access.e2e.ts › "Может править" writes acl: at once and the player header turns to "Можно править", and back
 pass	access.e2e.ts › a change with no answer is dropped after 5 s and says so in the panel
 pass	access.e2e.ts › a player sees no "Доступ" chip and no panel
 pass	access.e2e.ts › a player who joins while the panel is open gets a row
@@ -8,12 +8,18 @@ pass	access.e2e.ts › a refused change puts the box back and says so in the pan
 pass	access.e2e.ts › a sheet delete tombstones its acl: records
 pass	access.e2e.ts › every access row and sheet field stays reachable on a single-tab sheet at minimum height
 pass	access.e2e.ts › every access row and sheet field stays reachable on a two-tab sheet at minimum height
+pass	access.e2e.ts › the GM gets no "Доступ" chip on NPC, as only a visible sheet set has one
 pass	access.e2e.ts › the GM gets no "Доступ" chip on Инвентарь, as only a visible sheet set has one
 pass	access.e2e.ts › the GM gets no "Доступ" chip on Шпион, as only a visible sheet set has one
-pass	access.e2e.ts › the GM gets no "Доступ" chip on NPC, as only a visible sheet set has one
 pass	access.e2e.ts › the open chip shows its pressed state, and a second press closes the panel
 pass	access.e2e.ts › the panel lists each player id once by name, from the room and from the records, with no GM
 pass	access.e2e.ts › with no players the panel says "Пока никого нет" and shows the guest note
+pass	builder-snapshot.e2e.ts › Enter edits the specifically selected repeat instance and leaves the other unchanged
+pass	builder-snapshot.e2e.ts › Enter on a selected repeat field with its instance missing does not trap later editing
+pass	builder-snapshot.e2e.ts › Enter on a selected snapshot field starts typing its current value
+pass	builder-snapshot.e2e.ts › Escape exits check editing while keeping its field selected
+pass	builder-snapshot.e2e.ts › Escape exits dice choice editing while keeping its field selected
+pass	builder-snapshot.e2e.ts › Escape exits select editing while keeping its field selected
 pass	builder-snapshot.e2e.ts › a bad snapshot is refused and preserves the current preset and snapshot
 pass	builder-snapshot.e2e.ts › a failed snapshot draft write uses the existing failed status
 pass	builder-snapshot.e2e.ts › a preset edit drops values silently, and undo and redo restore the complete step
@@ -27,18 +33,13 @@ pass	builder-snapshot.e2e.ts › an invalid template id keeps its structure sele
 pass	builder-snapshot.e2e.ts › an old preset-only draft reopens with its preset and an empty snapshot
 pass	builder-snapshot.e2e.ts › duplicate template ids keep each sidebar entry mapped to its document template
 pass	builder-snapshot.e2e.ts › editing a repeat field changes only the clicked instance
-pass	builder-snapshot.e2e.ts › Enter edits the specifically selected repeat instance and leaves the other unchanged
-pass	builder-snapshot.e2e.ts › Enter on a selected repeat field with its instance missing does not trap later editing
-pass	builder-snapshot.e2e.ts › Enter on a selected snapshot field starts typing its current value
-pass	builder-snapshot.e2e.ts › Escape exits check editing while keeping its field selected
-pass	builder-snapshot.e2e.ts › Escape exits dice choice editing while keeping its field selected
-pass	builder-snapshot.e2e.ts › Escape exits select editing while keeping its field selected
 pass	builder-snapshot.e2e.ts › one template structure edit reaches both sheets and undo restores both
 pass	builder-snapshot.e2e.ts › opens and downloads the snapshot with both set sheets, the single sheet, values and links
 pass	builder-snapshot.e2e.ts › pagehide flushes a pending preview value into the Builder draft
 pass	builder-snapshot.e2e.ts › reload restores the preset and snapshot without a replacement prompt
 pass	builder-snapshot.e2e.ts › the first click on a snapshot field selects its tree item and shows its form
 pass	builder-snapshot.e2e.ts › the second click types a snapshot value, and Escape leaves typing with the field selected
+pass	builder.e2e.ts › Settings in the window links to the builder in a new tab
 pass	builder.e2e.ts › a click on a preview cell selects its tree item
 pass	builder.e2e.ts › a file replaces the draft after one confirmation, and a refused file changes nothing
 pass	builder.e2e.ts › a too-wide row is marked in the preview, and a click on a section heading selects it
@@ -57,7 +58,6 @@ pass	builder.e2e.ts › file block menus show file metadata and all actions for 
 pass	builder.e2e.ts › opens on the empty preset: one problem, download off, and the empty preview
 pass	builder.e2e.ts › opens the draft again after a reload, with no prompt
 pass	builder.e2e.ts › sets and clears field and dice cell names, with the hint, in the downloaded preset
-pass	builder.e2e.ts › Settings in the window links to the builder in a new tab
 pass	builder.e2e.ts › shows the preset and snapshot as complete file blocks instead of legacy controls
 pass	builder.e2e.ts › switches a field to dice-choice with the standard dice and downloads its tree type
 pass	builder.e2e.ts › the formula input completes a field id
@@ -78,18 +78,20 @@ pass	catch-up.e2e.ts › during catch-up Settings disables the preset upload and
 pass	catch-up.e2e.ts › during catch-up Settings disables the snapshot download and upload with the loading text
 pass	catch-up.e2e.ts › the no-preset state shows only after the first catch-up ends
 pass	catch-up.e2e.ts › until its first catch-up ends, a window shows the known sidebar entries and the loading text, then the sheets
+pass	cell-name.e2e.ts › Escape closes a named writer tooltip opened by hover
 pass	cell-name.e2e.ts › a focused named writer keeps its tooltip when the mouse pointer leaves
 pass	cell-name.e2e.ts › a named dice cell keeps its formula visible but uses its name for the button
 pass	cell-name.e2e.ts › a named read-only value is a tab stop with one tooltip, while an unnamed value is not
 pass	cell-name.e2e.ts › a named writer field shows one non-overlapping tooltip on Tab, hover and pointer focus
 pass	cell-name.e2e.ts › an unnamed writer field and dice cell keep their labels and show no tooltip
-pass	cell-name.e2e.ts › Escape closes a named writer tooltip opened by hover
 pass	cell-name.e2e.ts › the tooltip geometry assertion distinguishes overlap, separation and a missing box
 pass	cell-name.e2e.ts › touch tooltip › a named checkbox tooltip closes on Escape, blur and an outside pointerdown
 pass	cell-name.e2e.ts › touch tooltip › a no-focus touch tap keeps a named checkbox tooltip open after the pointer leaves
 pass	cell-name.e2e.ts › touch tooltip › a no-focus touch tap opens a named dice tooltip and still rolls
 pass	cell-name.e2e.ts › touch tooltip › a tap leaves a named writer tooltip open after the tap ends
 pass	characters.e2e.ts › "+" creates a sheet with an empty name, selects its sidebar entry "Без имени" and focuses its name
+pass	characters.e2e.ts › Enter saves the name as leaving the field does
+pass	characters.e2e.ts › Escape returns the old name and saves nothing
 pass	characters.e2e.ts › a name changed and left shows in the sidebar entry, the header and the name field, and stays after a reload
 pass	characters.e2e.ts › a name too long for its record shows the message under the field, stays and is not saved
 pass	characters.e2e.ts › a new sheet gets the next order and its sidebar entry goes after the others of its sheet set
@@ -99,18 +101,17 @@ pass	characters.e2e.ts › a rename back to the shown name while the first is on
 pass	characters.e2e.ts › a window opened while the background runs selects the first sidebar entry
 pass	characters.e2e.ts › after the projection the first sidebar entry is selected
 pass	characters.e2e.ts › an emptied name is cleared, and the sidebar entry and the header show "Без имени"
-pass	characters.e2e.ts › Enter saves the name as leaving the field does
-pass	characters.e2e.ts › Escape returns the old name and saves nothing
 pass	characters.e2e.ts › leaving the field with the same name sends no command
 pass	characters.e2e.ts › sidebar entries sort by order, then by sheetId in code unit order, the same after a reload
 pass	characters.e2e.ts › the header shows the name in sheet-title, quiet at rest, with no rule
 pass	characters.e2e.ts › the name field in the sheet renames the sidebar entry and the header
 pass	characters.e2e.ts › the too long message sits under the field and goes with the next valid save
 pass	characters.e2e.ts › with a preset and no sheet the sheet set add control reads "+ Добавить"
-pass	delete.e2e.ts › "Удалить лист" is an icon that shows its name in a tooltip under the pointer
 pass	delete.e2e.ts › "Отменить" closes the block, sends nothing and returns the focus to "⋯"
+pass	delete.e2e.ts › "Удалить лист" is an icon that shows its name in a tooltip under the pointer
 pass	delete.e2e.ts › "Удалить" in "⋯" opens one block at the top of the content area, focus on "Отменить"
 pass	delete.e2e.ts › "Удалить" in the block sends one command, tombstones the sheet and its records only
+pass	delete.e2e.ts › Escape in the block closes the block, sends nothing and returns the focus to "⋯"
 pass	delete.e2e.ts › a deleted sheet does not return after a reload
 pass	delete.e2e.ts › a double click on "Удалить" in the block sends one command
 pass	delete.e2e.ts › a sheet deleted in another window closes the block there with no second command
@@ -121,7 +122,6 @@ pass	delete.e2e.ts › confirming with a click on the last sheet of the set leav
 pass	delete.e2e.ts › confirming with the keyboard leaves the focus on the newly selected tab
 pass	delete.e2e.ts › deleting the last sheet of the set selects the first tab, NPC
 pass	delete.e2e.ts › deleting the selected sheet selects the first tab, not its neighbour
-pass	delete.e2e.ts › Escape in the block closes the block, sends nothing and returns the focus to "⋯"
 pass	delete.e2e.ts › picking "Удалить" again while the block is open moves the focus back to "Отменить"
 pass	delete.e2e.ts › the block names the sheet by its current name
 pass	delete.e2e.ts › the block sits on surface-raised with a hairline border and rounded-lg
@@ -136,8 +136,10 @@ pass	dice-extension.e2e.ts › a dice button says it is rolling while it waits f
 pass	dice-extension.e2e.ts › a dice button says it waits for the GM's answer, and rolls with the extension once the GM allows
 pass	dice-extension.e2e.ts › a roll with a dice extension shows the extension's face on every client
 pass	dice-extension.e2e.ts › the dice extension shows a visible roll to everyone and a hidden one to GMs only
-pass	duplicate.e2e.ts › "Отменить" closes the count, writes nothing and returns the focus to "Дублировать…"
 pass	duplicate.e2e.ts › "Дублировать…" opens a count of 1 in its repeat block, focused, with "Дублировать" and "Отменить"
+pass	duplicate.e2e.ts › "Отменить" closes the count, writes nothing and returns the focus to "Дублировать…"
+pass	duplicate.e2e.ts › Enter on a bad count shows the message too, and a change clears it
+pass	duplicate.e2e.ts › Esc closes the count, writes nothing and returns the focus to "Дублировать…"
 pass	duplicate.e2e.ts › a count above 50 shows "Нужно число от 1 до 50", keeps the field open and writes nothing
 pass	duplicate.e2e.ts › a count below 1 shows "Нужно число от 1 до 50", keeps the field open and writes nothing
 pass	duplicate.e2e.ts › a count of 9 on "Скелет 1" adds "Скелет 2" to "Скелет 10" at the end of the section with the same values, and the focus returns to "Дублировать…"
@@ -151,13 +153,16 @@ pass	duplicate.e2e.ts › an empty first field is copied empty, with the other v
 pass	duplicate.e2e.ts › copies continue after the highest number in the section and skip another base
 pass	duplicate.e2e.ts › copies of an unnumbered "Скелет" are "Скелет 1" and "Скелет 2", and the source keeps its name
 pass	duplicate.e2e.ts › each NPC repeat block offers the GM a "Дублировать…" icon, named by its position from 1
-pass	duplicate.e2e.ts › Enter on a bad count shows the message too, and a change clears it
-pass	duplicate.e2e.ts › Esc closes the count, writes nothing and returns the focus to "Дублировать…"
 pass	duplicate.e2e.ts › pressing "Дублировать…" again while the count is open moves the focus back into it
-pass	duplicate.e2e.ts › the count block sits on surface-raised with a hairline border and rounded-lg
 pass	duplicate.e2e.ts › the GM duplicates a repeat block of a sheet of a sheet set into the same sheet and section
+pass	duplicate.e2e.ts › the count block sits on surface-raised with a hairline border and rounded-lg
 pass	duplicate.e2e.ts › the keyboard presses "Дублировать…", types the count and confirms with Enter
 pass	duplicate.e2e.ts › the nine copies are new rep records of the same sheet and section at c: 1, under new nanoid ids, with no link
+pass	field-edit.e2e.ts › Enter commits the Девиз field and keeps the focus
+pass	field-edit.e2e.ts › Enter commits the Ловкость field and keeps the focus
+pass	field-edit.e2e.ts › Escape cancels the unsaved edit and shows the record value
+pass	field-edit.e2e.ts › Shift+Enter adds a line in a text field
+pass	field-edit.e2e.ts › Tab goes through the sidebar, the header, then every field and repeat block control in preset order
 pass	field-edit.e2e.ts › a blur after a pause save with no further change sends nothing more
 pass	field-edit.e2e.ts › a blur with no change since focus sends nothing
 pass	field-edit.e2e.ts › a changed field is saved when its tab goes away before the pause or a blur
@@ -176,16 +181,11 @@ pass	field-edit.e2e.ts › an empty field is an editable area at least 32 px hig
 pass	field-edit.e2e.ts › an exponent in a number field shows the message under it, stay and are not saved
 pass	field-edit.e2e.ts › an invalid value is not saved when its tab goes away
 pass	field-edit.e2e.ts › an invalid value is not saved when the window closes
-pass	field-edit.e2e.ts › Enter commits the Девиз field and keeps the focus
-pass	field-edit.e2e.ts › Enter commits the Ловкость field and keeps the focus
-pass	field-edit.e2e.ts › Escape cancels the unsaved edit and shows the record value
 pass	field-edit.e2e.ts › leaving a changed field saves it before the pause
 pass	field-edit.e2e.ts › letters in a number field shows the message under it, stay and are not saved
 pass	field-edit.e2e.ts › on close the queue held by a rate limit goes out, then the newer typed value
 pass	field-edit.e2e.ts › passing through a number field that holds a string or an exponent form changes nothing
-pass	field-edit.e2e.ts › Shift+Enter adds a line in a text field
 pass	field-edit.e2e.ts › spaces only in a number field shows the message under it, stay and are not saved
-pass	field-edit.e2e.ts › Tab goes through the sidebar, the header, then every field and repeat block control in preset order
 pass	field-edit.e2e.ts › the bad number message goes with the next valid save
 pass	field-edit.e2e.ts › typing sends nothing per keystroke and one save after the pause
 pass	hidden-sheets.e2e.ts › a GM rename in the header shows in the tab, header and link picker of every client
@@ -207,8 +207,8 @@ pass	hidden-tabs.e2e.ts › a player token opens Gear and reveals its repeat blo
 pass	hidden-tabs.e2e.ts › a player token opens repeat tab A rather than B after a GM-only tab
 pass	hidden-tabs.e2e.ts › a selected token linked to a hidden-tab repeat block gives a player no selection mark
 pass	link.e2e.ts › "Отвязать лист" leaves the token label as it is
-pass	link.e2e.ts › "Привязать лист…" opens the picker in a small popover for the pressed token
 pass	link.e2e.ts › "Отвязать лист" tombstones the link and the token cell shows "Нет токена"
+pass	link.e2e.ts › "Привязать лист…" opens the picker in a small popover for the pressed token
 pass	link.e2e.ts › a failed label write keeps the link, shows an Owlbear notification, and closes the picker
 pass	link.e2e.ts › a pick of a repeat block links the token to it and its status shows on the NPC tab
 pass	link.e2e.ts › a pick of a repeat block on a token with no label labels it with the block's first field
@@ -223,8 +223,8 @@ pass	link.e2e.ts › a token with a label shows it in the offer, unchecked, and 
 pass	link.e2e.ts › each NPC repeat block shows its token status, read-only
 pass	link.e2e.ts › the picker lists groups in preset order, each with the targets with no token first
 pass	link.e2e.ts › the picker with no target shows "Сначала создайте лист"
-pass	liveness.e2e.ts › a failed local save shows over the no-GM banner
 pass	liveness.e2e.ts › a GM alone in the room never shows the no-GM banner, though its link is offline
+pass	liveness.e2e.ts › a failed local save shows over the no-GM banner
 pass	liveness.e2e.ts › a new version shows over the no-GM banner
 pass	liveness.e2e.ts › a player sees the no-GM banner once the GM pages close, and loses it when a GM returns
 pass	navigation-v4.e2e.ts › cell opens use real tab and scroll geometry when root and block reuse the cell id
@@ -280,9 +280,9 @@ pass	owner.e2e.ts › the next pick after two live plink: records tombstones bot
 pass	owner.e2e.ts › the owner sees the owned sheet first, before the other sheets and the single sheets, marked "вы", and selected
 pass	owner.e2e.ts › the panel has one radio group "Его лист" with "Никто" and one option per row
 pass	owner.e2e.ts › the radio group is apart from the rows, and only the checked option takes the Tab key
+pass	pending.e2e.ts › a GM's commit takes the mark away with no message
 pass	pending.e2e.ts › a denied removal brings the row back to normal with "Нет прав на правку"
 pass	pending.e2e.ts › a focused field keeps its focus and caret when the mark appears
-pass	pending.e2e.ts › a GM's commit takes the mark away with no message
 pass	pending.e2e.ts › a new repeat row carries the mark until the GM commits it
 pass	pending.e2e.ts › a player's edit shows at once, and "Ожидает" only after the delay with no answer
 pass	pending.e2e.ts › a removed repeat row stays dimmed with the mark at once, inputs disabled and no "Удалить", and goes on commit
@@ -310,6 +310,7 @@ pass	player.e2e.ts › player repeat blocks show with no "Добавить" and 
 pass	player.e2e.ts › player values are text that takes no focus, and a check shows its state with no control
 pass	port-contract-storage.e2e.ts › Chromium port contract › clock reads wall time and schedules, cancels, and aborts callbacks
 pass	port-contract-storage.e2e.ts › Chromium port contract › storage stores, overwrites, removes, and lists owned strings
+pass	preset-change.e2e.ts › Escape closes the confirmation and changes nothing
 pass	preset-change.e2e.ts › a catch-up closes an open confirmation and writes nothing
 pass	preset-change.e2e.ts › a confirm after the count fell to 0 closes the block and takes the path that erases nothing
 pass	preset-change.e2e.ts › a confirm after the replica changed asks again with the new count
@@ -320,7 +321,8 @@ pass	preset-change.e2e.ts › an upload that drops a section's tokens removes th
 pass	preset-change.e2e.ts › an upload that drops a sheet set with three sheets names the deleted sheets, and "Отменить" keeps them
 pass	preset-change.e2e.ts › an upload that erases nothing applies at once and says so under the button
 pass	preset-change.e2e.ts › an upload that erases values asks once with focus on "Отменить", which changes nothing
-pass	preset-change.e2e.ts › Escape closes the confirmation and changes nothing
+pass	preset.e2e.ts › Settings with no preset puts the primary upload first and disables the download
+pass	preset.e2e.ts › a GM in a room with no preset sees the upload and Settings, and no sheet entry
 pass	preset.e2e.ts › a bad field id shows the bad file message under the button and changes nothing
 pass	preset.e2e.ts › a bad formula shows the bad file message under the button and changes nothing
 pass	preset.e2e.ts › a duplicate id shows the bad file message under the button and changes nothing
@@ -329,7 +331,6 @@ pass	preset.e2e.ts › a file from a newer version asks for a reload and changes
 pass	preset.e2e.ts › a file over 1 MiB shows the bad file message under the button and changes nothing
 pass	preset.e2e.ts › a file that is not JSON shows the bad file message under the button and changes nothing
 pass	preset.e2e.ts › a file the browser cannot read shows the not-JSON message and sends nothing
-pass	preset.e2e.ts › a GM in a room with no preset sees the upload and Settings, and no sheet entry
 pass	preset.e2e.ts › a nameField that names a field of a repeat section shows the bad file message under the button and changes nothing
 pass	preset.e2e.ts › a nameField that names a number field shows the bad file message under the button and changes nothing
 pass	preset.e2e.ts › a player sees only the loading text after the projection arrives
@@ -348,10 +349,9 @@ pass	preset.e2e.ts › an unknown key shows the bad file message under the butto
 pass	preset.e2e.ts › an unknown width shows the bad file message under the button and changes nothing
 pass	preset.e2e.ts › before the first projection the GM sees the loading text and no upload
 pass	preset.e2e.ts › nameField on a single sheet shows the bad file message under the button and changes nothing
-pass	preset.e2e.ts › Settings with no preset puts the primary upload first and disables the download
+pass	preset.e2e.ts › the Settings sidebar entry keeps Settings open when selected again
 pass	preset.e2e.ts › the bad file message sits under the upload button
 pass	preset.e2e.ts › the downloaded preset holds the structure at the current v and loads in another room
-pass	preset.e2e.ts › the Settings sidebar entry keeps Settings open when selected again
 pass	preset.e2e.ts › tokens on a section that is not a repeat section shows the bad file message under the button and changes nothing
 pass	preset.e2e.ts › two repeat sections that start with one id shows the bad file message under the button and changes nothing
 pass	preset.e2e.ts › two templates with one id shows the bad file message under the button and changes nothing
@@ -360,13 +360,13 @@ pass	preset.e2e.ts › with a preset and a sheet, Settings enables the upload an
 pass	primitives.e2e.ts › a Button takes a press anywhere in a 32 px high touch target
 pass	primitives.e2e.ts › a Chip takes a press anywhere in a 32 px high touch target
 pass	primitives.e2e.ts › a Default Button renders the text color on the fill, with a hairline border
+pass	primitives.e2e.ts › a Field is quiet at rest and shows a line edge under the pointer
+pass	primitives.e2e.ts › a Field takes a press anywhere in a 32 px high touch target
+pass	primitives.e2e.ts › a Secondary Button renders the text color on the fill, with a hairline border
 pass	primitives.e2e.ts › a disabled Button is dimmed, explains itself and ignores a press
 pass	primitives.e2e.ts › a disabled Chip is dimmed, explains itself and ignores a press
 pass	primitives.e2e.ts › a disabled Field is dimmed, explains itself and takes no input
-pass	primitives.e2e.ts › a Field is quiet at rest and shows a line edge under the pointer
-pass	primitives.e2e.ts › a Field takes a press anywhere in a 32 px high touch target
 pass	primitives.e2e.ts › a primary Button renders the accent background and contrast text
-pass	primitives.e2e.ts › a Secondary Button renders the text color on the fill, with a hairline border
 pass	primitives.e2e.ts › a status chip is not a button and renders muted at 11 px
 pass	primitives.e2e.ts › keyboard focus on a Button shows a 2 px outline in the focus color
 pass	primitives.e2e.ts › keyboard focus on a Chip shows a 2 px outline in the focus color
@@ -404,12 +404,14 @@ pass	repeat-blocks.e2e.ts › in a section with no columns the repeat block cont
 pass	repeat-blocks.e2e.ts › repeat blocks added to one sheet leave the other sheet with its own repeat blocks
 pass	repeat-blocks.e2e.ts › the two rows of a repeat section form one repeat block whose five values land in one rep record
 pass	repeat-blocks.e2e.ts › two repeat blocks with one order show by id, the same after a reload
-pass	repeat-tab-context.e2e.ts › editing a selected repeat-tab block changes only that snapshot block
 pass	repeat-tab-context.e2e.ts › Enter starts editing the field from the second selected repeat-tab block
+pass	repeat-tab-context.e2e.ts › editing a selected repeat-tab block changes only that snapshot block
 pass	repeat-tab-context.e2e.ts › opening a linked repeat-tab token below the fold reveals and focuses its exact cell
+pass	repeat-tab-dice.e2e.ts › Builder Preview rolls from the selected repeat-tab block
 pass	repeat-tab-dice.e2e.ts › a remote repeat-tab edit clears the stale dice field error
 pass	repeat-tab-dice.e2e.ts › a room roll uses hp from the selected repeat-tab block
-pass	repeat-tab-dice.e2e.ts › Builder Preview rolls from the selected repeat-tab block
+pass	repeat-tabs.e2e.ts › Builder preview add and delete change only its snapshot
+pass	repeat-tabs.e2e.ts › Room and Builder name two scoped add tabs and activate each by mouse and keyboard
 pass	repeat-tabs.e2e.ts › a linked token opens and marks only its exact block tab
 pass	repeat-tabs.e2e.ts › a player sees visible block tabs and content but no lifecycle controls
 pass	repeat-tabs.e2e.ts › a refused add leaves the GM tab list and selection unchanged
@@ -419,25 +421,23 @@ pass	repeat-tabs.e2e.ts › a remote preceding delete keeps the edited block sel
 pass	repeat-tabs.e2e.ts › a remote repeat-block add keeps the selected non-repeat Notes tab open
 pass	repeat-tabs.e2e.ts › a timed-out add leaves the GM tab list and selection unchanged
 pass	repeat-tabs.e2e.ts › a token link to a removed tab block leaves the current tab selected
-pass	repeat-tabs.e2e.ts › Builder preview add and delete change only its snapshot
 pass	repeat-tabs.e2e.ts › cancel preserves a tab block and confirm removes its values and token link
 pass	repeat-tabs.e2e.ts › deleting the final Builder preview block retains add and opens its replacement
 pass	repeat-tabs.e2e.ts › deleting the final extension block retains add and opens its replacement
-pass	repeat-tabs.e2e.ts › Room and Builder name two scoped add tabs and activate each by mouse and keyboard
+pass	repeat-tabs.e2e.ts › the GM can add and open the first Builder preview block from zero
+pass	repeat-tabs.e2e.ts › the GM can add and open the first extension block from zero
+pass	repeat-tabs.e2e.ts › the GM final plus adds and opens an empty block
 pass	repeat-tabs.e2e.ts › the add-only Builder preview waits for the GM before creating its first block
 pass	repeat-tabs.e2e.ts › the add-only extension waits for the GM before creating its first block
 pass	repeat-tabs.e2e.ts › the engine refuses forged player tab-block add and delete commands
 pass	repeat-tabs.e2e.ts › the extension expands one tab per block in source position and keeps selection client-local
-pass	repeat-tabs.e2e.ts › the GM can add and open the first Builder preview block from zero
-pass	repeat-tabs.e2e.ts › the GM can add and open the first extension block from zero
-pass	repeat-tabs.e2e.ts › the GM final plus adds and opens an empty block
 pass	repeat-tabs.e2e.ts › the successor starts with fresh delete controls after a non-final block is deleted
+pass	replica.e2e.ts › a GM start puts the persisted records in the projection
 pass	replica.e2e.ts › a background restart over the same storage shows the same records
 pass	replica.e2e.ts › a command becomes a record in storage and a delta on the wire
 pass	replica.e2e.ts › a command delivered twice has one effect
 pass	replica.e2e.ts › a corrupt stored record is skipped and shows the banner
 pass	replica.e2e.ts › a failed write keeps the value and shows the banner across the content column as a live region
-pass	replica.e2e.ts › a GM start puts the persisted records in the projection
 pass	replica.e2e.ts › a player client refuses a command and persists nothing
 pass	replica.e2e.ts › a whole record in a command has no effect
 pass	replica.e2e.ts › a window closed and opened again shows the same records
@@ -445,11 +445,11 @@ pass	replica.e2e.ts › a window that loads before the background page still get
 pass	replica.e2e.ts › the banner goes when the notices clear
 pass	replica.e2e.ts › the window and background load with no console error
 pass	replica.e2e.ts › the window leaves the loading text once its own client has the projection
+pass	roll.e2e.ts › a GM client drops a player's roll marked hidden as forged
+pass	roll.e2e.ts › a GM roll shows once on the roller and on a player whose window is closed
 pass	roll.e2e.ts › a dice cell of a repeat row in the second section rolls with the row's own field
 pass	roll.e2e.ts › a field error stays when the press saves another field
 pass	roll.e2e.ts › a formula with no number shows its error under the button and sends nothing
-pass	roll.e2e.ts › a GM client drops a player's roll marked hidden as forged
-pass	roll.e2e.ts › a GM roll shows once on the roller and on a player whose window is closed
 pass	roll.e2e.ts › a player rolls a character it cannot edit, and the GM sees the roll
 pass	roll.e2e.ts › a player rolls the visible single sheet "Журнал", and the GM sees the roll
 pass	roll.e2e.ts › a press on a dice button saves the field typed into first, and the roll uses its value
@@ -457,10 +457,11 @@ pass	roll.e2e.ts › a referenced field in an input error gives the field error 
 pass	roll.e2e.ts › a roll from the hidden NPC sheet shows on the GM and not on a player
 pass	roll.e2e.ts › an empty referenced field shows the field error under the button and sends nothing
 pass	roll.e2e.ts › an error under a button clears when a value of the sheet changes
-pass	room-copy.e2e.ts › a copy that does not fit next to the other metadata is not written, and the banner and Settings say so
+pass	room-copy.e2e.ts › Settings shows "Не сохранена" with the free size before any copy, and "Сохранена" with sizes after one
 pass	room-copy.e2e.ts › a GM writes the room copy after an edit, and a GM on a new device with no other GM loads from it
 pass	room-copy.e2e.ts › a GM writes the room copy at once when its page becomes hidden
-pass	room-copy.e2e.ts › Settings shows "Не сохранена" with the free size before any copy, and "Сохранена" with sizes after one
+pass	room-copy.e2e.ts › a copy that does not fit next to the other metadata is not written, and the banner and Settings say so
+pass	select-field.e2e.ts › Tab reaches the labelled 32 px picker and a focused selection saves
 pass	select-field.e2e.ts › a GM picker lists the preset options in order, saves for every client, and clears the key
 pass	select-field.e2e.ts › a player without write access sees the labelled value as read-only text
 pass	select-field.e2e.ts › a player's pick uses the pending-edit path and reaches the GM
@@ -468,7 +469,6 @@ pass	select-field.e2e.ts › a stale stored value is selected as a disabled extr
 pass	select-field.e2e.ts › an upload refuses a select with a blank option at its field
 pass	select-field.e2e.ts › an upload refuses a select with a repeated option at its field
 pass	select-field.e2e.ts › an upload refuses a select with no options at its field
-pass	select-field.e2e.ts › Tab reaches the labelled 32 px picker and a focused selection saves
 pass	selection.e2e.ts › a GM selects the token of one repeat block from the keyboard
 pass	selection.e2e.ts › a GM selects the tokens of a sheet on the open scene with one press and deselects them with the next
 pass	selection.e2e.ts › a GM who selects an NPC token on the map sees its tab and repeat block marked, with the open tab kept
@@ -496,13 +496,13 @@ pass	sheet-layout.e2e.ts › rows do not stripe, and a row under the pointer tak
 pass	sheet-layout.e2e.ts › sections 1/3, 1/3, 1/3, 1/2, full, none and none sit three in a line, then one per line
 pass	sheet-layout.e2e.ts › stored text, number and check values show in their fields
 pass	sheet-layout.e2e.ts › the other character's tab shows its own instances and values only
+pass	sidebar.e2e.ts › Down crosses groups while headings are descriptions and the add control is in the Tab order
+pass	sidebar.e2e.ts › Settings is one sidebar entry and opens on the first selection after other navigation
 pass	sidebar.e2e.ts › a draft stays with its sheet when a token opens another sheet
 pass	sidebar.e2e.ts › a draft stays with its sheet when another sheet is selected in the sidebar
 pass	sidebar.e2e.ts › a long sidebar name has a full tooltip and the entry list scrolls without moving Settings
 pass	sidebar.e2e.ts › an empty sheet set stays as a GM heading and add control but is absent for a player
-pass	sidebar.e2e.ts › Down crosses groups while headings are descriptions and the add control is in the Tab order
 pass	sidebar.e2e.ts › map selection marks the sidebar entry and its tab without switching either selection
-pass	sidebar.e2e.ts › Settings is one sidebar entry and opens on the first selection after other navigation
 pass	sidebar.e2e.ts › the GM sidebar groups sheets, keeps singles plain and pins Settings at 10 rem
 pass	sidebar.e2e.ts › the player sidebar puts owned sheets first and hides GM-only controls and templates
 pass	sidebar.e2e.ts › the sheet header precedes the tab row and content
@@ -514,8 +514,8 @@ pass	single-sheets.e2e.ts › a single sheet's header shows its title, not edita
 pass	single-sheets.e2e.ts › a value of a single sheet is stored in its materialized root and stays after a reload
 pass	single-sheets.e2e.ts › every field of an NPC repeat block saves into its one rep record
 pass	single-sheets.e2e.ts › removing a repeat block with two token links tombstones both links and leaves the others
-pass	single-sheets.e2e.ts › the first field names its repeat block, and the name stays after a reload
 pass	single-sheets.e2e.ts › the NPC tab with no NPCs shows the section and its "Добавить" only
+pass	single-sheets.e2e.ts › the first field names its repeat block, and the name stays after a reload
 pass	single-sheets.e2e.ts › two game systems with no code change › the d20 preset uploaded in a fresh room gives a working sheet and NPC repeat block
 pass	single-sheets.e2e.ts › two game systems with no code change › the d6 pool preset uploaded in a fresh room gives a working sheet and NPC repeat block
 pass	smoke.e2e.ts › the background page loads with no console error
@@ -523,6 +523,7 @@ pass	smoke.e2e.ts › the mock build does not load the Owlbear SDK on /backgroun
 pass	smoke.e2e.ts › the mock build does not load the Owlbear SDK on /index.html
 pass	smoke.e2e.ts › the window renders the shell root as the child of #root
 pass	snapshot.e2e.ts › "Отменить" and Escape close the block and write nothing
+pass	snapshot.e2e.ts › Settings lists Пресет, Снимок, Копия в комнате, Очистка, with the primary download first under Снимок
 pass	snapshot.e2e.ts › a catch-up closes an open confirmation, writes nothing, and the focus comes back to the button
 pass	snapshot.e2e.ts › a confirm after the preset changed asks again with the new count, focused on "Отменить"
 pass	snapshot.e2e.ts › a confirmed import replaces the room on every client: another GM and a player are told and see it
@@ -531,15 +532,14 @@ pass	snapshot.e2e.ts › a file sheet of a template the preset lacks is dropped,
 pass	snapshot.e2e.ts › a file that is no snapshot, or not JSON, or newer, is refused under the button and asks nothing
 pass	snapshot.e2e.ts › a snapshot asks once, with the dropped count, and its focus starts on "Отменить"
 pass	snapshot.e2e.ts › after an import a link to a token in the room opens its sheet, and one to an absent token stays inert
-pass	snapshot.e2e.ts › Settings lists Пресет, Снимок, Копия в комнате, Очистка, with the primary download first under Снимок
 pass	snapshot.e2e.ts › the downloaded snapshot holds the live sheets, their values and links, and nothing else
 pass	snapshot.e2e.ts › with a preset, "Скачать снимок" and "Загрузить снимок" are both enabled
 pass	snapshot.e2e.ts › with no preset, both snapshot buttons are disabled with the preset-first reason
+pass	sync.e2e.ts › a GM edit goes out as one commit and updates a field in place on the other GM client
 pass	sync.e2e.ts › a commit from a connection the party does not know is dropped
 pass	sync.e2e.ts › a commit from a known player is dropped
 pass	sync.e2e.ts › a commit of another generation is dropped
 pass	sync.e2e.ts › a focused field keeps its text through a remote change, and Esc shows the new value
-pass	sync.e2e.ts › a GM edit goes out as one commit and updates a field in place on the other GM client
 pass	sync.e2e.ts › a message with a higher v is dropped and shows the new-version banner
 pass	sync.e2e.ts › a message with a lower v is dropped and shows no banner
 pass	sync.e2e.ts › a player client merges a GM commit and persists nothing
@@ -559,6 +559,7 @@ pass	templates.e2e.ts › a sheet set with no sheets keeps its heading and add c
 pass	templates.e2e.ts › a single sheet sidebar entry shows its title, read-only, with no delete
 pass	templates.e2e.ts › the add control of a second sheet set adds a sheet of that set at its end, named "Без имени"
 pass	templates.e2e.ts › the sidebar lists templates in preset order, each sheet set add control after its last sheet, Settings last
+pass	window.e2e.ts › Down moves the selection between sidebar entries
 pass	window.e2e.ts › a failed theme read keeps the outline on a focused sidebar entry and an opaque window
 pass	window.e2e.ts › a failed theme read still renders the window and logs the error
 pass	window.e2e.ts › a focused sidebar entry shows a 2 px solid outline in the focus color
@@ -568,7 +569,6 @@ pass	window.e2e.ts › a theme change updates every mapped token
 pass	window.e2e.ts › an unselected sidebar entry has no fill and the muted text color
 pass	window.e2e.ts › before any data the shell shows only Settings and the loading text
 pass	window.e2e.ts › color-scheme follows the theme on main and leaves the iframe root alone
-pass	window.e2e.ts › Down moves the selection between sidebar entries
 pass	window.e2e.ts › the content area scrolls without scrolling the page
 pass	window.e2e.ts › the dark theme gives every mapped token its DESIGN.md color
 pass	window.e2e.ts › the dark theme gives text 4.5:1 and the focus outline 3:1 on every surface
@@ -579,9 +579,9 @@ pass	window.e2e.ts › the theme mode is on the root element when main is first 
 pass	window.e2e.ts › the window has no visible banner while nothing is wrong
 pass	window.e2e.ts › the window text is 13 px
 pass	window.e2e.ts › the window uses the system font
-pass	wipe.e2e.ts › a confirmed wipe of a room with a version 1 copy empties it on every client, and the GM uploads a new preset
-pass	wipe.e2e.ts › a GM in a room whose copy is of version 1 sees the older-format banner, and no write replaces the copy
-pass	wipe.e2e.ts › a player alone with a room copy of version 1 sees that it does not read
 pass	wipe.e2e.ts › Escape closes the wipe confirmation and changes nothing
+pass	wipe.e2e.ts › a GM in a room whose copy is of version 1 sees the older-format banner, and no write replaces the copy
+pass	wipe.e2e.ts › a confirmed wipe of a room with a version 1 copy empties it on every client, and the GM uploads a new preset
+pass	wipe.e2e.ts › a player alone with a room copy of version 1 sees that it does not read
 pass	wipe.e2e.ts › with no preset and Settings open, a confirmed wipe ends with "Очистить всё" enabled and focused, and no failure
 pass	wipe.e2e.ts › with no preset, "Очистить всё" in Settings asks once, focused on "Отменить", which changes nothing
