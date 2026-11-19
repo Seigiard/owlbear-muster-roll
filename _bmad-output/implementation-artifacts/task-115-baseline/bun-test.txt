@@ -2832,9 +2832,9 @@ pass	src/replica/generation-flow.test.ts › a snapshot check during catch-up ha
 pass	src/replica/generation-flow.test.ts › a snapshot check without writable persistence has only its required terminal effect
 pass	src/replica/generation-flow.test.ts › a snapshot import replies only after its room-copy import resolves
 pass	src/replica/generation-flow.test.ts › a snapshot import without writable persistence is rejected before parsing
-pass	src/replica/generation-flow.test.ts › a stopped room-copy adoption leaves the replica unchanged
 pass	src/replica/generation-flow.test.ts › a wipe and snapshot check are rejected while an import writes its room copy
 pass	src/replica/generation-flow.test.ts › a wipe without writable persistence is rejected without replacing data
+pass	src/replica/generation-flow.test.ts › an aborted room-copy adoption leaves the replica unchanged
 pass	src/replica/generation-flow.test.ts › an invalid snapshot import is rejected before storage or room effects
 pass	src/replica/generation-flow.test.ts › clearing an adopted generation with a retained nonce publishes the replacement state
 pass	src/replica/generation-flow.test.ts › room-copy adoption interprets generationRead before staging can synchronously save
@@ -2854,7 +2854,7 @@ pass	src/replica/party-roster.test.ts › party roster › re-reads the party on
 pass	src/replica/party-roster.test.ts › party roster › returns null and does not throw when the party read fails
 pass	src/replica/party-roster.test.ts › party roster › returns null for a sender still missing after the one re-read
 pass	src/replica/party-roster.test.ts › party roster › shares one read among misses that come while it is on its way
-pass	src/replica/party-roster.test.ts › party roster › stops following party changes once stopped
+pass	src/replica/party-roster.test.ts › party roster › stops following party changes once its signal aborts
 pass	src/replica/party-roster.test.ts › party roster › takes a role change from a party change
 pass	src/replica/pending-edits.test.ts › pending edits › a 33-part stale reply completes without a player part cap
 pass	src/replica/pending-edits.test.ts › pending edits › a GM return leaves a waiting edit unsent
@@ -2980,9 +2980,9 @@ pass	src/replica/roll-flow-v4.test.ts › a player rolls a visible row but secti
 pass	src/replica/roll-flow.test.ts › a repeated roll request id rolls and answers once
 pass	src/replica/roll-flow.test.ts › a stopped dice operation produces no fallback roll or outcome
 pass	src/replica/roll-flow.test.ts › an oversized roll is refused before the room transport
-pass	src/replica/roll-flow.test.ts › does not ask readiness when already stopped
-pass	src/replica/roll-flow.test.ts › does not ask the dice port when stopped after readiness
-pass	src/replica/roll-flow.test.ts › does not report a malformed dice result after stopped during the dice wait
+pass	src/replica/roll-flow.test.ts › does not ask readiness when its signal is already aborted
+pass	src/replica/roll-flow.test.ts › does not ask the dice port when its signal aborts after readiness
+pass	src/replica/roll-flow.test.ts › does not report a malformed dice result after its signal aborts during the dice wait
 pass	src/replica/roll-flow.test.ts › falls back to the local result when no dice extension is available
 pass	src/replica/roll-flow.test.ts › refuses a hidden request from a player before it asks the dice port
 pass	src/replica/roll-flow.test.ts › refuses a roll request whose address is not a dice cell
@@ -2992,7 +2992,7 @@ pass	src/replica/roll-flow.test.ts › reports failed when the player name port 
 pass	src/replica/roll-flow.test.ts › reports failed when the remote roll send fails
 pass	src/replica/roll-flow.test.ts › reports the field label when the pending value cannot be evaluated
 pass	src/replica/roll-flow.test.ts › shows a received roll under the sender name from the party
-pass	src/replica/roll-flow.test.ts › uses the current generation and stops after a reported send
+pass	src/replica/roll-flow.test.ts › uses the current generation and aborts after a reported send
 pass	src/replica/roll-flow.test.ts › uses the live role after readiness and again before it sends
 pass	src/replica/room-copy.test.ts › a closed gate owes nothing written and a later catch-up arms the owed write
 pass	src/replica/room-copy.test.ts › a closed write gate performs no metadata read
@@ -3019,7 +3019,6 @@ pass	src/replica/room-copy.test.ts › a rejected catch-up read is unreadable wi
 pass	src/replica/room-copy.test.ts › a rejected catch-up read keeps its earlier outcome
 pass	src/replica/room-copy.test.ts › a rejected held write after the gate closes leaves no not-saved notice
 pass	src/replica/room-copy.test.ts › a rejected room-copy read signals the publisher exactly once
-pass	src/replica/room-copy.test.ts › a stopped room copy does not merge records after its active write settles
 pass	src/replica/room-copy.test.ts › a superseded import does not start its deferred rerun
 pass	src/replica/room-copy.test.ts › a superseded import leaves the room copy status unchanged
 pass	src/replica/room-copy.test.ts › a trigger during import runs one write after the import
@@ -3027,6 +3026,7 @@ pass	src/replica/room-copy.test.ts › a verified import clears a prior failed r
 pass	src/replica/room-copy.test.ts › a verified import clears an earlier owed routine write
 pass	src/replica/room-copy.test.ts › a verified routine write clears its debt before catch-up completion
 pass	src/replica/room-copy.test.ts › a write port fault fails and the next verified write clears it
+pass	src/replica/room-copy.test.ts › an aborted room copy does not merge records after its active write settles
 pass	src/replica/room-copy.test.ts › an import read-back failure completes and signals the failed status
 pass	src/replica/room-copy.test.ts › an import read-back missing an imported record fails instead of saving
 pass	src/replica/room-copy.test.ts › an over-limit write reports the literal sizes of the retained metadata
@@ -3034,7 +3034,7 @@ pass	src/replica/room-copy.test.ts › an unreadable copy fails and stays owed f
 pass	src/replica/room-copy.test.ts › catch-up read higher reports its literal outcome before received records
 pass	src/replica/room-copy.test.ts › catch-up read none reports its literal outcome before received records
 pass	src/replica/room-copy.test.ts › catch-up read same reports its literal outcome before received records
-pass	src/replica/room-copy.test.ts › demotion and stop clear scheduled work and block later write effects
+pass	src/replica/room-copy.test.ts › demotion and abort clear scheduled work and block later write effects
 pass	src/replica/room-copy.test.ts › demotion cancels a paused write without creating a later debt
 pass	src/replica/room-copy.test.ts › demotion clears a failed notice and its owed catch-up write
 pass	src/replica/room-copy.test.ts › each status or notice change signals the publisher
