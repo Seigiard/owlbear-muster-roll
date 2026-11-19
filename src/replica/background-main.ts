@@ -1,8 +1,8 @@
 import { platform, timing } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
 import { startReplicaEngine } from '@/replica/engine';
-// The roll strings, the token menu labels, "Нет прав на правку" and "Данные комнаты заменены", the
-// only text the background shows. The engine takes them as options.
+// The roll strings, the token menu labels, "Нет прав на правку", "Правка слишком большая" and
+// "Данные комнаты заменены", the only text the background shows. The engine takes them as options.
 import { copy } from '@/copy';
 
 platform.onReady(() => {
