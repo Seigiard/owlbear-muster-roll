@@ -4,7 +4,7 @@ The junit lists of `bun test` and `bun run test:browser` that each TASK-115 step
 
 | File | Source | Count |
 | --- | --- | --- |
-| `bun-test.txt` | `bun test --reporter=junit --reporter-outfile=<xml>` | 3550 pass, 1 skip |
+| `bun-test.txt` | `bun test --reporter=junit --reporter-outfile=<xml>` | 3586 pass, 1 skip |
 | `test-browser.txt` | `PLAYWRIGHT_JUNIT_OUTPUT_NAME=<xml> bunx playwright test --reporter=junit` | 587 pass |
 
 Compare a run with the baseline:
@@ -22,3 +22,4 @@ comm -23 _bmad-output/implementation-artifacts/task-115-baseline/bun-test.txt no
 - 1aab7b5 (`epic/task-115` after TASK-115.6): 9 tests added; 2 renamed by the TASK-115.6 lock (see deferred-work.md). 3547 pass and 1 skip; 583 browser pass.
 - a6a244e (`epic/task-115` after TASK-115.4): 8 tests renamed by the TASK-115.4 lock (see deferred-work.md). 3547 pass and 1 skip; 583 browser pass.
 - 224a83a (`epic/task-115` after TASK-115.7 and TASK-115.5): the union of the two ticket tips' lists. TASK-115.7 added 2 unit and 3 browser tests; TASK-115.5 moved the five schedule tests to src/platform/schedule.test.ts and added one clock scenario per runner. 3550 pass and 1 skip; 587 browser pass.
+- 4c05bdc (`epic/task-115` after TASK-115.8): 36 tests added. 3586 pass and 1 skip; 587 browser pass. Lists are in C (code-point) order, as `junit-list.ts` prints them; compare with `LC_ALL=C comm`.

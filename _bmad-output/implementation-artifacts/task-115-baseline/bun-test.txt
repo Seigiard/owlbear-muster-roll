@@ -3000,6 +3000,42 @@ pass	src/replica/roll-flow.test.ts › reports the field label when the pending 
 pass	src/replica/roll-flow.test.ts › shows a received roll under the sender name from the party
 pass	src/replica/roll-flow.test.ts › uses the current generation and aborts after a reported send
 pass	src/replica/roll-flow.test.ts › uses the live role after readiness and again before it sends
+pass	src/replica/room-copy-machine.test.ts › a read answer sends at most one metadata write
+pass	src/replica/room-copy-machine.test.ts › a stopped room copy cannot restart, even when a held port call answers
+pass	src/replica/room-copy-machine.test.ts › every room-copy phase has a cell for every room-copy event
+pass	src/replica/room-copy-machine.test.ts › one active room-copy write holds its phase when another trigger arrives
+pass	src/replica/room-copy-machine.test.ts › room-copy transition table keeps metadata writes in writing and matches its diagram
+pass	src/replica/room-copy-table.test.ts › a GM pause fired during catch-up cannot start a metadata read
+pass	src/replica/room-copy-table.test.ts › a hidden page invalidates the held read and starts a new read, not a write
+pass	src/replica/room-copy-table.test.ts › a hidden player page cannot start a metadata read
+pass	src/replica/room-copy-table.test.ts › a player edit does not arm the pause
+pass	src/replica/room-copy-table.test.ts › a stopped room copy settles a dropped write exactly once
+pass	src/replica/room-copy-table.test.ts › a stopped room copy settles a failed write exactly once
+pass	src/replica/room-copy-table.test.ts › a stopped room copy settles a verified write exactly once
+pass	src/replica/room-copy-table.test.ts › a successful write does not start verification if the write gate has closed
+pass	src/replica/room-copy-table.test.ts › an already sent write answers after stop with the write gate closed
+pass	src/replica/room-copy-table.test.ts › an already sent write answers after stop with the write gate open
+pass	src/replica/room-copy-table.test.ts › catch-up completion handles a command applied during catch-up
+pass	src/replica/room-copy-table.test.ts › catch-up completion handles a player even with an applied command
+pass	src/replica/room-copy-table.test.ts › catch-up completion handles an owed write
+pass	src/replica/room-copy-table.test.ts › catch-up completion handles no applied edit or owed write
+pass	src/replica/room-copy-table.test.ts › failure handles a refused metadata read
+pass	src/replica/room-copy-table.test.ts › failure handles a refused metadata read after catch-up starts
+pass	src/replica/room-copy-table.test.ts › failure handles a refused metadata read from before a page return
+pass	src/replica/room-copy-table.test.ts › failure handles a refused metadata write
+pass	src/replica/room-copy-table.test.ts › failure handles a refused metadata write after catch-up starts
+pass	src/replica/room-copy-table.test.ts › failure handles a refused read-back
+pass	src/replica/room-copy-table.test.ts › failure handles a refused read-back after catch-up starts
+pass	src/replica/room-copy-table.test.ts › read-back handles a closed write gate
+pass	src/replica/room-copy-table.test.ts › read-back handles a dropped write
+pass	src/replica/room-copy-table.test.ts › read-back handles a higher-generation copy
+pass	src/replica/room-copy-table.test.ts › read-back handles a verified copy
+pass	src/replica/room-copy-table.test.ts › read-done does not overwrite a higher generation
+pass	src/replica/room-copy-table.test.ts › read-done does not overwrite an unreadable room copy
+pass	src/replica/room-copy-table.test.ts › read-done does not overwrite metadata beyond the room-copy budget
+pass	src/replica/room-copy-table.test.ts › read-done handles when a page return invalidates the read even when the GM is live again
+pass	src/replica/room-copy-table.test.ts › read-done handles when a writable GM with an unchanged page can write
+pass	src/replica/room-copy-table.test.ts › read-done handles when catch-up closes the write gate before the read answers
 pass	src/replica/room-copy.test.ts › a closed gate owes nothing written and a later catch-up arms the owed write
 pass	src/replica/room-copy.test.ts › a closed write gate performs no metadata read
 pass	src/replica/room-copy.test.ts › a direct write cancels its paused scheduled write
