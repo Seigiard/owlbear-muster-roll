@@ -2,153 +2,153 @@
   {
     "id": "R1",
     "rule": "A trigger during a routine room-copy write schedules exactly one follow-up write.",
-    "file": "src/replica/room-copy.ts",
-    "find": "      deferred.rerun = true;\n\n",
-    "replace": "",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "    return decision({ ...next, rerun: true }, disarm);",
+    "replace": "    return decision({ ...next, rerun: next.work.mode !== 'ordinary' || next.rerun }, disarm);",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
     "id": "R2",
     "rule": "A page change during a room-copy read stops that write.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    if (!options.writable() || pageChanges !== changesAtRead) {\n",
-    "replace": "    if (!options.writable()) {\n",
-    "test": ["src/replica/room-copy.test.ts"]
+    "file": "src/replica/room-copy-table.ts",
+    "find": "  if (!env.writable || work.pageChanges !== phase.pageChanges) {",
+    "replace": "  if (!env.writable) {",
+    "test": ["src/replica/room-copy-table.test.ts"]
   },
   {
     "id": "R3",
     "rule": "An import waits for a routine room-copy write already in flight.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    await waitForWrite();\n\n",
-    "replace": "",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "    return phase.kind === 'idle'\n      ? read(phase, { mode: 'import', request })\n      : decision({ ...phase, imports: [...phase.imports, request] });",
+    "replace": "    return phase.kind === 'idle' || phase.work.mode === 'ordinary'\n      ? read(phase, { mode: 'import', request })\n      : decision({ ...phase, imports: [...phase.imports, request] });",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
     "id": "R4",
     "rule": "The room-copy write gate is checked again after reading metadata.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    const readBack = await readMetadata(options.metadata);\n\n    if (!options.writable()) {\n      return;\n    }\n",
-    "replace": "    const readBack = await readMetadata(options.metadata);\n",
-    "test": ["src/replica/room-copy.test.ts"]
+    "file": "src/replica/room-copy-table.ts",
+    "find": "  if ((work.mode === 'ordinary' && !env.writable) || (work.mode === 'import' && env.superseded)) {",
+    "replace": "  if (work.mode === 'import' && env.superseded) {",
+    "test": ["src/replica/room-copy-table.test.ts"]
   },
   {
     "id": "R5",
     "rule": "A failed room-copy operation leaves a write owed.",
-    "file": "src/replica/room-copy.ts",
-    "find": "  function failRoomCopy(metadata: JsonObject | null): void {\n    notSaved = true;\n    deferred.owed = true;\n\n    if (metadata === null) {\n",
-    "replace": "  function failRoomCopy(metadata: JsonObject | null): void {\n    notSaved = true;\n\n    if (metadata === null) {\n",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "    phase.owed ||\n    (env.gm && snapshot !== null && !snapshot.isOk() && snapshot.error !== 'older-version');",
+    "replace": "    phase.owed;",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
     "id": "R6",
     "rule": "A higher room copy found at read-back is adopted rather than marked failed.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    if (check.ok && check.value !== null && compareGenerations(check.value.g, written.g) > 0) {\n      options.adopt(check.value);\n\n      return;\n    }\n\n",
-    "replace": "",
-    "test": ["src/replica/room-copy.test.ts"]
+    "file": "src/replica/room-copy-table.ts",
+    "find": "    compareGenerations(current.value.g, work.snapshot.g) > 0\n  ) {",
+    "replace": "    compareGenerations(current.value.g, work.snapshot.g) > 0 &&\n    work.mode === 'import'\n  ) {",
+    "test": ["src/replica/room-copy-table.test.ts"]
   },
   {
     "id": "R7",
     "rule": "A failed room-copy read marks the room copy as failed.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    if (metadata === null) {\n      failRoomCopy(null);\n\n      return;\n    }\n\n    const read = readSnapshot(metadata);\n",
-    "replace": "    if (metadata === null) {\n      return;\n    }\n\n    const read = readSnapshot(metadata);\n",
-    "test": ["src/replica/room-copy.test.ts"]
+    "file": "src/replica/room-copy-table.ts",
+    "find": "    env.writable && (phase.kind !== 'reading' || work.pageChanges === phase.pageChanges)",
+    "replace": "    env.writable && phase.kind !== 'reading'",
+    "test": ["src/replica/room-copy-table.test.ts"]
   },
   {
     "id": "R8",
     "rule": "An import does not remove a room copy of its own generation.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    if (!read.ok || read.value === null || compareGenerations(read.value.g, generation) >= 0) {\n",
-    "replace": "    if (!read.ok || read.value === null || compareGenerations(read.value.g, generation) > 0) {\n",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "    compareGenerations(current.value.g, work.request.generation) >= 0",
+    "replace": "    compareGenerations(current.value.g, work.request.generation) > 0",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
     "id": "R9",
     "rule": "An import does not overwrite a room copy from a newer build.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    if (!current.ok && current.error === 'newer-version') {\n      console.error('Muster Roll could not replace the room copy of a newer build');\n      options.newerVersion();\n\n      return null;\n    }\n\n",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "  if (!current.isOk() && current.error === 'newer-version') {\n    return decision(\n      phase,\n      { type: 'report', failure: new MessageRejectedFailure({ reason: 'newer-version' }) },\n      { type: 'newer-version' },\n      { type: 'recheck-import', request: work.request },\n    );\n  }\n\n",
     "replace": "",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
     "id": "R10",
     "rule": "A trigger during an import write schedules exactly one follow-up write.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    if (!supersededImport && deferred.rerun) {\n      deferred.rerun = false;\n      void writeRoomCopy().catch((error) => {\n        console.error('Muster Roll could not write the room copy', error);\n      });\n    }\n",
-    "replace": "",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "  if (idle.rerun && !options.skipRerun) {",
+    "replace": "  if (idle.rerun && !options.skipRerun && phase.work.mode === 'ordinary') {",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
     "id": "R11",
     "rule": "A verified import clears the owed room-copy write.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    if (verified !== null) {\n      deferred.owed = false;\n",
-    "replace": "    if (verified !== null) {\n",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "    return stopped ? drain(phase, [update]) : finish(phase, env, [update], { owed: false });",
+    "replace": "    return stopped ? drain(phase, [update]) : finish(phase, env, [update], { owed: work.mode === 'import' ? phase.owed : false });",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
     "id": "R12",
     "rule": "Catch-up completion schedules a room-copy write when one is owed.",
-    "file": "src/replica/room-copy.ts",
-    "find": "      if (deferred.owed || applied) {\n",
-    "replace": "      if (applied) {\n",
-    "test": ["src/replica/room-copy.test.ts"]
+    "file": "src/replica/room-copy-table.ts",
+    "find": "  return phase.owed || applied ? pause(phase, env) : decision(phase);",
+    "replace": "  return applied ? pause(phase, env) : decision(phase);",
+    "test": ["src/replica/room-copy-table.test.ts"]
   },
   {
     "id": "R13",
     "rule": "Demotion clears the owed room-copy write and its not-saved notice.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    demoted: () => {\n      cancelScheduledWrite();\n      deferred.owed = false;\n      notSaved = false;\n",
-    "replace": "    demoted: () => {\n      cancelScheduledWrite();\n",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "    ? decision({ ...phase, owed: false }, { type: 'disarm' })",
+    "replace": "    ? decision(phase, { type: 'disarm' })",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
     "id": "R14",
     "rule": "An import read-back is accepted only when it holds the written copy.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    return check.ok && readBackHolds(written, check.value) ? readBack : null;\n",
-    "replace": "    return readBack;\n",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "  if (current.isOk() && readBackHolds(work.snapshot, current.value)) {",
+    "replace": "  if (work.mode === 'import' || (current.isOk() && readBackHolds(work.snapshot, current.value))) {",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
     "id": "R15",
     "rule": "An import adopts a higher room copy found at read-back.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    if (readBack === null || superseded() || adoptedHigherCopy(readBack, generation)) {\n",
-    "replace": "    if (readBack === null || superseded()) {\n",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "    compareGenerations(current.value.g, work.snapshot.g) > 0\n  ) {",
+    "replace": "    compareGenerations(current.value.g, work.snapshot.g) > 0 &&\n    work.mode === 'ordinary'\n  ) {",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
     "id": "R16",
     "rule": "A failed import copy sets the not-saved notice.",
     "file": "src/replica/room-copy.ts",
-    "find": "    } else {\n      notSaved = true;\n      deferred.owed = true;\n",
-    "replace": "    } else {\n      deferred.owed = true;\n",
+    "find": "      case 'import-failed':\n        notSaved = true;",
+    "replace": "      case 'import-failed':",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
     "id": "R17",
     "rule": "Stopping during an active write preserves the stopped lifecycle after it settles.",
-    "file": "src/replica/room-copy.ts",
-    "find": "      lifecycle = { phase: 'stopped' };\n",
-    "replace": "      lifecycle = { phase: 'idle' };\n",
-    "test": ["src/replica/room-copy.test.ts"]
+    "file": "src/replica/room-copy-table.ts",
+    "find": "  return decision({ kind: 'stopped' }, ...effects, ...complete);",
+    "replace": "  return decision(initialPhase(), ...effects, ...complete);",
+    "test": ["src/replica/room-copy-table.test.ts"]
   },
   {
     "id": "R19",
     "rule": "An import waits through every routine write that was queued before it.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    await operation.completion;\n    await waitForWrite();\n",
-    "replace": "    await operation.completion;\n",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "  if (idle.rerun && !options.skipRerun) {",
+    "replace": "  if (idle.rerun && !options.skipRerun && !(phase.work.mode === 'ordinary' && idle.imports.length > 0)) {",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
     "id": "R20",
     "rule": "Failed import cleanup refreshes status from the metadata after removing a lower copy.",
-    "file": "src/replica/room-copy.ts",
-    "find": "    noteRoomCopy(after, false);\n",
-    "replace": "",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "    const update = status({ kind: 'absent', metadata: stopped ? null : metadata });",
+    "replace": "    const update = status({ kind: 'absent', metadata: null });",
     "test": ["src/replica/room-copy.test.ts"]
   }
 ]

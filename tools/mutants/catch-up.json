@@ -2,129 +2,129 @@
   {
     "id": "M1",
     "rule": "A GM in catch-up holds a state request it cannot answer until the catch-up ends.",
-    "file": "src/replica/catch-up.ts",
-    "find": "        // A request heard while this GM cannot answer waits until its catch-up ends. It answers the\n        // ones still unanswered because nobody asks again.\n        holdRequest(r);\n\n",
-    "replace": "",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "    return { phase: holdRequest(memory, event.r), effects: [] };",
+    "replace": "    return same(memory);",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M2",
     "rule": "Held requests are not answered when an answer to that nonce was seen before the catch-up exit.",
-    "file": "src/replica/catch-up.ts",
-    "find": "      if (!answeredNonces.has(r)) {\n        decisions.push(...scheduleAnswer(r));\n      }\n",
-    "replace": "      decisions.push(...scheduleAnswer(r));\n",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "    if (!afterHeld.answeredNonces.includes(r)) {\n      const answer = scheduleAnswer(afterHeld, r, env);\n      afterHeld = answer.phase;\n      effects.push(...answer.effects);\n    }",
+    "replace": "    const answer = scheduleAnswer(afterHeld, r, env);\n    afterHeld = answer.phase;\n    effects.push(...answer.effects);",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M3",
     "rule": "A catching-up client asks again with the same nonce when a GM comes online before an answer arrives.",
-    "file": "src/replica/catch-up.ts",
-    "find": "    if (\n      next === 'online' &&\n      !answersOwn &&\n      phase.kind === 'catching-up' &&\n      phase.active.sentNonce === phase.active.nonce &&\n      !phase.active.answerSeen\n    ) {\n      decisions.push(request(phase.active.nonce));\n    }\n\n",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "  if (\n    isCatchingUp(phase) &&\n    phase.active.sentNonce === phase.active.nonce &&\n    !phase.active.answerSeen\n  ) {\n    return request(phase, phase.active.nonce);\n  }\n\n",
     "replace": "",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M4",
     "rule": "A late complete answer to the last own nonce does not start a GM-return catch-up.",
-    "file": "src/replica/catch-up.ts",
-    "find": "        ? [...watch(), ...setGmLink('online', message.t === 'state' && message.r === lastNonce)]\n",
-    "replace": "        ? [...watch(), ...setGmLink('online', false)]\n",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "  if (event.env.gmLink !== 'offline' || answersOwn) {",
+    "replace": "  if (event.env.gmLink !== 'offline' || (answersOwn && phase.kind !== 'live')) {",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M5",
     "rule": "A GM client does not enter a GM-return catch-up.",
-    "file": "src/replica/catch-up.ts",
-    "find": "    if (next === 'online' && !answersOwn && options.role() !== 'GM' && phase.kind === 'live') {\n",
-    "replace": "    if (next === 'online' && !answersOwn && phase.kind === 'live') {\n",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "  if (event.env.role !== 'GM' && phase.kind === 'live') {",
+    "replace": "  if (phase.kind === 'live') {",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M6",
     "rule": "The catch-up timeout does not end catch-up while a generation is being adopted.",
-    "file": "src/replica/catch-up.ts",
-    "find": "          if (phase.mode.kind === 'adopting') {\n",
-    "replace": "          if (false) {\n",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "      if (isAdopting(phase)) {\n        const retryMs = Math.min(phase.retryMs * 2, event.env.timing.incompleteRequestMaxMs);\n\n        return {\n          phase: { ...phase, retryMs },\n          effects: [\n            {\n              type: 'arm',\n              timer: { kind: 'catch-up' },\n              delayMs: retryMs - (event.env.random() * retryMs) / 4,\n            },\n            { type: 'read-room-copy', r: phase.active.nonce, fresh: true },\n          ],\n        };\n      }",
+    "replace": "      if (isAdopting(phase)) {\n        return leave({ ...phase, kind: 'catching-up', mode: { kind: 'ordinary' } }, event.env, 'unanswered');\n      }",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M7",
     "rule": "While adopting a generation, answers of another generation do not count.",
-    "file": "src/replica/catch-up.ts",
-    "find": "      if (\n        message.r !== lastNonce ||\n        (phase.kind === 'catching-up' &&\n          phase.mode.kind === 'adopting' &&\n          compareGenerations(message.g, phase.mode.target) !== 0)\n      ) {\n",
-    "replace": "      if (message.r !== lastNonce) {\n",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "  if (\n    event.message.r !== next.lastNonce ||\n    (isAdopting(next) && compareGenerations(event.message.g, next.target) !== 0)\n  ) {",
+    "replace": "  if (event.message.r !== next.lastNonce) {",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M8",
     "rule": "Differing alive messages from one burst count only once.",
-    "file": "src/replica/catch-up.ts",
-    "find": "      if (counted !== undefined && now - counted.at < options.timing.gmLinkTimeoutMs / 2) {\n        return [];\n      }\n\n",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "  if (counted !== undefined && event.env.now - counted.at < event.env.timing.gmLinkTimeoutMs / 2) {\n    return { phase: withoutIgnored, effects: [] };\n  }\n\n",
     "replace": "",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M9",
     "rule": "An answered exit ignores the drift starter as well as the responder.",
-    "file": "src/replica/catch-up.ts",
-    "find": "      for (const gm of [responder, driftStarter]) {\n",
-    "replace": "      for (const gm of [responder]) {\n",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "    const senders = [responder, phase.driftStarter];",
+    "replace": "    const senders = [responder];",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M10",
     "rule": "A GM in a drift catch-up can answer state requests.",
-    "file": "src/replica/catch-up.ts",
-    "find": "      phase.active.trigger === 'drift'\n",
-    "replace": "      false\n",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "    phase.kind === 'live' || (phase.kind === 'catching-up' && phase.active.trigger === 'drift')",
+    "replace": "    phase.kind === 'live'",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M11",
     "rule": "A GM in catch-up does not answer pings.",
-    "file": "src/replica/catch-up.ts",
-    "find": "    pingReceived: () => (canAnswer() && phase.kind === 'live' ? [{ type: 'alive' }] : []),\n",
-    "replace": "    pingReceived: () => (canAnswer() ? [{ type: 'alive' }] : []),\n",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "    catchUpStateRequested(phase, event),\n  ping: 'ignore',\n  alive: (phase: CatchingUpPhase",
+    "replace": "    catchUpStateRequested(phase, event),\n  ping: (phase: CatchingUpPhase, event: EventOf<'ping'>) =>\n    canAnswer(phase, event.env) ? { phase, effects: [{ type: 'alive' }] } : same(phase),\n  alive: (phase: CatchingUpPhase",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M12",
     "rule": "A page return while catching up keeps the existing nonce.",
-    "file": "src/replica/catch-up.ts",
-    "find": "    const keepsNonce = trigger === 'page-return' && phase.kind === 'catching-up';\n",
-    "replace": "    const keepsNonce = false;\n",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "  const keepsNonce = event.trigger === 'page-return' && isCatchingUp(phase);",
+    "replace": "  const keepsNonce = false;",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M14",
     "rule": "A GM arms at most one delayed answer for one nonce.",
-    "file": "src/replica/catch-up.ts",
-    "find": "    if (!canAnswer() || armedAnswers.has(r)) {\n",
-    "replace": "    if (!canAnswer()) {\n",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "  if (!canAnswer(phase, env) || phase.armedAnswers.includes(r)) {",
+    "replace": "  if (!canAnswer(phase, env)) {",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M15",
     "rule": "A generation adopted during catch-up keeps its active nonce.",
-    "file": "src/replica/catch-up.ts",
-    "find": "      return [{ type: 'adopt', generation, previous, keepNonce: true, hadData }];\n",
-    "replace": "      return [{ type: 'adopt', generation, previous, keepNonce: false, hadData }];\n",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "      effects: [{ type: 'adopt', generation, previous, keepNonce: true, hadData }],",
+    "replace": "      effects: [{ type: 'adopt', generation, previous, keepNonce: false, hadData }],",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M16",
     "rule": "A changed digest clears the earlier ignored digest before drift is counted again.",
-    "file": "src/replica/catch-up.ts",
-    "find": "      ignoredDigests.delete(sender);\n",
-    "replace": "",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "    ignoredDigests: removeSender(withDigest.ignoredDigests, event.sender),",
+    "replace": "    ignoredDigests: withDigest.ignoredDigests,",
     "test": ["src/replica/catch-up.test.ts"]
   },
   {
     "id": "M13",
     "rule": "An answer timer that fires during ordinary catch-up is retained until catch-up ends.",
-    "file": "src/replica/catch-up.ts",
-    "find": "          if (!canAnswer() && phase.kind === 'catching-up' && phase.mode.kind === 'ordinary') {\n            holdRequest(timer.r);\n          }\n\n",
-    "replace": "",
+    "file": "src/replica/catch-up-table.ts",
+    "find": "        return { phase: holdRequest(withoutArmed, event.timer.r), effects: [] };",
+    "replace": "        return same(withoutArmed);",
     "test": ["src/replica/catch-up.test.ts"]
   }
 ]

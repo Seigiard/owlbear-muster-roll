@@ -99,32 +99,32 @@
     "id": "B38",
     "rule": "A no-fit projection is rejected instead of treated as successful (#38).",
     "file": "src/replica/window-publisher.ts",
-    "find": "    if (parts === null) {\n      console.error('Muster Roll could not split a projection');\n\n      return false;\n    }\n",
-    "replace": "    if (false) {\n      console.error('Muster Roll could not split a projection');\n\n      return false;\n    }\n",
+    "find": "    const parts = splitParts(\n      [...current.records.values()],\n      [...current.pending.values()],\n      jsonByteLength(envelope),\n    );",
+    "replace": "    const parts = splitParts(\n      [...current.records.values()],\n      [...current.pending.values()],\n      jsonByteLength(envelope),\n    ) ?? [{ records: [], pending: [] }];",
     "test": ["src/replica/window-publisher.test.ts"]
   },
   {
     "id": "B40",
     "rule": "A no-fit projection reports its split error (#40).",
     "file": "src/replica/window-publisher.ts",
-    "find": "    if (parts === null) {\n      console.error('Muster Roll could not split a projection');\n\n      return false;\n    }\n",
-    "replace": "    if (parts === null) {\n      return false;\n    }\n",
+    "find": "    if (parts === null) {\n      report(new RecordTooLargeFailure({}));\n\n      return false;\n    }\n\n    answeringNonces.add(nonce);",
+    "replace": "    if (parts === null) {\n      return false;\n    }\n\n    answeringNonces.add(nonce);",
     "test": ["src/replica/window-publisher.test.ts"]
   },
   {
     "id": "B41",
     "rule": "A no-fit projection returns false (#41).",
     "file": "src/replica/window-publisher.ts",
-    "find": "    if (parts === null) {\n      console.error('Muster Roll could not split a projection');\n\n      return false;\n    }\n",
-    "replace": "    if (parts === null) {\n      console.error('Muster Roll could not split a projection');\n\n      return true;\n    }\n",
+    "find": "    if (parts === null) {\n      report(new RecordTooLargeFailure({}));\n\n      return false;\n    }\n\n    answeringNonces.add(nonce);",
+    "replace": "    if (parts === null) {\n      report(new RecordTooLargeFailure({}));\n\n      return true;\n    }\n\n    answeringNonces.add(nonce);",
     "test": ["src/replica/window-publisher.test.ts"]
   },
   {
     "id": "C49",
     "rule": "A settled projection releases its answering nonce through the send chain (#49).",
     "file": "src/replica/window-publisher.ts",
-    "find": "    Promise.all(sends)\n      .then(() => {\n        answeringNonces.delete(nonce);\n      })\n      .catch((error) => {\n        console.error('Muster Roll could not send a projection', error);\n      });\n",
-    "replace": "    Promise.all(sends);\n",
+    "find": "    Promise.all(sends)\n      .then(() => {\n        answeringNonces.delete(nonce);\n      })\n      .catch((error) => {\n        report(new MessageRejectedFailure({ reason: String(error) }));\n      });",
+    "replace": "    answeringNonces.delete(nonce);\n    Promise.all(sends).catch((error) => {\n      report(new MessageRejectedFailure({ reason: String(error) }));\n    });",
     "test": ["src/replica/window-publisher.test.ts"]
   },
   {
