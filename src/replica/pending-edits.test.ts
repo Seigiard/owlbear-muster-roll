@@ -588,6 +588,8 @@ describe('pending edits', () => {
       n: 2,
     });
 
+    harness.setNow(120_000);
+
     const recoveredFirst = harness.pending.rejected({
       ...reject({ k: STR.k, c: 3, a: CONNECTION }, 'stale', current),
       i: 1,
