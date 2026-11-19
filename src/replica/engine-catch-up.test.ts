@@ -6,7 +6,7 @@ import { recordSchema, type VersionedRecord } from '@/core/records';
 import { decodeStateRecords, encodeStateRecords } from '@/core/state-records';
 import { generationMarkerKey, type Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
-import type { Command, SyncState } from '@/core/ui-messages';
+import type { WireCommand, SyncState } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
 import {
@@ -164,7 +164,7 @@ async function startClient(
 }
 
 function patch(target: typeof ROW_STR | typeof ROW_NOTES, fieldId: string, value: JsonValue) {
-  return { type: 'field-patch', sheetId: 'brok', target, fieldId, value } satisfies Command;
+  return { type: 'field-patch', sheetId: 'brok', target, fieldId, value } satisfies WireCommand;
 }
 
 function stateMessage(

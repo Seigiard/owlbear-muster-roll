@@ -1,7 +1,6 @@
 import { nanoid } from 'nanoid';
 
 import { partyEntries } from '@/core/access';
-import { blockAddress, sheetRootAddress } from '@/core/block-address';
 import { createBoundedIdSet } from '@/core/bounded-id-set';
 import { recordDigest } from '@/core/digest';
 import { newRecordId, type RecordIdKind } from '@/core/ids';
@@ -30,11 +29,13 @@ import {
 } from '@/core/timing';
 import {
   parseWindowMessage,
+  registerWireEngineMessage,
   UI_CHANNEL,
   type EngineMessage,
   type Notice,
-  type OpenSheetRequest,
+  type OpenSheetTarget,
   type RejectionReason,
+  wireOpenSheetOf,
 } from '@/core/ui-messages';
 import { linkTargetShownTo, type PlayerRole } from '@/core/visibility';
 import type { BroadcastOptions, Platform } from '@/platform/ports';
@@ -294,7 +295,7 @@ export async function startReplicaEngine(
   // FR14: the sheet "Открыть лист" asked for, until a window acknowledges it. A newer press
   // replaces it. It is dropped once this role cannot see the sheet, the sheet is gone, Owlbear
   // refuses to open the window, or it outlives its lifetime.
-  let heldOpen: OpenSheetRequest | null = null;
+  let heldOpen: OpenSheetTarget | null = null;
   // Read against the clock, not a timer, as a hidden tab's timers may not run.
   let heldOpenUntil = 0;
 
@@ -740,10 +741,7 @@ export async function startReplicaEngine(
 
     const block = target.block;
 
-    heldOpen =
-      block.path.length === 0
-        ? { id, sheetId: block.sheetId, cellId: target.cellId ?? '' }
-        : { id, sheetId: block.sheetId, path: [...block.path], cellId: target.cellId ?? '' };
+    heldOpen = { id, block, cellId: target.cellId ?? '' };
     heldOpenUntil = Date.now() + timing.openRequestTtlMs;
     // No window opens for it, so a window opened by hand later does not jump to it.
     platform.action.open().catch((error) => {
@@ -763,7 +761,10 @@ export async function startReplicaEngine(
       return;
     }
 
-    send({ t: 'open-sheet', ...heldOpen }).catch((error) => {
+    const message = wireOpenSheetOf(heldOpen);
+    registerWireEngineMessage(message);
+
+    send(message).catch((error) => {
       console.error('Muster Roll could not ask a window to open a sheet', error);
     });
   }
@@ -784,14 +785,8 @@ export async function startReplicaEngine(
     return live !== null && linkTargetShownTo(role, live);
   }
 
-  function openRequestTarget(request: OpenSheetRequest): LinkTarget {
-    const block =
-      blockAddress(request.sheetId, request.path ?? []) ?? sheetRootAddress(request.sheetId);
-
-    return {
-      block,
-      cellId: request.cellId,
-    };
+  function openRequestTarget(request: OpenSheetTarget): LinkTarget {
+    return { block: request.block, cellId: request.cellId };
   }
 
   function dropOpen(id: string): void {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RefCallback, RefObject } from 'react';
 
+import { blockAddress } from '@/core/block-address';
 import { newInstanceId } from '@/core/ids';
 import type { Command } from '@/core/ui-messages';
 import type { CommandOutcomePromise } from '@/ui/replica-client';
@@ -135,13 +136,11 @@ export function useRepeatBlocks(
       const command: Extract<Command, { type: 'repeat-block-add' }> = {
         type: 'repeat-block-add',
         sheetId,
-        sectionId,
-        instanceId,
+        block: blockAddress(sheetId, [...(parentPath ?? []), sectionId, instanceId]) ?? {
+          sheetId,
+          path: [...(parentPath ?? []), sectionId, instanceId],
+        },
       };
-
-      if (parentPath !== null) {
-        command.path = [...parentPath, sectionId, instanceId];
-      }
 
       const outcome = editing.sendCommand(command);
 
@@ -151,13 +150,11 @@ export function useRepeatBlocks(
       const command: Extract<Command, { type: 'repeat-block-delete' }> = {
         type: 'repeat-block-delete',
         sheetId,
-        sectionId,
-        instanceId,
+        block: blockAddress(sheetId, [...(parentPath ?? []), sectionId, instanceId]) ?? {
+          sheetId,
+          path: [...(parentPath ?? []), sectionId, instanceId],
+        },
       };
-
-      if (parentPath !== null) {
-        command.path = [...parentPath, sectionId, instanceId];
-      }
 
       const outcome = editing.sendCommand(command);
 

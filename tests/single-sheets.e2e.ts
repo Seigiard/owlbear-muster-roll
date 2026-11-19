@@ -295,9 +295,9 @@ test('removing a repeat block with two token links tombstones both links and lea
   await openNpcTab(page, context, [
     npcBlock('skel', 'Скелет', 0),
     npcBlock('gob', 'Гоблин', 1),
-    record('link:t1', { s: 'npc', path: ['attack', 'skel'], c: 'token' }),
-    record('link:t2', { s: 'npc', path: ['attack', 'skel'], c: 'token' }),
-    record('link:t3', { s: 'npc', path: ['attack', 'gob'], c: 'token' }),
+    record('link:t1', { s: 'npc', path: ['npc_name', 'skel'], c: 'token' }),
+    record('link:t2', { s: 'npc', path: ['npc_name', 'skel'], c: 'token' }),
+    record('link:t3', { s: 'npc', path: ['npc_name', 'gob'], c: 'token' }),
   ]);
   // #when
   await page.getByRole('button', { name: 'Удалить блок 1', exact: true }).click();
@@ -314,7 +314,7 @@ test('removing a repeat block with two token links tombstones both links and lea
       block: null,
       t1: null,
       t2: null,
-      t3: { s: 'npc', path: ['attack', 'gob'], c: 'token' },
+      t3: { s: 'npc', path: ['npc_name', 'gob'], c: 'token' },
     });
 });
 

@@ -3,13 +3,16 @@ import type { FieldPatchWireTarget } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
 import {
   parseEngineMessage,
+  parseCommand,
   parseWindowMessage,
   UI_CHANNEL,
+  wireCommandOf,
   type Command,
   type EngineMessage,
   type RollOutcome,
   type RoomCopyStatus,
   type SyncState,
+  type WireCommand,
   type WindowMessage,
 } from './ui-messages';
 
@@ -127,7 +130,7 @@ describe('parseWindowMessage', () => {
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-  test.each<[string, Command]>([
+  test.each<[string, WireCommand]>([
     [
       'a repeat-block-add',
       { type: 'repeat-block-add', sheetId: 'npc', sectionId: 'npc_name', instanceId: 'i1' },
@@ -162,12 +165,113 @@ describe('parseWindowMessage', () => {
     ],
     ['a wipe', { type: 'wipe' }],
   ])('accepts %s command', (_name, command) => {
-    // #given
-    const message: WindowMessage = { t: 'command', id: 'c1', command };
     // #when
-    const parsed = parseWindowMessage(message);
+    const wire = wireCommandOf(parseCommand(command));
     // #then
-    expect(parsed).toEqual({ ok: true, value: message });
+    expect(wire).toEqual(command);
+  });
+  test('parses a nested repeat command into its literal block address', () => {
+    // #when
+    const parsed = parseCommand({
+      type: 'repeat-block-delete',
+      sheetId: 'encounter',
+      sectionId: 'attack',
+      instanceId: 'claw',
+      path: ['npc', 'goblin', 'attack', 'claw'],
+    });
+    // #then
+
+    expect(parsed).toEqual({
+      type: 'repeat-block-delete',
+      sheetId: 'encounter',
+      block: { sheetId: 'encounter', path: ['npc', 'goblin', 'attack', 'claw'] },
+    });
+  });
+  test.each<[string, JsonValue]>([
+    [
+      'a triple command whose path has an odd number of segments',
+      {
+        type: 'repeat-block-add',
+        sheetId: 'encounter',
+        sectionId: 'attack',
+        instanceId: 'claw',
+        path: ['npc', 'goblin', 'attack'],
+      },
+    ],
+    [
+      'a triple command whose path ends in another block',
+      {
+        type: 'repeat-block-delete',
+        sheetId: 'encounter',
+        sectionId: 'attack',
+        instanceId: 'claw',
+        path: ['npc', 'goblin', 'attack', 'bite'],
+      },
+    ],
+    [
+      'a link target whose path has an odd number of segments',
+      {
+        type: 'link-set',
+        tokenId: 't1',
+        sheetId: 'encounter',
+        path: ['npc', 'goblin', 'attack'],
+        cellId: 'token',
+      },
+    ],
+    [
+      'a field patch whose target path ends in another block',
+      {
+        type: 'field-patch',
+        sheetId: 'encounter',
+        target: {
+          kind: 'rep',
+          sectionId: 'attack',
+          instanceId: 'claw',
+          path: ['npc', 'goblin', 'attack', 'bite'],
+        },
+        fieldId: 'damage',
+        value: 1,
+      },
+    ],
+    [
+      'a field patch whose target path has an odd number of segments',
+      {
+        type: 'field-patch',
+        sheetId: 'encounter',
+        target: {
+          kind: 'rep',
+          sectionId: 'attack',
+          instanceId: 'claw',
+          path: ['npc', 'goblin', 'attack'],
+        },
+        fieldId: 'damage',
+        value: 1,
+      },
+    ],
+  ])('drops %s', (_name, command) => {
+    // #when
+    const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+  });
+  test.each<[string, WireCommand]>([
+    [
+      'a triple command with a colon in its instance id',
+      { type: 'repeat-block-add', sheetId: 'encounter', sectionId: 'npc', instanceId: 'a:b' },
+    ],
+    [
+      'a triple command with an empty instance id',
+      { type: 'repeat-block-add', sheetId: 'encounter', sectionId: 'npc', instanceId: '' },
+    ],
+  ])('parses %s before the composer validates its segments', (_name, command) => {
+    // #when
+    const parsed = parseCommand(command);
+    // #then
+    expect(parsed).toEqual({
+      type: 'repeat-block-add',
+      sheetId: 'encounter',
+      block: { sheetId: 'encounter', path: ['npc', command.instanceId] },
+    });
   });
   test.each<[string, JsonValue]>([
     [
@@ -286,18 +390,20 @@ describe('parseWindowMessage', () => {
     ['a repeat instance field', { kind: 'rep', sectionId: 'attack', instanceId: 'i1' }, 'Меч'],
     ['a clear', { kind: 'row', rowId: 'str' }, null],
     ['a value of any JSON type, for the engine to check', { kind: 'row', rowId: 'str' }, [1]],
-  ])('accepts a field-patch command for %s', (_name, target, value) => {
+  ])('round-trips a field-patch command for %s', (_name, target, value) => {
     // #given
-    const message: WindowMessage = {
-      t: 'command',
-      id: 'c1',
-      command: { type: 'field-patch', sheetId: 's1', target, fieldId: 'str', value },
-    };
-
+    const command = {
+      type: 'field-patch',
+      sheetId: 's1',
+      target,
+      fieldId: 'str',
+      value,
+    } satisfies WireCommand;
     // #when
-    const parsed = parseWindowMessage(message);
+
+    const wire = wireCommandOf(parseCommand(command));
     // #then
-    expect(parsed).toEqual({ ok: true, value: message });
+    expect(wire).toEqual(command);
   });
   test.each<[string, JsonValue]>([
     [

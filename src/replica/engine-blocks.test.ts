@@ -5,6 +5,7 @@ import { NOTHING_ERASED } from '@/core/preset-migrate';
 import { blockDataSchema, cellValues, type VersionedRecord } from '@/core/records';
 import {
   createRoomRig,
+  outcome,
   pause,
   rejection,
   send,
@@ -185,6 +186,58 @@ test('deleting a block and its link defeats a later higher-counter cell commit',
     shown(first, 'link:token')?.d,
     shown(later, 'link:token')?.d,
   ]).toEqual([null, null, null, null]);
+});
+
+test('an add without a parent path to a nested section is refused without writing a root block', async () => {
+  // #given
+  const nestedPreset: Preset = {
+    v: 4,
+    templates: [
+      {
+        id: 'encounter',
+        title: 'Encounter',
+        tabs: [
+          {
+            repeat: { id: 'npc', nameField: 'npc_name' },
+            sections: [
+              { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }] },
+              {
+                repeat: { id: 'atk', nameField: 'attack_name' },
+                rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack_name' }] }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const nestedRig = createRoomRig({
+    seeded: [
+      { k: 'preset', d: encodePreset(nestedPreset), c: 1, a: 'seed' },
+      { k: 'blk:encounter', d: { order: 0, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
+    ],
+    until: 'live',
+  });
+
+  const room = nestedRig.openRoom();
+  const client = await nestedRig.startClient(room, 'gm-a');
+
+  // #when
+  const id = send(client, {
+    type: 'repeat-block-add',
+    sheetId: 'encounter',
+    sectionId: 'atk',
+    instanceId: 'x',
+  });
+
+  await nestedRig.waitUntil(() => rejection(client, id) !== undefined);
+
+  // #then
+  expect({
+    rejection: rejection(client, id),
+    stored: storedRecord(client, 'blk:encounter:atk:x'),
+  }).toEqual({ rejection: 'unknown-section', stored: null });
 });
 
 test('a child field command after its parent was deleted is refused without changing the child', async () => {
@@ -611,4 +664,96 @@ test('catch-up replays queued field intents over incoming cells without losing e
   );
   // #then
   expect(values(storedRecord(client, root.k))).toEqual({ name: 'Incoming', str: 14 });
+});
+
+test('real engine commands add, edit and remove a repeat-row block in its row scope', async () => {
+  // #given
+  const rowPreset: Preset = {
+    v: 4,
+    templates: [
+      {
+        id: 'journal',
+        title: 'Журнал',
+        tabs: [
+          {
+            sections: [
+              {
+                rows: [
+                  {
+                    repeat: { id: 'conditions', nameField: 'name' },
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'name' },
+                      { kind: 'dice', formula: '1d20', name: 'Проверка' },
+                      { kind: 'token', id: 'badge' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const rowRig = createRoomRig({
+    seeded: [
+      { k: 'preset', d: encodePreset(rowPreset), c: 1, a: 'seed' },
+      { k: 'blk:journal', d: { order: 0, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
+    ],
+    until: 'live',
+  });
+
+  const room = rowRig.openRoom(['token']);
+  const gm = await rowRig.startClient(room, 'gm-a');
+
+  // #when
+  const added = send(gm, {
+    type: 'repeat-block-add',
+    sheetId: 'journal',
+    sectionId: 'conditions',
+    instanceId: 'c1',
+  });
+
+  await rowRig.waitUntil(() => outcome(gm, added) !== undefined);
+
+  const edited = send(gm, {
+    type: 'field-patch',
+    sheetId: 'journal',
+    target: { kind: 'rep', sectionId: 'conditions', instanceId: 'c1' },
+    fieldId: 'name',
+    value: 'Отравлен',
+  });
+
+  await rowRig.waitUntil(() => outcome(gm, edited) !== undefined);
+
+  const linked = send(gm, {
+    type: 'link-set',
+    tokenId: 'token',
+    sheetId: 'journal',
+    path: ['conditions', 'c1'],
+    cellId: 'badge',
+  });
+
+  await rowRig.waitUntil(() => outcome(gm, linked) !== undefined);
+
+  const removed = send(gm, {
+    type: 'repeat-block-delete',
+    sheetId: 'journal',
+    sectionId: 'conditions',
+    instanceId: 'c1',
+  });
+
+  await rowRig.waitUntil(() => outcome(gm, removed) !== undefined);
+
+  // #then
+  expect({
+    outcomes: [added, edited, linked, removed].map((id) => outcome(gm, id)?.kind),
+    afterRemove: shown(gm, 'blk:journal:conditions:c1')?.d,
+    linkAfterRemove: shown(gm, 'link:token')?.d,
+  }).toEqual({
+    outcomes: ['answered', 'answered', 'answered', 'answered'],
+    afterRemove: null,
+    linkAfterRemove: null,
+  });
 });

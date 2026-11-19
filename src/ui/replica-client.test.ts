@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { sheetRootAddress } from '@/core/block-address';
 import type { JsonValue } from '@/core/json';
 import type { Timing } from '@/core/timing';
 import { UI_CHANNEL, type CommandRejectedMessage, type EngineMessage } from '@/core/ui-messages';
@@ -595,6 +596,7 @@ const TIMEOUT_CASES: readonly {
         type: 'link-set',
         tokenId: 'token',
         sheetId: 'hero',
+        block: sheetRootAddress('hero'),
         cellId: 'portrait',
       }),
   },

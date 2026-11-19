@@ -5,7 +5,7 @@ import type { Timing } from '@/core/timing';
 import {
   parseEngineMessage,
   UI_CHANNEL,
-  type Command,
+  type WireCommand,
   type EngineMessage,
   type OpenSheetRequest,
 } from '@/core/ui-messages';
@@ -677,7 +677,7 @@ function click(background: Background, tokenId: string): void {
 }
 
 // A GM command as a window would send it, with no window to keep its store.
-function command(background: Background, intent: Command): void {
+function command(background: Background, intent: WireCommand): void {
   void background.platform.broadcast.sendMessage(
     UI_CHANNEL,
     { t: 'command', id: `test-${Date.now()}`, command: intent },

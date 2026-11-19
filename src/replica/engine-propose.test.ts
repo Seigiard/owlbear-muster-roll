@@ -8,7 +8,7 @@ import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { encodeStateRecords } from '@/core/state-records';
 import type { Timing } from '@/core/timing';
-import { UI_CHANNEL, type Command } from '@/core/ui-messages';
+import { UI_CHANNEL, type WireCommand } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
 import type { Wait } from '@/platform/send-queue';
@@ -650,6 +650,81 @@ describe('a GM client answers a proposal', () => {
     }).toEqual({
       sent: [removal, ...tombstones],
       stored: [...tombstones, sheetLink],
+    });
+  });
+  test('that removes a nested repeat block: tombstones the link to that block', async () => {
+    // #given
+    const nestedPreset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'encounter',
+          title: 'Encounter',
+          players: 'edit',
+          tabs: [
+            {
+              repeat: { id: 'npc', nameField: 'npc_name' },
+              sections: [
+                { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }] },
+                {
+                  repeat: { id: 'atk', nameField: 'attack_name' },
+                  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack_name' }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const child: VersionedRecord = {
+      k: 'blk:encounter:npc:a:atk:x',
+      d: { order: 0, cells: { attack_name: ['Claw', 1, 'seed'] } },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    };
+
+    const link: VersionedRecord = {
+      k: 'link:child',
+      d: { s: 'encounter', path: ['npc', 'a', 'atk', 'x'], c: 'token' },
+      c: 1,
+      a: 'seed',
+    };
+
+    const nestedRig = createRoomRig({
+      seeded: [
+        { k: 'preset', d: encodePreset(nestedPreset), c: 1, a: 'seed' },
+        { k: 'blk:encounter', d: { order: 0, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
+        {
+          k: 'blk:encounter:npc:a',
+          d: { order: 0, cells: { npc_name: ['A', 1, 'seed'] } },
+          c: 1,
+          a: 'seed',
+          l: [1, 'seed'],
+        },
+        child,
+        link,
+      ],
+      until: 'live',
+    });
+
+    const room = nestedRig.openRoom();
+    const gm = await nestedRig.startClient(room, 'gm-a');
+    const removal: VersionedRecord = { ...child, d: null, c: 2, a: PLAYER_SOCKET };
+    joinPlayerSocket(room);
+
+    // #when
+    propose(room, removal);
+    await nestedRig.waitUntil(() => committedRecords(room, 'gm-a').length === 2);
+
+    // #then
+    expect({
+      sent: committedRecords(room, 'gm-a'),
+      stored: storedRecord(gm, link.k),
+    }).toEqual({
+      sent: [removal, { k: 'link:child', d: null, c: 2, a: 'gm-a' }],
+      stored: { k: 'link:child', d: null, c: 2, a: 'gm-a' },
     });
   });
   test('with a c not above the current one: rejects it as stale with the current record', async () => {
@@ -2036,7 +2111,7 @@ function reject(
   return { v: 4, g: GENERATION, t: 'reject', k: edit.k, c: edit.c, a: edit.a, reason };
 }
 
-function strEdit(fieldId: string, value: JsonValue): Command {
+function strEdit(fieldId: string, value: JsonValue): WireCommand {
   return {
     type: 'field-patch',
     sheetId: 'brok',
@@ -2046,7 +2121,7 @@ function strEdit(fieldId: string, value: JsonValue): Command {
   };
 }
 
-function swordEdit(qty: number): Command {
+function swordEdit(qty: number): WireCommand {
   return {
     type: 'field-patch',
     sheetId: 'brok',

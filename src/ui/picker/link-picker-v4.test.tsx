@@ -91,8 +91,20 @@ test('reassigns selected tokens and selectively unlinks only selected links to t
   // #then
   expect({ linkedCommands, unlinkedCommands: picker.commands }).toEqual({
     linkedCommands: [
-      { type: 'link-set', tokenId: 'near-other-linked', sheetId: 'shared', cellId: 'portrait' },
-      { type: 'link-set', tokenId: 'near-linked', sheetId: 'shared', cellId: 'portrait' },
+      {
+        type: 'link-set',
+        tokenId: 'near-other-linked',
+        sheetId: 'shared',
+        block: TARGET.block,
+        cellId: 'portrait',
+      },
+      {
+        type: 'link-set',
+        tokenId: 'near-linked',
+        sheetId: 'shared',
+        block: TARGET.block,
+        cellId: 'portrait',
+      },
     ],
     unlinkedCommands: [{ type: 'link-clear', tokenId: 'near-linked' }],
   });

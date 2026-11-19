@@ -21,13 +21,45 @@ export type WireFieldPatchTarget = Readonly<{
   path?: readonly string[];
 }>;
 
+export type WireBlockTarget = {
+  sectionId: string;
+  instanceId: string;
+  path?: string[];
+};
+
 export type AddressFieldPatchTarget = Readonly<{
   kind: 'rep';
   block: BlockAddress;
 }>;
 
+export const wireBlockPathSchema = z.custom<readonly string[]>((value) => {
+  return z
+    .array(z.string())
+    .min(2)
+    .refine((parts) => parts.length % 2 === 0)
+    .safeParse(value).success;
+});
+
+export const wireOpenSheetPathSchema = z
+  .array(z.string())
+  .min(2)
+  .refine((parts) => parts.length % 2 === 0);
+
 export function blockAddress(sheetId: string, path: readonly string[]): BlockAddress | null {
   return path.length % 2 === 0 ? { sheetId, path: [...path] } : null;
+}
+
+export function blockAddressOfWireTarget(
+  sheetId: string,
+  target: Pick<WireFieldPatchTarget, 'sectionId' | 'instanceId' | 'path'>,
+): BlockAddress | null {
+  const path = target.path ?? [target.sectionId, target.instanceId];
+
+  if (path.length < 2 || path.at(-2) !== target.sectionId || path.at(-1) !== target.instanceId) {
+    return null;
+  }
+
+  return blockAddress(sheetId, path);
 }
 
 export function sheetRootAddress(sheetId: string): BlockAddress {
@@ -95,6 +127,21 @@ export function isSelfOrDescendantOf(address: BlockAddress, ancestor: BlockAddre
   return sameAddress(address, ancestor) || isDescendantOf(address, ancestor);
 }
 
+export function rebaseDescendant(
+  address: BlockAddress,
+  ancestor: BlockAddress,
+  replacement: BlockAddress,
+): BlockAddress | null {
+  if (!isDescendantOf(address, ancestor)) {
+    return null;
+  }
+
+  return blockAddress(replacement.sheetId, [
+    ...replacement.path,
+    ...address.path.slice(ancestor.path.length),
+  ]);
+}
+
 export function sameAddress(first: BlockAddress, second: BlockAddress): boolean {
   return (
     first.sheetId === second.sheetId &&
@@ -129,26 +176,34 @@ export function fieldPatchTargetOf(
   sheetId: string,
   target: WireFieldPatchTarget,
 ): AddressFieldPatchTarget | null {
-  const path = target.path ?? [target.sectionId, target.instanceId];
+  const block = blockAddressOfWireTarget(sheetId, target);
 
-  if (path.length < 2 || path.at(-2) !== target.sectionId || path.at(-1) !== target.instanceId) {
+  if (block === null) {
     return null;
   }
 
-  const block = blockAddress(sheetId, path);
-
-  return block === null ? null : { kind: 'rep', block };
+  return { kind: 'rep', block };
 }
 
-export function wireFieldPatchTargetOf(target: AddressFieldPatchTarget): WireFieldPatchTarget {
-  const sectionId = sectionIdOf(target.block);
-  const instanceId = blockIdOf(target.block);
+export function wireFieldPatchTargetOf(target: AddressFieldPatchTarget): WireBlockTarget {
+  const wireTarget = wireBlockTargetOf(target.block);
+
+  return wireTarget;
+}
+
+export function wireBlockTargetOf(address: BlockAddress): WireBlockTarget {
+  const sectionId = sectionIdOf(address);
+  const instanceId = blockIdOf(address);
 
   if (sectionId === null || instanceId === null) {
-    throw new Error('A field patch repeat target must name a block');
+    throw new Error('A repeat target must name a block');
   }
 
-  return target.block.path.length > 2
-    ? { sectionId, instanceId, path: [...target.block.path] }
+  return address.path.length > 2
+    ? { sectionId, instanceId, path: [...address.path] }
     : { sectionId, instanceId };
+}
+
+export function wirePathOf(address: BlockAddress): string[] | undefined {
+  return address.path.length === 0 ? undefined : [...address.path];
 }

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { FieldError, Input, Label, TextField } from 'react-aria-components';
 
+import { blockAddress } from '@/core/block-address';
 import type { Command } from '@/core/ui-messages';
 import { DUPLICATE_COUNT_MIN, parseDuplicateCount } from '@/core/repeat-block-duplicate';
 import { copy } from '@/copy';
@@ -98,14 +99,12 @@ export function DuplicateCount({
     const command: Extract<Command, { type: 'repeat-block-duplicate' }> = {
       type: 'repeat-block-duplicate',
       sheetId,
-      sectionId,
-      instanceId,
+      block: blockAddress(sheetId, [...(path ?? []), sectionId, instanceId]) ?? {
+        sheetId,
+        path: [...(path ?? []), sectionId, instanceId],
+      },
       count: count.value,
     };
-
-    if (path !== undefined) {
-      command.path = [...path];
-    }
 
     setSent({
       outcome: sendCommand(command),

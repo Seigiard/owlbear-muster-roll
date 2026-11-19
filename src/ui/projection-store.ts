@@ -11,7 +11,7 @@ import {
   type VersionedRecord,
 } from '@/core/records';
 import { ROOM_METADATA_BYTE_LIMIT } from '@/core/snapshot';
-import type { Notice, OpenSheetRequest, RoomCopyStatus, SyncState } from '@/core/ui-messages';
+import type { Notice, RoomCopyStatus, SyncState, WireOpenSheetRequest } from '@/core/ui-messages';
 
 // What a player's edit that waits for a GM's check does to its key (AD-4): a new repeat block, a
 // change of field values, or a repeat block's removal.
@@ -46,7 +46,7 @@ export type ProjectionStore = {
   $roomCopy: ReadableAtom<RoomCopyStatus>;
   // FR14: the last sheet or repeat block "Открыть лист" asked this window to show, or `null` before
   // any. The window tells a new request from one it has taken by its id.
-  $openRequest: ReadableAtom<OpenSheetRequest | null>;
+  $openRequest: ReadableAtom<WireOpenSheetRequest | null>;
   // UX-DR12: the party as the engine last read it, for a GM's access panel. A player's is empty.
   $party: ReadableAtom<readonly PartyEntry[]>;
   replaceAll: (
@@ -63,7 +63,7 @@ export type ProjectionStore = {
     sync: SyncState,
   ) => void;
   setRoomCopy: (roomCopy: RoomCopyStatus) => void;
-  setOpenRequest: (request: OpenSheetRequest) => void;
+  setOpenRequest: (request: WireOpenSheetRequest) => void;
   setParty: (party: readonly PartyEntry[]) => void;
 };
 
@@ -94,7 +94,7 @@ export function createProjectionStore(): ProjectionStore {
   const $loaded = atom(false);
   const $sync = atom<SyncState>(UNKNOWN_SYNC);
   const $roomCopy = atom<RoomCopyStatus>(UNKNOWN_ROOM_COPY);
-  const $openRequest = atom<OpenSheetRequest | null>(null);
+  const $openRequest = atom<WireOpenSheetRequest | null>(null);
   const $party = atom<readonly PartyEntry[]>([]);
   let replica = new Map<string, VersionedRecord>();
   let pendingView = new Map<string, VersionedRecord>();

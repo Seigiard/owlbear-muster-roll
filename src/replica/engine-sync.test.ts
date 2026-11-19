@@ -5,7 +5,7 @@ import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type BlockData, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
-import type { Command } from '@/core/ui-messages';
+import type { WireCommand } from '@/core/ui-messages';
 import { createMemoryBacking, type MockStorageBacking } from '@/platform/current';
 import type { PlayerRole, StorageOperation } from '@/platform/ports';
 import type { Wait } from '@/platform/send-queue';
@@ -13,6 +13,7 @@ import {
   createRoomRig,
   pause,
   send,
+  sendWire,
   shown,
   storageKey,
   storedKeys,
@@ -157,7 +158,7 @@ function listen(room: RigRoom, types: readonly string[] = ['commit']): Listener 
 }
 
 function patch(target: typeof ROW_STR | typeof ROW_NOTES, fieldId: string, value: JsonValue) {
-  return { type: 'field-patch', sheetId: 'brok', target, fieldId, value } satisfies Command;
+  return { type: 'field-patch', sheetId: 'brok', target, fieldId, value } satisfies WireCommand;
 }
 
 // A rename is a patch of the sheet set's name field.
@@ -168,7 +169,7 @@ function rename(sheetId: string, name: string) {
     target: ROW_NAME,
     fieldId: 'name',
     value: name,
-  } satisfies Command;
+  } satisfies WireCommand;
 }
 
 function commit(records: VersionedRecord[], g = INITIAL, v = 4): JsonValue {
@@ -780,7 +781,7 @@ describe('remote record too large for one message', () => {
 });
 
 describe('player client', () => {
-  test.each<Command>([
+  test.each<WireCommand>([
     { type: 'sheet-create', sheetId: 'lisa', set: 'pc' },
     rename('brok', 'Брок Смелый'),
     { type: 'sheet-delete', sheetId: 'brok' },
@@ -815,7 +816,7 @@ describe('player client', () => {
     const before = [...player.store.$records.get().values()];
     const deltasBefore = player.deltas();
     // #when
-    const settled = await Promise.resolve(player.window.sendCommand(command));
+    const settled = await Promise.resolve(sendWire(player.window, command));
     // #then
     expect({
       reason: settled.kind === 'refused' ? settled.rejection.reason : settled.kind,

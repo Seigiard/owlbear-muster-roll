@@ -274,23 +274,14 @@ export function LinkPicker({
     }
 
     const { target } = choice;
-    const block = target.block;
 
-    const command =
-      block.path.length === 0
-        ? {
-            type: 'link-set' as const,
-            tokenId,
-            sheetId: block.sheetId,
-            cellId: target.cellId ?? choice.cellId,
-          }
-        : {
-            type: 'link-set' as const,
-            tokenId,
-            sheetId: block.sheetId,
-            path: [...block.path],
-            cellId: target.cellId ?? choice.cellId,
-          };
+    const command = {
+      type: 'link-set' as const,
+      tokenId,
+      sheetId: target.block.sheetId,
+      block: target.block,
+      cellId: target.cellId ?? choice.cellId,
+    };
 
     const outcome = sendCommand(command);
 
@@ -524,15 +515,17 @@ export function TokenCellPicker({
 
     try {
       const outcomes = await Promise.all(
-        [...selected].map((tokenId) =>
-          sendCommand({
-            type: 'link-set',
+        [...selected].map((tokenId) => {
+          const command = {
+            type: 'link-set' as const,
             tokenId,
             sheetId: target.block.sheetId,
-            path: target.block.path.length === 0 ? undefined : [...target.block.path],
+            block: target.block,
             cellId: target.cellId ?? '',
-          }),
-        ),
+          };
+
+          return sendCommand(command);
+        }),
       );
 
       if (!outcomes.every((outcome) => outcome.kind === 'answered')) {

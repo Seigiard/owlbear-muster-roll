@@ -7,7 +7,7 @@ import { blockDataSchema, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
-import type { Command, Notice, RoomCopyStatus } from '@/core/ui-messages';
+import type { WireCommand, Notice, RoomCopyStatus } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
 import {
@@ -172,7 +172,7 @@ async function startClient(
   });
 }
 
-function setStr(value: number): Command {
+function setStr(value: number): WireCommand {
   return { type: 'field-patch', sheetId: 'brok', target: ROW_STR, fieldId: 'str', value };
 }
 

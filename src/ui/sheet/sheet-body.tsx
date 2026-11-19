@@ -2,7 +2,7 @@ import { useStore } from '@nanostores/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { sheetRootAddress } from '@/core/block-address';
+import { blockAddress, sheetRootAddress } from '@/core/block-address';
 import {
   firstFieldId,
   layoutSections,
@@ -201,8 +201,6 @@ export function SheetBody({
         <TabBlockControls
           key={displayedTabKey}
           sheetId={sheetId}
-          scopeId={displayedTabBlock.scopeId}
-          instanceId={displayedTabBlock.instanceId}
           path={displayedTabBlock.path}
           name={displayedTabBlock.name}
           editing={tabBlockEditing}
@@ -274,15 +272,11 @@ function hasRepeatBlock(
 
 function TabBlockControls({
   sheetId,
-  scopeId,
-  instanceId,
   path,
   name,
   editing,
 }: {
   sheetId: string;
-  scopeId: string;
-  instanceId: string;
   path: readonly string[];
   name: string;
   editing: Pick<FieldEditing, 'sendCommand'>;
@@ -298,13 +292,8 @@ function TabBlockControls({
     const command: Extract<Command, { type: 'repeat-block-delete' }> = {
       type: 'repeat-block-delete',
       sheetId,
-      sectionId: scopeId,
-      instanceId,
+      block: blockAddress(sheetId, path) ?? { sheetId, path: [...path] },
     };
-
-    if (path.length > 2) {
-      command.path = [...path];
-    }
 
     void editing
       .sendCommand(command)

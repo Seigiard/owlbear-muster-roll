@@ -53,8 +53,7 @@ test('renders repeat-row add as a scoped block command', async () => {
     command: {
       type: 'repeat-block-add',
       sheetId: 'journal',
-      sectionId: 'conditions',
-      instanceId: expect.any(String),
+      block: { sheetId: 'journal', path: ['conditions', expect.any(String)] },
     },
   });
 });
@@ -85,7 +84,7 @@ test('renders and edits a repeat-row value in its descendant block scope', async
     command: {
       type: 'field-patch',
       sheetId: 'journal',
-      target: { kind: 'rep', sectionId: 'conditions', instanceId: 'c1' },
+      target: { kind: 'rep', block: { sheetId: 'journal', path: ['conditions', 'c1'] } },
       fieldId: 'name',
       value: 'Ослеплён',
     },
@@ -114,8 +113,7 @@ test('renders repeat-row remove as a scoped block command', async () => {
     command: {
       type: 'repeat-block-delete',
       sheetId: 'journal',
-      sectionId: 'conditions',
-      instanceId: 'c1',
+      block: { sheetId: 'journal', path: ['conditions', 'c1'] },
     },
   });
 });

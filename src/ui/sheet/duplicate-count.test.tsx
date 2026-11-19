@@ -161,8 +161,7 @@ describe('duplicate count keyboard confirmation', () => {
         {
           type: 'repeat-block-duplicate',
           sheetId: 'npc',
-          sectionId: 'name',
-          instanceId: 'source',
+          block: { sheetId: 'npc', path: ['name', 'source'] },
           count: 1,
         },
       ],

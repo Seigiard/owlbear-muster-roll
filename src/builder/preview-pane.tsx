@@ -4,8 +4,8 @@ import type { MouseEvent, ReactNode } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 
 import { rollDiceCell } from '@/core/dice-roll';
-import { fieldPatchTargetOf } from '@/core/block-address';
-import type { Command, RollOutcome } from '@/core/ui-messages';
+import { blockAddress, fieldPatchTargetOf } from '@/core/block-address';
+import { wireCommandOf, type Command, type RollOutcome } from '@/core/ui-messages';
 import {
   acceptedFieldValue,
   findPatchField,
@@ -141,7 +141,9 @@ export function PreviewPane({
     () => ({
       // SAFETY: the preview sends only field patches; every other command is answered without side
       // effects except local repeat-tab lifecycle, which changes only the builder snapshot.
-      sendCommand: ((command: Command) => {
+      sendCommand: ((input: Command) => {
+        const command = wireCommandOf(input);
+
         if (command.type === 'repeat-block-add') {
           const path = command.path ?? [command.sectionId, command.instanceId];
           const key = blockPathKey(command.sheetId, path);
@@ -227,11 +229,7 @@ export function PreviewPane({
 
         const value = field === null ? null : acceptedFieldValue(field, command.value);
 
-        if (value === null || !value.ok) {
-          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
-        }
-
-        if (target === null) {
+        if (value === null || !value.ok || target === null) {
           return Promise.resolve({ kind: 'answered' as const, answer: undefined });
         }
 
@@ -728,6 +726,11 @@ export function PreviewPane({
                         if (id.startsWith('template-tab-add:')) {
                           const scopeId = id.slice('template-tab-add:'.length);
                           const instanceId = newInstanceId();
+                          const block = blockAddress(renderSheetId ?? '', [scopeId, instanceId]);
+
+                          if (block === null) {
+                            return;
+                          }
 
                           setCreatedTabBlock({
                             sheetId: renderSheetId ?? '',
@@ -738,8 +741,7 @@ export function PreviewPane({
                             .sendCommand({
                               type: 'repeat-block-add',
                               sheetId: renderSheetId ?? '',
-                              sectionId: scopeId,
-                              instanceId,
+                              block,
                             })
                             .catch((error) => {
                               console.error('Muster Roll preview could not add a tab block', error);
