@@ -1,6 +1,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-124-fragment-assembler.md`
   summary: `staleReplyFragments` has no part cap, so a GM can send a stale reply the GM side itself would refuse as a proposal; a GM-side cap or a `denied` answer is a later decision.
   evidence: Player stale replies use no part cap because legal replies can contain 33 or more parts.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-124-fragment-assembler.md`
+  summary: The player's 480 000-byte stale-reply limit drops a legal reply of about 34 or more full parts, so that edit resends for ever; decide with the GM-side part cap whether the player's `maxBytes` becomes `Infinity` (assemblies and retention still bound memory) or the GM answers `denied`.
+  evidence: "Review 01 adversarial-claude-1: no limit caps a GM-held record's total size; `staleReplyFragments` sends parts just under 15 000 bytes, so about 34 full parts exceed 480 000 bytes. The spec gives the player the GM's byte limit; the trigger needs about 470 KB of held text in the cells one patch touches."
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-1-load-the-empty-extension.md`
   summary: Make the mock's LOCAL broadcast and storage cross pages and survive a reload.
   evidence: Each page has its own in-memory instance. Stories 1.3 and 1.4 need the window-to-replica path under Playwright.
