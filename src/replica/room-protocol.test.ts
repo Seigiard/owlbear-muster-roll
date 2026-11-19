@@ -607,6 +607,20 @@ describe('createRoomProtocol', () => {
     // #then
     expect(effects).toEqual(['heard', 'publish']);
   });
+  test('a stale rejection that denies an edit passes its cause to the notice', async () => {
+    // #given
+    const causes: (string | undefined)[] = [];
+    const ports = createPorts([], async () => GM);
+    ports.pendingEdits.rejected = () => ({ notify: true, cause: 'too-large', merge: null });
+    ports.notifyDenied = (cause?: string) => causes.push(cause);
+    const protocol = createRoomProtocol(ports);
+
+    // #when
+    protocol.receive(event(messageFor('reject', OWN_GENERATION)));
+    await settleIngress();
+    // #then
+    expect(causes).toEqual(['too-large']);
+  });
   test('a higher state outside the current adoption target is not staged', async () => {
     // #given
     const effects: string[] = [];
