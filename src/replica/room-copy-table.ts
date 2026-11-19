@@ -315,11 +315,28 @@ function observeRead(phase: Idle | Active, { source, metadata, env }: ReadDone):
 
   const snapshot = source === 'catch-up' && metadata !== null ? readSnapshot(metadata) : null;
 
+  // A page that closed during its write left the room copy behind its own stored records, or with
+  // no copy at all, and the owed write died with the page (TASK-118). The copy a GM reads in
+  // catch-up shows that it is owed. A GM with no records owes nothing to a room with no copy.
+  const behind =
+    snapshot !== null &&
+    snapshot.isOk() &&
+    env.records.length > 0 &&
+    !readBackHolds({ g: env.generation, records: [...env.records] }, snapshot.value);
+
   const owed =
     phase.owed ||
-    (env.gm && snapshot !== null && !snapshot.isOk() && snapshot.error !== 'older-version');
+    (env.gm && snapshot !== null && !snapshot.isOk() && snapshot.error !== 'older-version') ||
+    (env.gm && behind);
 
-  return decision({ ...phase, owed }, { type: 'observe-metadata', source, metadata });
+  const next = { ...phase, owed };
+  const observe: Effect = { type: 'observe-metadata', source, metadata };
+
+  // A read that answers after catch-up timed out finds `caughtUp` already run, so it arms the write
+  // itself. During catch-up the gate is closed and `caughtUp` arms it.
+  return owed && !phase.owed && env.writable
+    ? decision(next, observe, ...pause(next, env).effects)
+    : decision(next, observe);
 }
 
 function readDone(phase: Reading, event: ReadDone): Decision {

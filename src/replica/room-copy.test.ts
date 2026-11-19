@@ -666,13 +666,14 @@ test('a gate that closes during the held read-back leaves the status unchanged a
 });
 
 test('an unreadable copy fails and stays owed for the next catch-up write', async () => {
-  // #given
-  const subject = createSubject();
+  // #given: catch-up keeps the write gate closed while it reads.
+  const subject = createSubject({ writable: false });
   subject.room.setMetadata({ [SNAPSHOT_KEY]: { v: FORMAT_VERSION, data: 'not-deflate' } });
   // #when
   await subject.read();
   const failed = { state: subject.status().state, notices: subject.notices() };
   subject.room.setMetadata({ [SNAPSHOT_KEY]: undefined });
+  subject.writable(true);
   subject.caughtUp(false);
   await subject.runScheduled();
   // #then
@@ -1158,8 +1159,8 @@ test('demotion and abort clear scheduled work and block later write effects', as
 });
 
 test('demotion clears a failed notice and its owed catch-up write', async () => {
-  // #given
-  const subject = createSubject();
+  // #given: catch-up keeps the write gate closed while it reads.
+  const subject = createSubject({ writable: false });
   subject.room.setMetadata({ [SNAPSHOT_KEY]: { v: FORMAT_VERSION, data: 'not-deflate' } });
   await subject.read();
   // #when
@@ -1189,6 +1190,67 @@ test('each status or notice change signals the publisher', async () => {
   await flush();
   // #then
   expect(subject.changed).toBe(3);
+});
+
+const OLDER_FORMAT_COPY = { [SNAPSHOT_KEY]: { v: FORMAT_VERSION - 1, data: 'older' } };
+
+test.each([
+  ['a GM whose copy lacks its newer record', true, INITIAL, copied(INITIAL, [RECORD]), [12]],
+  ['a GM in a room with no copy', true, INITIAL, {}, [12]],
+  [
+    'a GM ahead of a lower-generation copy',
+    true,
+    HIGHER,
+    copied(INITIAL, [ASSEMBLED_RECORD]),
+    [12],
+  ],
+  ['a GM whose copy holds every record', true, INITIAL, copied(INITIAL, [ASSEMBLED_RECORD]), []],
+  ['a GM whose copy has a higher generation', true, INITIAL, copied(HIGHER, [RECORD]), []],
+  ['a GM whose copy has an older format', true, INITIAL, OLDER_FORMAT_COPY, []],
+  ['a player whose copy lacks a newer record', false, INITIAL, copied(INITIAL, [RECORD]), []],
+] as const)(
+  '%s owes the write at catch-up completion as the copy shows',
+  async (_name, gm, generation, metadata, delays) => {
+    // #given: the client stores ASSEMBLED_RECORD, and catch-up keeps the write gate closed.
+    const subject = createSubject({ gm, generation, writable: false });
+    subject.room.setMetadata(metadata);
+    await subject.read();
+    subject.writable(true);
+    // #when
+    subject.caughtUp(false);
+    // #then
+    expect(subject.delays).toEqual([...delays]);
+  },
+);
+
+test('a catch-up read that answers after catch-up ended arms the write it shows is owed', async () => {
+  // #given: catch-up timed out before its read of a copy that lacks the newer record answered.
+  const subject = createSubject({ writable: false });
+  subject.room.setMetadata(copied(INITIAL, [RECORD]));
+  holdRead(subject.gate);
+  const read = subject.read();
+  await flush();
+  subject.writable(true);
+  subject.caughtUp(false);
+  // #when
+  subject.gate.releaseRead();
+  await read;
+  await subject.runScheduled();
+  // #then
+  expect({ delays: subject.delays, copy: decoded(subject.room)?.records }).toEqual({
+    delays: [12],
+    copy: [ASSEMBLED_RECORD],
+  });
+});
+
+test('a GM with no records owes no write to a room with no copy', async () => {
+  // #given
+  const subject = createSubject({ records: [] });
+  await subject.read();
+  // #when
+  subject.caughtUp(false);
+  // #then
+  expect(subject.delays).toEqual([]);
 });
 
 test('a new room copy does not owe a write at catch-up completion', async () => {
