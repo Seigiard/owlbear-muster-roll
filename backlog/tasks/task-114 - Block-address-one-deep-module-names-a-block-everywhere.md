@@ -1,11 +1,11 @@
 ---
 id: TASK-114
 title: 'Block address: one deep module names a block everywhere'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-18T18:24:00Z'
-updated_date: '2026-11-18T19:54:00Z'
+updated_date: '2026-11-19T05:40:00Z'
 labels: []
 dependencies: []
 references:
@@ -24,7 +24,19 @@ The repeat-block address has no home. Five representations of "which block" (the
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 No non-test file outside `src/core/block-address.ts` and the zod schemas at the storage and wire edges computes a scope path, a parent path or a key string from path parts by hand
-- [ ] #2 GLOSSARY.md defines Block address and docs/adr/0003 records that the one address form converts at the v4 storage and wire edges
-- [ ] #3 Stored v4 rooms and the wire messages read and write unchanged: `bun test` and `bun run test:browser` pass with no fixture format change
+- [x] #1 No non-test file outside `src/core/block-address.ts` and the zod schemas at the storage and wire edges computes a scope path, a parent path or a key string from path parts by hand
+- [x] #2 GLOSSARY.md defines Block address and docs/adr/0003 records that the one address form converts at the v4 storage and wire edges
+- [x] #3 Stored v4 rooms and the wire messages read and write unchanged: `bun test` and `bun run test:browser` pass with no fixture format change
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Integration branch implement-specs-114 (tip 42e77a9) merges TASK-114.1, 114.2 and 114.3 with --no-ff. Closing review: revmux round 01-initial (profile mixed, 6/6 sources) found 5 major and 9 minor; the majors and 4 minors were fixed (preset-update pending repeat edits, pure engine-message parse, Add button DOM order, root-open focus, a weakened folded test). Round 02-after-fix (profile final, 2/2 sources) found nothing. Deferred: wire path segments lost their 1-64 char bound (construction); legacy repeatBlockName/key helpers in sheets.ts; the window re-serialises the parsed open request (specs keep the stored request wire-shaped).
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+One block address ({sheetId, path}) now names a repeat block in core, replica and UI. It is built only in src/core/block-address.ts and converts at the v4 storage and wire edges, so stored rooms and messages keep their bytes. ADR-0003 and the GLOSSARY entry record the decision. isLegacyInstanceTarget and the instanceId compatibility view are gone. Verified at 42e77a9: oxfmt, lint, typecheck, bun test (3501 pass), build, test:browser (583 passed). Not checked: behaviour in a live Owlbear room (needs the owner). Follow-ups are in the notes.
+<!-- SECTION:FINAL_SUMMARY:END -->
