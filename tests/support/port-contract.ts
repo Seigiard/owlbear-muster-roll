@@ -3,6 +3,7 @@ import { Result } from 'better-result';
 import type {
   BroadcastEvent,
   BroadcastPort,
+  ClockPort,
   MetadataFailure,
   MetadataPort,
   NotificationFailure,
@@ -18,6 +19,7 @@ import type {
 } from '@/platform/ports';
 
 export const PORT_CONTRACT_SCENARIOS = {
+  clock: 'clock reads wall time and schedules, cancels, and aborts callbacks',
   storageLifecycle: 'storage stores, overwrites, removes, and lists owned strings',
   storageReadFailure: 'storage returns a read failure when its backing throws',
   storageWriteFailure: 'storage returns a write failure when its backing throws',
@@ -137,6 +139,65 @@ export type ScenarioSupportReport =
     };
 
 export type ObservationWait = { status: 'observed' } | { status: 'missing'; reason: string };
+
+export async function observeClock(clock: ClockPort): Promise<{
+  finite: boolean;
+  nondecreasing: boolean;
+  nearWallTime: boolean;
+  immediateCalls: number;
+  calls: number;
+  canceledCalls: number;
+  abortedCalls: number;
+  firedAfterDelay: boolean;
+}> {
+  const wallTime = Date.now();
+  const first = clock.now();
+  const second = clock.now();
+  const controller = new AbortController();
+  const canceled = new AbortController();
+  const aborted = new AbortController();
+  let calls = 0;
+  let canceledCalls = 0;
+  let abortedCalls = 0;
+  let elapsed = 0;
+  const start = performance.now();
+
+  const cancel = clock.schedule(controller.signal, 30, () => {
+    calls += 1;
+    elapsed = performance.now() - start;
+  });
+
+  const cancelOther = clock.schedule(canceled.signal, 30, () => {
+    canceledCalls += 1;
+  });
+
+  clock.schedule(aborted.signal, 30, () => {
+    abortedCalls += 1;
+  });
+  const immediateCalls = calls;
+  cancelOther();
+  aborted.abort();
+
+  try {
+    await waitForQuietPeriod(120);
+
+    return {
+      finite: Number.isFinite(first) && Number.isFinite(second),
+      nondecreasing: second >= first,
+      nearWallTime: Math.abs(first - wallTime) <= 1000 && Math.abs(second - wallTime) <= 1000,
+      immediateCalls,
+      calls,
+      canceledCalls,
+      abortedCalls,
+      firedAfterDelay: elapsed >= 29,
+    };
+  } finally {
+    cancel();
+    controller.abort();
+    canceled.abort();
+    aborted.abort();
+  }
+}
 
 export type StorageLifecycleObservation = {
   missing: ReturnType<StoragePort['getItem']>;

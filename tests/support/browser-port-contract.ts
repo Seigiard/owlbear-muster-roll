@@ -3,9 +3,12 @@ import type { Result } from 'better-result';
 // This binding must exercise the OBR adapter's real Chromium storage primitive.
 // oxlint-disable-next-line no-restricted-imports
 import { createBrowserStorage } from '@/platform/obr/browser-storage';
+// oxlint-disable-next-line no-restricted-imports
+import { platform as obrPlatform } from '@/platform/obr';
 
 import {
   reportPortContractSupport,
+  observeClock,
   storageStoresOverwritesRemovesAndListsOwnedStrings,
   supportedScenario,
   unsupportedScenario,
@@ -66,6 +69,10 @@ export async function runBrowserStorageLifecycle(): Promise<BrowserStorageLifecy
 
 export function browserPortContractSupport(): ScenarioSupportReport[] {
   return reportPortContractSupport(browserPortContractFactory);
+}
+
+export async function runBrowserClockContract(): ReturnType<typeof observeClock> {
+  return observeClock(obrPlatform.clock);
 }
 
 function createChromiumStorageFixture(): StorageFixture {
