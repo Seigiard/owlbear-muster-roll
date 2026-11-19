@@ -67,7 +67,7 @@ When the model describes the code again and `check.sh` passes, move the sync com
 3. **Unreadable GM shows online** (`findings/unreadable-gm-online.cfg`). `heard` counts every admitted GM message, and a GM with unreadable storage still sends pings from its ping timer. It answers no ping and no request (`canAnswer()` needs `vouches()`), but players keep `gmLink` online. Replayed on the module.
 4. **Adoption with no source** (`findings/adoption-without-source.cfg`). Known: the importer leaves and its room copy did not fit.
 
-The owner's verdicts, 2026-11-19. Finding 1 is TASK-120, low. Findings 2-4 are accepted: generations will settle once the preset format does, an unreadable GM storage is rare, and finding 4 is covered by TASK-117. Keep their configs as expected failures and do not report them again.
+The owner's verdicts, 2026-11-19. Finding 1 is TASK-120, low. Findings 2-4 are accepted: generations will settle once the preset format does, an unreadable GM storage is rare, and finding 4 is the known TASK-31 case of a room copy that does not fit (`deferred-work.md`). TASK-117 did not change it: that fix stops an importer from naming its generation before the copy is written, and `XImport` already writes the copy and sends `reset` in one step. Keep their configs as expected failures and do not report them again.
 
 Fixed: former finding 5, TASK-129, introduced by `79c879a` (TASK-115.1). `answersOwn` counted only an ordinary catch-up, so a client that adopted generation 1 and got a generation 2 `state` for its own `r` took a new `r`, dropped the answer and asked again. Fixed in `064e178`. Its finding config became `mutations/answers-own-ordinary-only.cfg`, which brings the regression back, and `imports.cfg` and `imports-gm.cfg` now check `OwnAnswerKeepsRequest`.
 
@@ -111,7 +111,7 @@ Ghost variables (`pinged`, `owed`, `dropped`, `lastHeard`, `badOffline`, `ownDro
 
 ## Coverage record
 
-Sync commit: `064e178` (also in `formal/catch-up/coverage.txt`). At that commit the model describes:
+Sync commit: `20de031` (also in `formal/catch-up/coverage.txt`). At that commit the model describes:
 
 - `src/replica/catch-up.ts`: `createCatchUp` (`feed`, `answersOwn`, `adopting`, `live`).
 - `src/replica/catch-up-table.ts`: `catchUpTable` and `livenessTable`, apart from the drift part of `catchUpAlive`, `rememberAlive`, `catchUpPartyChanged`, `catchUpReplicaReplaced` and multi-part answers.

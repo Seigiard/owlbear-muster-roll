@@ -101,6 +101,7 @@ function createHarness(role: PlayerRole) {
     role: () => role,
     signal: new AbortController().signal,
     generation: () => ({ n: 0, a: '' }),
+    importing: () => false,
     dice: { ready: async () => 'absent', roll: async () => Result.ok([]) },
     gmInParty: () => true,
     playerId: 'gm',

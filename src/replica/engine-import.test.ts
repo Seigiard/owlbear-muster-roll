@@ -496,6 +496,78 @@ describe('import', () => {
       ),
     ).toEqual([]);
   });
+  test('an importer that closes during its room-copy write names no new generation, and a player stays on the old one', async () => {
+    // #given: an importer whose room-copy write waits and whose ping timer fires every 40 ms, a
+    // live player, and a player who asks it.
+    const room = roomRig.openRoom();
+    const { gate, opened } = createWriteGate();
+
+    const gm = await startClient(room, 'gm-a', {
+      until: 'live',
+      platform: gatedWrites(gate, opened),
+      timing: { gmLinkTimeoutMs: 80 },
+    });
+
+    const player = await startClient(room, 'player-p', {
+      role: 'PLAYER',
+      seeded: [],
+      until: 'live',
+    });
+
+    room.join('asker', 'PLAYER');
+    const digest = String(Object(await check(gm)).digest);
+    send(gm, { type: 'snapshot-import', data: DATA, expectedDigest: digest });
+    await roomRig.waitUntil(() => gate.calls === 1);
+    const heard = room.heard.length;
+    // #when: the asker pings and asks for state during the write, then the importer's page closes.
+    room.post('asker', { v: 4, g: INITIAL, t: 'ping' });
+    room.post('asker', { v: 4, g: INITIAL, t: 'state-request', r: 'asker-1' });
+    await pause(100);
+    gm.engine.stop();
+    await pause(100);
+    // #then
+    expect({
+      announced: room.heard
+        .slice(heard)
+        .filter((message) => message.from === 'gm-a' && Object(Object(message.data).g).n === 1)
+        .map((message) => Object(message.data).t),
+      player: sync(player).state,
+      keys: shownKeys(player),
+    }).toEqual({
+      announced: [],
+      player: 'live',
+      keys: ['acl:brok:player-p', 'blk:brok', 'plink:brok:player-p', 'preset'],
+    });
+  });
+  test('an importer answers a ping and a state request again once its room copy is written', async () => {
+    // #given: an importer whose room-copy write waits, and a player who asks it.
+    const room = roomRig.openRoom();
+    const { gate, opened } = createWriteGate();
+
+    const gm = await startClient(room, 'gm-a', {
+      until: 'live',
+      platform: gatedWrites(gate, opened),
+    });
+
+    room.join('asker', 'PLAYER');
+    const digest = String(Object(await check(gm)).digest);
+    send(gm, { type: 'snapshot-import', data: DATA, expectedDigest: digest });
+    await roomRig.waitUntil(() => gate.calls === 1);
+    // #when: the copy is written and the reset is out, then the asker pings and asks for state.
+    gate.open();
+    await roomRig.waitUntil(() => heardOf(room, 'gm-a', 'reset').length === 1);
+    const generation = newGenerationOf('gm-a');
+    room.post('asker', { v: 4, g: generation, t: 'ping' });
+    room.post('asker', { v: 4, g: generation, t: 'state-request', r: 'asker-1' });
+    await roomRig.waitUntil(
+      () => heardOf(room, 'gm-a', 'alive').length > 0 && heardOf(room, 'gm-a', 'state').length > 0,
+    );
+    // #then
+    expect({
+      alive: Object(heardOf(room, 'gm-a', 'alive').at(-1)).g,
+      state: Object(heardOf(room, 'gm-a', 'state').at(-1)).g,
+    }).toEqual({ alive: generation, state: generation });
+  });
   test('clears old digest mismatch evidence when a local import replaces the generation', async () => {
     // #given
     const room = roomRig.openRoom();
