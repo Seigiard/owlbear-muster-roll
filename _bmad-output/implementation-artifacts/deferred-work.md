@@ -616,3 +616,8 @@ Deviations from DESIGN.md that TASK-115.11 reconciles:
 - The clock is wall time (`Date.now()`) for durations too: the replica used `performance.now()` for the dice readiness window, the probe age and the pending-edit timing. A system clock change during one of those waits now moves it. The dice protocol and the diagnostics need wall time, and one source was the step's goal.
 - The five `schedule` tests moved with the implementation from `src/replica/timers.test.ts` to `src/platform/schedule.test.ts`; same names and literals.
 - The ticket's "one `setTimeout` call site outside UI" was too broad: `send-queue` and the mock adapter keep their own timers. Under `src/replica` there is no `setTimeout` left.
+
+## Deferred from: TASK-115.8 (2026-11-19)
+
+- The `stopped` phase carries the write in flight: an ordinary or import write sent before `stop()` may still finish its read-back, publish its status and complete a waiting import, but never writes again, merges records or arms the pause. The first lock forbade every effect in `stopped`; `room-copy.test.ts` 'a healthy observer receives stopped-write import completion…' (today's behavior) won, and the lock was corrected.
+- Import and ordinary writes share the table's phase as their mutex; the import arrives through an existing event with its data in the event, not through a new event kind.
