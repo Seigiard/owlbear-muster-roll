@@ -1,5 +1,5 @@
 import type { VersionedRecord } from '@/core/records';
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import type { JsonValue } from '@/core/json';
 import {
   type GenerationRelation,
@@ -224,8 +224,10 @@ const ADMITTED_CONTROLS: Record<RoomMessageType, AdmissionControl> = {
 function createPorts(
   effects: string[],
   senderOf: RoomProtocolPorts['senderOf'] = async () => PLAYER,
+  reported: string[] = [],
 ): RoomProtocolPorts {
   const ports: RoomProtocolPorts = {
+    report: (failure: { _tag: string }) => reported.push(failure._tag),
     senderOf,
     role: () => 'PLAYER',
     signal: new AbortController().signal,
@@ -441,26 +443,26 @@ describe('createRoomProtocol', () => {
   test('continues with the next room event after a handler throws', async () => {
     // #given
     const effects: string[] = [];
+    const reported: string[] = [];
     const ports = createPorts(effects);
     ports.catchUp.pingReceived = () => {
       effects.push('ping');
       throw new Error('handler failed');
     };
 
+    ports.report = (failure: { _tag: string }) => reported.push(failure._tag);
     const protocol = createRoomProtocol(ports);
-    const errors = spyOn(console, 'error').mockImplementation(() => {});
 
     // #when
-    try {
-      protocol.receive(event(messageFor('ping', OWN_GENERATION)));
-      protocol.receive(event(messageFor('state-request', OWN_GENERATION)));
-      await settleIngress();
-    } finally {
-      errors.mockRestore();
-    }
+    protocol.receive(event(messageFor('ping', OWN_GENERATION)));
+    protocol.receive(event(messageFor('state-request', OWN_GENERATION)));
+    await settleIngress();
 
     // #then
-    expect(effects).toEqual(['ping', 'state-request:request']);
+    expect({ effects, reported }).toEqual({
+      effects: ['ping', 'state-request:request'],
+      reported: ['message-rejected'],
+    });
   });
   test('drops a malformed room message before it reaches admission', async () => {
     // #given

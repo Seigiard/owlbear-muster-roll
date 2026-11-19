@@ -1,13 +1,23 @@
 import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 
-import type { PlayerRole, StorageOperation } from '@/platform/ports';
+import {
+  MetadataFailure,
+  NotificationFailure,
+  PartyReadFailure,
+  PlayerReadFailure,
+  SendFailure,
+  StorageFailure,
+  type PlayerRole,
+  type StorageOperation,
+} from '@/platform/ports';
 
 import {
   broadcastPreservesOneSenderArrivalOrder,
   localBroadcastReachesTheSenderClientOnly,
   metadataMergesRetainedEntriesAndDeletesUndefinedEntries,
   PORT_CONTRACT_SCENARIOS,
+  portFailureIsReturned,
   rateLimitedSendResolvesAndDeliversNoEvent,
   remoteBroadcastReachesAnotherClientAndDoesNotEcho,
   storageFailureIsReturnedForOperation,
@@ -40,6 +50,10 @@ const mockPortContractFactory: PortContractFactory = {
   broadcast: supportedScenario(createBroadcastFixture, 'real-adapter'),
   broadcastRateLimit: supportedScenario(createRateLimitedBroadcastFixture, 'local-injection'),
   metadata: supportedScenario(createMetadataFixture, 'real-adapter'),
+  partyReadFailure: supportedScenario(createPartyReadFailureFixture, 'local-injection'),
+  playerRoleFailure: supportedScenario(createPlayerRoleFailureFixture, 'local-injection'),
+  metadataReadFailure: supportedScenario(createMetadataReadFailureFixture, 'local-injection'),
+  notificationFailure: supportedScenario(createNotificationFailureFixture, 'local-injection'),
 };
 
 describe('mock storage port contract', () => {
@@ -74,7 +88,7 @@ describe('mock storage port contract', () => {
     // #then
     expect(observation).toEqual({
       status: 'returned',
-      result: Result.err({ operation: 'read', reason: STORAGE_FAILURE_REASON }),
+      result: Result.err(new StorageFailure({ operation: 'read', reason: STORAGE_FAILURE_REASON })),
     });
   });
 
@@ -88,7 +102,9 @@ describe('mock storage port contract', () => {
     // #then
     expect(observation).toEqual({
       status: 'returned',
-      result: Result.err({ operation: 'write', reason: STORAGE_FAILURE_REASON }),
+      result: Result.err(
+        new StorageFailure({ operation: 'write', reason: STORAGE_FAILURE_REASON }),
+      ),
     });
   });
 
@@ -102,7 +118,9 @@ describe('mock storage port contract', () => {
     // #then
     expect(observation).toEqual({
       status: 'returned',
-      result: Result.err({ operation: 'remove', reason: STORAGE_FAILURE_REASON }),
+      result: Result.err(
+        new StorageFailure({ operation: 'remove', reason: STORAGE_FAILURE_REASON }),
+      ),
     });
   });
 
@@ -116,7 +134,7 @@ describe('mock storage port contract', () => {
     // #then
     expect(observation).toEqual({
       status: 'returned',
-      result: Result.err({ operation: 'list', reason: STORAGE_FAILURE_REASON }),
+      result: Result.err(new StorageFailure({ operation: 'list', reason: STORAGE_FAILURE_REASON })),
     });
   });
 });
@@ -195,9 +213,85 @@ describe('mock broadcast port contract', () => {
     expect(observation).toEqual({
       send: {
         status: 'resolved',
-        result: Result.err({ kind: 'rate-limited' }),
+        result: Result.err(
+          new SendFailure({
+            kind: 'rate-limited',
+            channel: 'port-contract:rate-limit',
+          }),
+        ),
       },
       events: [],
+    });
+  });
+});
+
+describe('mock rejecting port contract', () => {
+  test(PORT_CONTRACT_SCENARIOS.partyReadFailure, async () => {
+    // #given
+    const fixture = mockPortContractFactory.partyReadFailure;
+
+    // #when
+    const observation = await portFailureIsReturned(
+      fixture,
+      PORT_CONTRACT_SCENARIOS.partyReadFailure,
+    );
+
+    // #then
+    expect(observation).toEqual({
+      status: 'returned',
+      result: Result.err(new PartyReadFailure({ reason: 'mock party read failure' })),
+    });
+  });
+  test(PORT_CONTRACT_SCENARIOS.playerRoleFailure, async () => {
+    // #given
+    const fixture = mockPortContractFactory.playerRoleFailure;
+
+    // #when
+    const observation = await portFailureIsReturned(
+      fixture,
+      PORT_CONTRACT_SCENARIOS.playerRoleFailure,
+    );
+
+    // #then
+    expect(observation).toEqual({
+      status: 'returned',
+      result: Result.err(
+        new PlayerReadFailure({ field: 'role', reason: 'mock player role read failure' }),
+      ),
+    });
+  });
+  test(PORT_CONTRACT_SCENARIOS.metadataReadFailure, async () => {
+    // #given
+    const fixture = mockPortContractFactory.metadataReadFailure;
+
+    // #when
+    const observation = await portFailureIsReturned(
+      fixture,
+      PORT_CONTRACT_SCENARIOS.metadataReadFailure,
+    );
+
+    // #then
+    expect(observation).toEqual({
+      status: 'returned',
+      result: Result.err(
+        new MetadataFailure({ operation: 'read', reason: 'mock metadata read failure' }),
+      ),
+    });
+  });
+  test(PORT_CONTRACT_SCENARIOS.notificationFailure, async () => {
+    // #given
+    const fixture = mockPortContractFactory.notificationFailure;
+
+    // #when
+    const observation = await portFailureIsReturned(
+      fixture,
+      PORT_CONTRACT_SCENARIOS.notificationFailure,
+    );
+
+    // #then
+    expect(observation).toEqual({
+      status: 'returned',
+      result: Result.err(new NotificationFailure({ reason: 'mock notification failure' })),
     });
   });
 });
@@ -287,7 +381,12 @@ function createRateLimitedBroadcastFixture(): RateLimitedBroadcastFixture {
     observationTimeoutMs: OBSERVATION_TIMEOUT_MS,
     quietPeriodMs: QUIET_PERIOD_MS,
     injectRateLimitedSend: () => {
-      topology.backgroundA.failNextSends([{ kind: 'rate-limited' }]);
+      topology.backgroundA.failNextSends([
+        new SendFailure({
+          kind: 'rate-limited',
+          channel: 'port-contract:rate-limit',
+        }),
+      ]);
     },
     cleanup: () => undefined,
   };
@@ -310,6 +409,54 @@ function createMetadataFixture(): MetadataFixture {
         [`${prefix}added`]: undefined,
       });
     },
+  };
+}
+
+function createPartyReadFailureFixture() {
+  const platform = createMockPlatform();
+
+  return {
+    inject: () => {
+      platform.failNextPartyRead();
+    },
+    invoke: () => platform.party.getPlayers(),
+    cleanup: () => undefined,
+  };
+}
+
+function createPlayerRoleFailureFixture() {
+  const platform = createMockPlatform();
+
+  return {
+    inject: () => {
+      platform.failNextPlayerRoleRead();
+    },
+    invoke: () => platform.player.getRole(),
+    cleanup: () => undefined,
+  };
+}
+
+function createMetadataReadFailureFixture() {
+  const platform = createMockPlatform();
+
+  return {
+    inject: () => {
+      platform.failNextMetadataRead();
+    },
+    invoke: () => platform.metadata.getMetadata(),
+    cleanup: () => undefined,
+  };
+}
+
+function createNotificationFailureFixture() {
+  const platform = createMockPlatform();
+
+  return {
+    inject: () => {
+      platform.failNextNotification();
+    },
+    invoke: () => platform.notification.show('port contract notification'),
+    cleanup: () => undefined,
   };
 }
 

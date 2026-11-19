@@ -11,7 +11,13 @@ import {
   type VersionedRecord,
 } from '@/core/records';
 import { ROOM_METADATA_BYTE_LIMIT } from '@/core/snapshot';
-import type { Notice, RoomCopyStatus, SyncState, WireOpenSheetRequest } from '@/core/ui-messages';
+import type {
+  Diagnostic,
+  Notice,
+  RoomCopyStatus,
+  SyncState,
+  WireOpenSheetRequest,
+} from '@/core/ui-messages';
 
 // What a player's edit that waits for a GM's check does to its key (AD-4): a new repeat block, a
 // change of field values, or a repeat block's removal.
@@ -39,6 +45,7 @@ export type ProjectionStore = {
   // never wait, and its catch-up queue is no proposal.
   $pending: ReadableAtom<ReadonlyMap<string, PendingEntry>>;
   $notices: ReadableAtom<readonly Notice[]>;
+  $diagnostics: ReadableAtom<readonly Diagnostic[]>;
   // False until the first full projection, so an empty room is not mistaken for one still loading.
   $loaded: ReadableAtom<boolean>;
   $sync: ReadableAtom<SyncState>;
@@ -54,6 +61,7 @@ export type ProjectionStore = {
     pending: readonly VersionedRecord[],
     notices: readonly Notice[],
     sync: SyncState,
+    diagnostics?: readonly Diagnostic[],
   ) => void;
   applyDelta: (
     records: readonly VersionedRecord[],
@@ -61,6 +69,7 @@ export type ProjectionStore = {
     withdrawn: readonly string[],
     notices: readonly Notice[],
     sync: SyncState,
+    diagnostics?: readonly Diagnostic[],
   ) => void;
   setRoomCopy: (roomCopy: RoomCopyStatus) => void;
   setOpenRequest: (request: WireOpenSheetRequest) => void;
@@ -91,6 +100,7 @@ export function createProjectionStore(): ProjectionStore {
   const $replica = atom<ReadonlyMap<string, VersionedRecord>>(new Map());
   const $pending = atom<ReadonlyMap<string, PendingEntry>>(new Map());
   const $notices = atom<readonly Notice[]>([]);
+  const $diagnostics = atom<readonly Diagnostic[]>([]);
   const $loaded = atom(false);
   const $sync = atom<SyncState>(UNKNOWN_SYNC);
   const $roomCopy = atom<RoomCopyStatus>(UNKNOWN_ROOM_COPY);
@@ -99,7 +109,11 @@ export function createProjectionStore(): ProjectionStore {
   let replica = new Map<string, VersionedRecord>();
   let pendingView = new Map<string, VersionedRecord>();
 
-  function show(notices: readonly Notice[], sync: SyncState): void {
+  function show(
+    notices: readonly Notice[],
+    sync: SyncState,
+    diagnostics: readonly Diagnostic[] = [],
+  ): void {
     const shown = new Map(replica);
 
     for (const [key, record] of pendingView) {
@@ -111,6 +125,7 @@ export function createProjectionStore(): ProjectionStore {
     $replica.set(new Map(replica));
     $pending.set(sync.role === 'GM' ? new Map() : pendingEntries(replica, pendingView));
     $notices.set(notices);
+    $diagnostics.set(diagnostics);
     $sync.set(sync);
   }
 
@@ -119,19 +134,20 @@ export function createProjectionStore(): ProjectionStore {
     $replica,
     $pending,
     $notices,
+    $diagnostics,
     $loaded,
     $sync,
     $roomCopy,
     $openRequest,
     $party,
-    replaceAll: (records, pending, notices, sync) => {
+    replaceAll: (records, pending, notices, sync, diagnostics = []) => {
       replica = assembleRecords(records);
       // A live GM engine sends none. A player's holds its edits that wait for a GM (AD-4).
       pendingView = assembleRecords(pending);
-      show(notices, sync);
+      show(notices, sync, diagnostics);
       $loaded.set(true);
     },
-    applyDelta: (records, pending, withdrawn, notices, sync) => {
+    applyDelta: (records, pending, withdrawn, notices, sync, diagnostics = []) => {
       // Dropped first, so a record the same delta brings again stays.
       for (const key of withdrawn) {
         replica.delete(key);
@@ -154,7 +170,7 @@ export function createProjectionStore(): ProjectionStore {
         );
       }
 
-      show(notices, sync);
+      show(notices, sync, diagnostics);
     },
     setRoomCopy: (roomCopy) => {
       $roomCopy.set(roomCopy);

@@ -1,6 +1,6 @@
 import { Result } from 'better-result';
 import { fixtureCells, fixtureRecord } from '../../tests/support/block-fixtures';
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { mergeRecords, type Version } from '@/core/merge';
 import type { TemplateLayout } from '@/core/preset';
 import { presetMoves } from '@/core/preset-migrate';
@@ -32,6 +32,7 @@ type Rig = {
     delay: number;
     cancelled: boolean;
   }[];
+  reported: string[];
 };
 
 const MINT = (): Version => ({ c: 9, a: 'p-conn' });
@@ -40,6 +41,7 @@ function createRig(): Rig {
   const composes: Rig['composes'] = [];
   const settles: Rig['settles'] = [];
   const timers: Rig['timers'] = [];
+  const reported: string[] = [];
 
   const queue = createProposalQueue({
     timing: { proposeResendStartMs: 2000, proposeResendMaxMs: 30000 },
@@ -58,9 +60,10 @@ function createRig(): Rig {
         timer.cancelled = true;
       };
     },
+    report: (failure: { _tag: string }) => reported.push(failure._tag),
   });
 
-  return { queue, composes, settles, timers };
+  return { queue, composes, settles, timers, reported };
 }
 
 function entry(k: string, c: number | null, str = c ?? 0): ProposalEntry {
@@ -229,36 +232,40 @@ describe('proposal queue', () => {
       },
     ]);
   });
-  test.each<[string, (settle: Rig['settles'][number]) => void]>([
-    ['fails', (settle) => settle.reject(new Error('stopped'))],
-    ['settles with nothing composed', (settle) => settle.resolve()],
-  ])('a send that %s frees its key for the next version', async (_name, settle) => {
-    // #given
-    const rig = createRig();
-    const errors = spyOn(console, 'error').mockImplementation(() => {});
-    rig.queue.put(entry('blk:brok', 1));
-    rig.composes.splice(0);
-    const [first] = rig.settles;
+  test.each<[string, (settle: Rig['settles'][number]) => void, string[]]>([
+    ['fails', (settle) => settle.reject(new Error('stopped')), ['propose-dropped']],
+    ['settles with nothing composed', (settle) => settle.resolve(), []],
+  ])(
+    'a send that %s frees its key for the next version',
+    async (_name, settle, expectedReported) => {
+      // #given
+      const rig = createRig();
+      rig.queue.put(entry('blk:brok', 1));
+      rig.composes.splice(0);
+      const [first] = rig.settles;
 
-    if (first !== undefined) {
-      settle(first);
-    }
+      if (first !== undefined) {
+        settle(first);
+      }
 
-    await Promise.resolve();
-    // #when
-    rig.queue.put(entry('blk:brok', 2));
-    errors.mockRestore();
-    // #then
-    expect(sendAll(rig)).toEqual([
-      {
-        k: 'blk:brok',
-        d: { order: 0, cells: { str: [2, 2, 'p-conn'] } },
-        c: 2,
-        a: 'p-conn',
-        l: [1, 'seed'],
-      },
-    ]);
-  });
+      await Promise.resolve();
+      // #when
+      rig.queue.put(entry('blk:brok', 2));
+      // #then
+      expect({ sent: sendAll(rig), reported: rig.reported }).toEqual({
+        sent: [
+          {
+            k: 'blk:brok',
+            d: { order: 0, cells: { str: [2, 2, 'p-conn'] } },
+            c: 2,
+            a: 'p-conn',
+            l: [1, 'seed'],
+          },
+        ],
+        reported: expectedReported,
+      });
+    },
+  );
   test('matches only the (k, c, a) of the newest version of an entry', () => {
     // #given
     const rig = createRig();

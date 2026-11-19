@@ -583,6 +583,13 @@ pass	src/core/formula.test.ts › parseFormula › refuses "floor(a < b)" with s
 pass	src/core/formula.test.ts › parseFormula › refuses "sqrt(4)" with unknown-function
 pass	src/core/formula.test.ts › parseFormula › refuses "str(1)" with unknown-function
 pass	src/core/formula.test.ts › parseFormula › refuses a formula over 200 characters
+pass	src/core/fragment-assembler.test.ts › fragment assembler › completes two parts and removes the completed assembly
+pass	src/core/fragment-assembler.test.ts › fragment assembler › drops a count mismatch and removes its open assembly
+pass	src/core/fragment-assembler.test.ts › fragment assembler › drops an oversized assembly and evicts before rejecting an oversized first part
+pass	src/core/fragment-assembler.test.ts › fragment assembler › drops too many parts before looking up an assembly
+pass	src/core/fragment-assembler.test.ts › fragment assembler › evicts the oldest-created assembly when a new key reaches the limit
+pass	src/core/fragment-assembler.test.ts › fragment assembler › expires from the first part even after a later part arrives
+pass	src/core/fragment-assembler.test.ts › fragment assembler › keeps an identical duplicate and drops a changed duplicate
 pass	src/core/ids.test.ts › new record ids › a new instance id is 8 characters of the URL-safe alphabet
 pass	src/core/ids.test.ts › new record ids › a new sheet id is 12 characters of the URL-safe alphabet
 pass	src/core/ids.test.ts › new record ids › every new id passes the sheet id schema that refuses ":"
@@ -1895,6 +1902,10 @@ pass	src/platform/mock/port-contract.test.ts › mock broadcast port contract �
 pass	src/platform/mock/port-contract.test.ts › mock broadcast port contract › a rate-limited send resolves and delivers no event
 pass	src/platform/mock/port-contract.test.ts › mock broadcast port contract › broadcast preserves one sender arrival order
 pass	src/platform/mock/port-contract.test.ts › mock metadata port contract › metadata merges retained entries and deletes undefined entries
+pass	src/platform/mock/port-contract.test.ts › mock rejecting port contract › metadata read returns its tagged failure
+pass	src/platform/mock/port-contract.test.ts › mock rejecting port contract › notification returns its tagged failure
+pass	src/platform/mock/port-contract.test.ts › mock rejecting port contract › party read returns its tagged failure
+pass	src/platform/mock/port-contract.test.ts › mock rejecting port contract › player role read returns its tagged failure
 pass	src/platform/mock/port-contract.test.ts › mock storage port contract › storage returns a list failure when its backing throws
 pass	src/platform/mock/port-contract.test.ts › mock storage port contract › storage returns a read failure when its backing throws
 pass	src/platform/mock/port-contract.test.ts › mock storage port contract › storage returns a remove failure when its backing throws
@@ -1938,13 +1949,23 @@ pass	src/platform/send-queue.test.ts › send queue with a composed message › 
 pass	src/platform/send-queue.test.ts › send queue › flushNow sends the message in its backoff and every waiting one in order, once each
 pass	src/platform/send-queue.test.ts › send queue › goes on after a port that rejects, against its contract
 pass	src/platform/send-queue.test.ts › send queue › holds a message queued during the pause after the last send until the pause ends
-pass	src/platform/send-queue.test.ts › send queue › logs another send failure and goes on with the next message
 pass	src/platform/send-queue.test.ts › send queue › reports a message given up on, one sent after a rate limit, and one sent
+pass	src/platform/send-queue.test.ts › send queue › reports another send failure and goes on with the next message
 pass	src/platform/send-queue.test.ts › send queue › sendNow goes out at once, ahead of the spacing pause and the waiting messages
 pass	src/platform/send-queue.test.ts › send queue › sendNow makes one attempt and waits out no rate limit
 pass	src/platform/send-queue.test.ts › send queue › sends in order and spaces each send by the injected value
 pass	src/platform/send-queue.test.ts › send queue › sends one at a time, waiting for the previous send
 pass	src/platform/send-queue.test.ts › send queue › waits with doubling, capped backoff and resends the same message in order
+pass	src/replica/catch-up-effects.test.ts › a failed read logs its failure and leaves the interpreter resolved
+pass	src/replica/catch-up-effects.test.ts › a failed timer continuation logs its failure
+pass	src/replica/catch-up-effects.test.ts › aborting after a read starts drops its continuation
+pass	src/replica/catch-up-effects.test.ts › an aborted interpreter does not run direct decisions
+pass	src/replica/catch-up-effects.test.ts › disarming a timer prevents its callback from reaching catch-up
+pass	src/replica/catch-up-effects.test.ts › nonce-free timers keep separate keys
+pass	src/replica/catch-up-effects.test.ts › re-arming one timer ignores its stale callback and runs its replacement
+pass	src/replica/catch-up-effects.test.ts › request and answer timers with one nonce keep separate keys
+pass	src/replica/catch-up-effects.test.ts › run dispatches every synchronous catch-up decision to its port
+pass	src/replica/catch-up-effects.test.ts › run waits for started reads and interprets their results
 pass	src/replica/catch-up-machine.test.ts › catch-up transition table has valid phases, effects, invariants, and diagram
 pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › ignores a generation that is not higher than the current generation
 pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › ignores a higher-generation state part outside adoption
@@ -2666,6 +2687,7 @@ pass	src/replica/engine-roll.test.ts › a roll › of a repeat block reads its 
 pass	src/replica/engine-roll.test.ts › a roll › of a sheet with an empty name field goes out with an empty name and shows the fallback label
 pass	src/replica/engine-roll.test.ts › a roll › shows the name the party lists for its sender, not the one the message carries
 pass	src/replica/engine-roll.test.ts › a roll › that arrives twice, or comes back to its roller, shows once
+pass	src/replica/engine-roll.test.ts › a roll › whose failed send reaches the window diagnostics as SendFailure
 pass	src/replica/engine-roll.test.ts › a roll › whose send fails answers failed, and nothing shows
 pass	src/replica/engine-roll.test.ts › the value a player's roll uses › is its edit still waiting for a GM client
 pass	src/replica/engine-roll.test.ts › the value a roll uses › is a GM edit still pending in catch-up
@@ -2739,6 +2761,7 @@ pass	src/replica/engine-sync.test.ts › GM edit goes out › splits a commit ov
 pass	src/replica/engine-sync.test.ts › GM whose storage could not be read › applies its own edit and sends no commit
 pass	src/replica/engine-sync.test.ts › coalescing › sends only the newer record of a key edited twice while the queue is held, and keeps the other keys
 pass	src/replica/engine-sync.test.ts › gate › a stopped engine ignores newer-format room ingress after live ingress worked
+pass	src/replica/engine-sync.test.ts › gate › answers a valid v4 ping without reporting a rejection
 pass	src/replica/engine-sync.test.ts › gate › drops a GM commit of a higher generation
 pass	src/replica/engine-sync.test.ts › gate › drops a GM commit of a lower generation
 pass	src/replica/engine-sync.test.ts › gate › drops a commit from a connection the party does not know after one re-read
@@ -2746,7 +2769,6 @@ pass	src/replica/engine-sync.test.ts › gate › drops a commit from a known pl
 pass	src/replica/engine-sync.test.ts › gate › drops a message with a higher v and keeps the new-version notice after later deltas
 pass	src/replica/engine-sync.test.ts › gate › drops a message with a lower v and shows no notice
 pass	src/replica/engine-sync.test.ts › gate › drops a message with the right v and a record that fails its schema, and throws nothing
-pass	src/replica/engine-sync.test.ts › gate › drops a message with the right v and a type with no handler yet, and throws nothing
 pass	src/replica/engine-sync.test.ts › gate › drops a message with the right v and an unknown type, and throws nothing
 pass	src/replica/engine-sync.test.ts › gate › drops a message with the right v and no envelope at all, and throws nothing
 pass	src/replica/engine-sync.test.ts › gate › handles room messages in arrival order, also when the first needs a party read
@@ -2795,6 +2817,7 @@ pass	src/replica/engine-wipe.test.ts › a wipe › is refused to a player's win
 pass	src/replica/engine-wipe.test.ts › a wipe › is refused while the GM client is catching up
 pass	src/replica/engine-wipe.test.ts › a wipe › keeps its empty generation over a reload with no room copy
 pass	src/replica/engine-wipe.test.ts › a wipe › takes the older-format notice away
+pass	src/replica/failures.test.ts › failure sink › keeps the newest diagnostics last and drops the oldest beyond its limit
 pass	src/replica/generation-flow.test.ts › a duplicate snapshot check has only its required terminal effect
 pass	src/replica/generation-flow.test.ts › a failed synchronous adoption save removes its partial generation and keeps adoption open
 pass	src/replica/generation-flow.test.ts › a higher generation during room-copy import rejects replacement without reset
@@ -2833,6 +2856,7 @@ pass	src/replica/party-roster.test.ts › party roster › returns null for a se
 pass	src/replica/party-roster.test.ts › party roster › shares one read among misses that come while it is on its way
 pass	src/replica/party-roster.test.ts › party roster › stops following party changes once stopped
 pass	src/replica/party-roster.test.ts › party roster › takes a role change from a party change
+pass	src/replica/pending-edits.test.ts › pending edits › a 33-part stale reply completes without a player part cap
 pass	src/replica/pending-edits.test.ts › pending edits › a GM return leaves a waiting edit unsent
 pass	src/replica/pending-edits.test.ts › pending edits › a GM return resends minted edits and backoff resends the same edit with doubling delays
 pass	src/replica/pending-edits.test.ts › pending edits › a denied rejection drops the edit and shows one notification
@@ -2854,6 +2878,7 @@ pass	src/replica/pending-edits.test.ts › pending edits › an edit during catc
 pass	src/replica/pending-edits.test.ts › pending edits › an edit too large for a room message returns the composer error and sends nothing
 pass	src/replica/pending-edits.test.ts › pending edits › an edit whose replica repeat block was removed drops and notifies
 pass	src/replica/pending-edits.test.ts › pending edits › caught-up drops a waiting edit whose access was revoked and notifies
+pass	src/replica/pending-edits.test.ts › pending edits › caught-up returns too-large when a waiting edit no longer fits over the GM record
 pass	src/replica/pending-edits.test.ts › pending edits › clear empties pending edits and stops their resends
 pass	src/replica/pending-edits.test.ts › pending edits › drain returns removal, add then cells and fields in entry order
 pass	src/replica/pending-edits.test.ts › pending edits › drops stale above when the current record already has the patch
@@ -2874,6 +2899,7 @@ pass	src/replica/pending-edits.test.ts › pending edits › records change drop
 pass	src/replica/pending-edits.test.ts › pending edits › records change drops another player revoked only when the pending edit is no longer allowed
 pass	src/replica/pending-edits.test.ts › pending edits › records change drops its own revoked access only when the pending edit is no longer allowed
 pass	src/replica/pending-edits.test.ts › pending edits › records change keeps another sheet entry when one sheet access is revoked
+pass	src/replica/pending-edits.test.ts › pending edits › stale reply limits drop oversized and expired replies before a later two-part reply completes
 pass	src/replica/pending-edits.test.ts › pending edits › the preflight refuses a hidden player-editable sheet before it reaches a GM
 pass	src/replica/pending-edits.test.ts › pending edits › the quiet window notifies only after its fake time has passed
 pass	src/replica/pending-queue.test.ts › pending queue › coalesces all root-cell patches at their first place, newer values winning
@@ -3089,6 +3115,11 @@ pass	src/replica/scene-watch.test.ts › watchSceneRemovals › takes a list tha
 pass	src/replica/scene-watch.test.ts › watchSceneRemovals › takes a list that shares no item with the last one as another scene, not as a deletion
 pass	src/replica/scene-watch.test.ts › watchSceneRemovals › tries a failed item read again, so the list it brings is the baseline
 pass	src/replica/scene-watch.test.ts › watchSceneRemovals › tries a failed readiness read again
+pass	src/replica/timers.test.ts › schedule abort prevents the callback from firing
+pass	src/replica/timers.test.ts › schedule cancel prevents the callback from firing
+pass	src/replica/timers.test.ts › schedule cancellation is a no-op after the callback fires
+pass	src/replica/timers.test.ts › schedule does not schedule an already aborted signal
+pass	src/replica/timers.test.ts › schedule fires a callback once after its delay
 pass	src/replica/window-publisher.test.ts › window publisher › a pending cell stays in the window when its replica cell is withdrawn
 pass	src/replica/window-publisher.test.ts › window publisher › answers a projection nonce again after its first projection has sent
 pass	src/replica/window-publisher.test.ts › window publisher › answers a projection nonce once while its first projection is queued

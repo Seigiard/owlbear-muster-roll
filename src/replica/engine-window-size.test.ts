@@ -12,6 +12,7 @@ import type { PlayerRole } from '@/platform/ports';
 import {
   copyValue,
   createRoomRig,
+  diagnostics,
   pause,
   send,
   waitUntil,
@@ -252,29 +253,25 @@ describe('the window size after a preset change', () => {
   });
   test('a size that failed is logged and asked for again on the next replica change', async () => {
     // #given
-    const logged = spyOn(console, 'error').mockImplementation(() => {});
-
     const gm = await startClient(openRoom(), 'gm-a', {
       seeded: [presetRecord(SIZED)],
       beforeStart: (platform) => platform.failNextActionSize(),
     });
 
-    const failures = logged.mock.calls.filter(
-      ([message]) => message === 'Muster Roll could not size its window',
-    ).length;
-
     // #when
     send(gm, { type: 'sheet-create', sheetId: 'brok', set: 'pc' });
     await waitUntil(() => gm.store.$records.get().has('blk:brok'));
     // #then
-    expect({ failures, sizes: gm.platform.actionSizes() }).toEqual({
-      failures: 1,
+    expect({
+      diagnostics: diagnostics(gm).map(({ tag }) => tag),
+      sizes: gm.platform.actionSizes(),
+    }).toEqual({
+      diagnostics: ['message-rejected'],
       sizes: [WIDE, WIDE],
     });
   });
   test('an unrelated replica change does not schedule an in-flight size retry before rejection', async () => {
     // #given
-    const logged = spyOn(console, 'error').mockImplementation(() => {});
     const sizes: WindowSizeCall[] = [];
     let rejectFirst = (_error: Error): void => undefined;
 
@@ -306,13 +303,11 @@ describe('the window size after a preset change', () => {
     expect({
       afterRejection,
       afterNextChange: sizes,
-      failures: logged.mock.calls.filter(
-        ([message]) => message === 'Muster Roll could not size its window',
-      ).length,
+      diagnostics: diagnostics(gm).map(({ tag }) => tag),
     }).toEqual({
       afterRejection: [WIDE],
       afterNextChange: [WIDE, WIDE],
-      failures: 1,
+      diagnostics: ['message-rejected'],
     });
   });
 });

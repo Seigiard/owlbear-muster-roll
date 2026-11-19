@@ -1,3 +1,5 @@
+import { Result } from 'better-result';
+import { MetadataFailure } from '@/platform/ports';
 import { expect, test } from 'bun:test';
 import { fileURLToPath } from 'node:url';
 import { FORMAT_VERSION } from '@/core/format-version';
@@ -266,7 +268,7 @@ function gatedMetadata(platform: MockPlatform, gate: Gate) {
       await held;
 
       if (gate.rejectRead || gate.rejectReadAt === gate.reads) {
-        throw new Error('read rejected');
+        return Result.err(new MetadataFailure({ operation: 'read', reason: 'read rejected' }));
       }
 
       return platform.metadata.getMetadata();

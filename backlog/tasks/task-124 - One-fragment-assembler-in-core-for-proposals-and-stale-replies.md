@@ -1,10 +1,11 @@
 ---
 id: TASK-124
 title: One fragment assembler in core for proposals and stale replies
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-19T08:34:00Z'
-updated_date: '2026-11-19T08:40:00Z'
+updated_date: '2026-11-19T09:43:00Z'
 labels:
   - replica
   - architecture
@@ -23,13 +24,25 @@ Architecture review 2026-11-18, candidate 4, the one part the owner accepted now
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Both `propose` assembly in room-protocol and `completeStaleReject` in pending-edits call `createFragmentAssembler` from `src/core/fragment-assembler.ts`; neither module holds a `parts` map of its own
-- [ ] #2 `engine-propose` tests at `tests 768-911, 1016` pass unchanged; full check green; engine suite junit list equals the baseline
-- [ ] #3 The player side enforces the GM byte, assembly-count and retention limits (no part cap, because a legal stale reply can exceed 32 parts); a unit test shows an oversized and an expired stale reply are dropped and a 33-part one completes
+- [x] #1 Both `propose` assembly in room-protocol and `completeStaleReject` in pending-edits call `createFragmentAssembler` from `src/core/fragment-assembler.ts`; neither module holds a `parts` map of its own
+- [x] #2 `engine-propose` tests at `tests 768-911, 1016` pass unchanged; full check green; engine suite junit list equals the baseline
+- [x] #3 The player side enforces the GM byte, assembly-count and retention limits (no part cap, because a legal stale reply can exceed 32 parts); a unit test shows an oversized and an expired stale reply are dropped and a 33-part one completes
 <!-- AC:END -->
 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-Spec: _bmad-output/implementation-artifacts/spec-task-124-fragment-assembler.md
+Run through implement-spec: tdd chain (OpenCode test writer then implementer) in worktree task-124/assembler; merge into integration branch task-124-fragment-assembler-implementati; full check; code-review; one PR with auto-merge. Spec: _bmad-output/implementation-artifacts/spec-task-124-fragment-assembler.md
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+AC1: room-protocol.ts and pending-edits.ts call createFragmentAssembler; grep for 'parts: new Map|PROPOSAL_MAX_|PROPOSAL_RETENTION' in src/replica prints nothing. AC2: engine-propose.test.ts unchanged; full check green (oxfmt, lint, typecheck, bun test 3504 pass/1 skip, test:browser 583 pass, build); junit names at merged master are a subset of after, difference = 9 new tests. AC3: pending-edits.test.ts 'a 33-part stale reply completes without a player part cap' and 'stale reply limits drop oversized and expired replies before a later two-part reply completes', calibrated by mutation (player maxParts 32, maxBytes/retentionMs Infinity each go red).
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+One core module, src/core/fragment-assembler.ts, now reassembles records sent in parts for both the GM (propose) and the player (reject stale). The time comes in as an argument and the answer is a tagged outcome (complete, waiting, ignored, dropped with a reason), so TASK-115.6 can report drops. The GM keeps its four limits; the player gets the GM byte, assembly and retention limits with no part cap, so its stale-reply map is now bounded. Wire format unchanged. Follow-ups in deferred-work.md: the GM sends stale replies with no part cap, and the player's 480 000-byte limit drops a legal stale reply of about 34+ full parts; both wait for one owner decision.
+<!-- SECTION:FINAL_SUMMARY:END -->

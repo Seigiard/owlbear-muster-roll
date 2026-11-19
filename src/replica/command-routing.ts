@@ -12,6 +12,7 @@ import type { ComposeContext, Composers } from '@/core/compose';
 import type { PendingEdits } from '@/replica/pending-edits';
 import type { PendingEntry, PendingQueue } from '@/replica/pending-queue';
 import type { RecordIdKind } from '@/core/ids';
+import { MessageRejectedFailure, type FailureReporter } from '@/replica/failures';
 
 export type CommandRouteContext = {
   role: PlayerRole;
@@ -99,6 +100,7 @@ export type ReplayedPending = {
 };
 
 export type CommandRoutingPorts = {
+  report?: FailureReporter;
   role: () => PlayerRole;
   importing: () => boolean;
   live: () => boolean;
@@ -145,6 +147,7 @@ export type CommandRouting = {
 };
 
 export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting {
+  const report = ports.report ?? (() => undefined);
   const pendingIds = new Map<string, Map<string, string>>();
 
   function pendingIdsOf(intentId: string): ComposeContext['newRecordId'] {
@@ -209,7 +212,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
       case 'snapshot-import':
         if (command.type === 'snapshot-import') {
           void ports.importFromSnapshot(id, command).catch((error) => {
-            console.error('Muster Roll could not import a snapshot', error);
+            report(new MessageRejectedFailure({ reason: String(error) }));
           });
         }
 
@@ -217,7 +220,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
       case 'wipe':
         if (command.type === 'wipe') {
           void ports.wipe(id).catch((error) => {
-            console.error('Muster Roll could not wipe the room', error);
+            report(new MessageRejectedFailure({ reason: String(error) }));
           });
         }
 

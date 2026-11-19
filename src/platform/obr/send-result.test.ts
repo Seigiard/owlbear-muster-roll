@@ -1,5 +1,6 @@
 import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
+import { SendFailure } from '@/platform/ports';
 import { toSendResult } from './send-result';
 
 type Cyclic = {
@@ -19,7 +20,7 @@ describe('toSendResult', () => {
     // #when
     const result = await toSendResult(() => Promise.reject(rejection));
     // #then
-    expect(result).toEqual(Result.err({ kind: 'rate-limited' }));
+    expect(result).toEqual(Result.err(new SendFailure({ kind: 'rate-limited' })));
   });
   test('reports another Owlbear rejection as a failure', async () => {
     // #given
@@ -28,14 +29,14 @@ describe('toSendResult', () => {
     const result = await toSendResult(() => Promise.reject(rejection));
     // #then
     expect(result).toEqual(
-      Result.err({ kind: 'failed', reason: '{"error":{"name":"Forbidden"}}' }),
+      Result.err(new SendFailure({ kind: 'failed', reason: '{"error":{"name":"Forbidden"}}' })),
     );
   });
   test('describes an undefined rejection', async () => {
     // #when
     const result = await toSendResult(() => Promise.reject(undefined));
     // #then
-    expect(result).toEqual(Result.err({ kind: 'failed', reason: 'undefined' }));
+    expect(result).toEqual(Result.err(new SendFailure({ kind: 'failed', reason: 'undefined' })));
   });
   test('describes a cyclic rejection without throwing', async () => {
     // #given
@@ -44,18 +45,20 @@ describe('toSendResult', () => {
     // #when
     const result = await toSendResult(() => Promise.reject(cyclic));
     // #then
-    expect(result).toEqual(Result.err({ kind: 'failed', reason: '[object Object]' }));
+    expect(result).toEqual(
+      Result.err(new SendFailure({ kind: 'failed', reason: '[object Object]' })),
+    );
   });
   test('describes a BigInt rejection without throwing', async () => {
     // #when
     const result = await toSendResult(() => Promise.reject(12n));
     // #then
-    expect(result).toEqual(Result.err({ kind: 'failed', reason: '12' }));
+    expect(result).toEqual(Result.err(new SendFailure({ kind: 'failed', reason: '12' })));
   });
   test('reports a thrown Error as a failure', async () => {
     // #when
     const result = await toSendResult(() => Promise.reject(new Error('gone')));
     // #then
-    expect(result).toEqual(Result.err({ kind: 'failed', reason: 'Error: gone' }));
+    expect(result).toEqual(Result.err(new SendFailure({ kind: 'failed', reason: 'Error: gone' })));
   });
 });

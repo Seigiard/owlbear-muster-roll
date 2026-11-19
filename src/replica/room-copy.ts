@@ -16,7 +16,8 @@ import {
 import type { Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
 import type { Notice, RoomCopyOutcome, RoomCopyStatus } from '@/core/ui-messages';
-import type { MetadataPort } from '@/platform/ports';
+import { MetadataFailure, type MetadataPort } from '@/platform/ports';
+import { MessageRejectedFailure, type FailureReporter } from '@/replica/failures';
 
 export type RoomCopyOptions = {
   metadata: Pick<MetadataPort, 'getMetadata' | 'setMetadata'>;
@@ -31,6 +32,7 @@ export type RoomCopyOptions = {
   adopt: (copy: Snapshot) => void;
   newerVersion: () => void;
   changed: () => void;
+  report?: FailureReporter;
 };
 
 export type RoomCopy = {
@@ -67,6 +69,7 @@ type DeferredWork = {
 };
 
 export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
+  const report = options.report ?? (() => undefined);
   // AD-8 room copy. The notice stays until the next verified write.
   let notSaved = false;
   // A readable room copy of this client's generation was last read or written.
@@ -144,7 +147,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     const read = readSnapshot(metadata);
 
     if (!read.isOk()) {
-      console.error('Muster Roll could not read the room copy', read.error);
+      report(new MessageRejectedFailure({ reason: String(read.error) }));
       outcome = outcomeOf(read.error);
       unreadableRoomCopy(metadata, read.error);
 
@@ -195,7 +198,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     const cancel = options.schedule(delay, () => {
       deferred.scheduled = undefined;
       void writeRoomCopy().catch((error) => {
-        console.error('Muster Roll could not write the room copy', error);
+        report(new MetadataFailure({ operation: 'write', reason: String(error) }));
       });
     });
 
@@ -251,7 +254,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
 
   async function runRoomCopyWrite(operation: ActiveWrite): Promise<void> {
     const changesAtRead = pageChanges;
-    const metadata = await readMetadata(options.metadata);
+    const metadata = await readMetadata(options.metadata, report);
 
     // Step 2: a `resume` or a visibility change during the read stops the write.
     if (!options.writable() || pageChanges !== changesAtRead) {
@@ -268,7 +271,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
 
     // Step 1: a copy this build cannot read is never overwritten.
     if (!read.isOk()) {
-      console.error('Muster Roll could not read the room copy', read.error);
+      report(new MessageRejectedFailure({ reason: String(read.error) }));
       unreadableRoomCopy(metadata, read.error);
 
       return;
@@ -315,7 +318,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     try {
       await options.metadata.setMetadata({ [SNAPSHOT_KEY]: value });
     } catch (error) {
-      console.error('Muster Roll could not write the room copy', error);
+      report(new MetadataFailure({ operation: 'write', reason: String(error) }));
 
       if (options.writable()) {
         failRoomCopy(null);
@@ -329,7 +332,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     }
 
     operation.phase = 'verifying';
-    const readBack = await readMetadata(options.metadata);
+    const readBack = await readMetadata(options.metadata, report);
 
     if (!options.writable()) {
       return;
@@ -386,7 +389,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     if (!supersededImport && deferred.rerun) {
       deferred.rerun = false;
       void writeRoomCopy().catch((error) => {
-        console.error('Muster Roll could not write the room copy', error);
+        report(new MessageRejectedFailure({ reason: String(error) }));
       });
     }
   }
@@ -423,7 +426,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     superseded: () => boolean,
   ): Promise<JsonObject | null> {
     operation.phase = 'reading';
-    const metadata = await readMetadata(options.metadata);
+    const metadata = await readMetadata(options.metadata, report);
 
     if (metadata === null || superseded()) {
       return null;
@@ -432,7 +435,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     const current = readSnapshot(metadata);
 
     if (!current.isOk() && current.error === 'newer-version') {
-      console.error('Muster Roll could not replace the room copy of a newer build');
+      report(new MessageRejectedFailure({ reason: 'newer-version' }));
       options.newerVersion();
 
       return null;
@@ -455,13 +458,13 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     try {
       await options.metadata.setMetadata({ [SNAPSHOT_KEY]: value.value });
     } catch (error) {
-      console.error('Muster Roll could not write the room copy', error);
+      report(new MetadataFailure({ operation: 'write', reason: String(error) }));
 
       return null;
     }
 
     operation.phase = 'verifying';
-    const readBack = await readMetadata(options.metadata);
+    const readBack = await readMetadata(options.metadata, report);
 
     if (readBack === null || superseded() || adoptedHigherCopy(readBack, generation)) {
       return null;
@@ -492,7 +495,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     superseded: () => boolean,
   ): Promise<void> {
     operation.phase = 'reading';
-    const metadata = await readMetadata(options.metadata);
+    const metadata = await readMetadata(options.metadata, report);
 
     if (metadata === null || superseded()) {
       options.changed();
@@ -513,11 +516,11 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     try {
       await options.metadata.setMetadata({ [SNAPSHOT_KEY]: undefined });
     } catch (error) {
-      console.error('Muster Roll could not remove the replaced room copy', error);
+      report(new MetadataFailure({ operation: 'write', reason: String(error) }));
     }
 
     operation.phase = 'verifying';
-    const after = await readMetadata(options.metadata);
+    const after = await readMetadata(options.metadata, report);
 
     if (after === null || lifecycle.phase === 'stopped') {
       options.changed();
@@ -590,7 +593,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     pageHidden: () => {
       pageChanges += 1;
       void writeRoomCopy().catch((error) => {
-        console.error('Muster Roll could not write the room copy', error);
+        report(new MessageRejectedFailure({ reason: String(error) }));
       });
     },
     pageReturned: () => {
@@ -602,7 +605,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
       }
     },
     read: async () => {
-      const metadata = await readMetadata(options.metadata);
+      const metadata = await readMetadata(options.metadata, report);
 
       if (lifecycle.phase === 'stopped') {
         return;
@@ -650,14 +653,17 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
 // A failed read is logged and comes back as `null`, so a caller never waits on a rejection.
 async function readMetadata(
   metadata: Pick<MetadataPort, 'getMetadata'>,
+  report: FailureReporter,
 ): Promise<JsonObject | null> {
-  try {
-    return await metadata.getMetadata();
-  } catch (error) {
-    console.error('Muster Roll could not read the room metadata', error);
+  const result = await metadata.getMetadata();
 
-    return null;
+  if (result.isOk()) {
+    return result.value;
   }
+
+  report(result.error);
+
+  return null;
 }
 
 // AD-12: what a room copy that cannot be read shows a player: a newer build's, an older format's,

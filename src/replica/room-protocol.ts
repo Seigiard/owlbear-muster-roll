@@ -1,6 +1,7 @@
 import { checkProposal, type ProposalContext } from '@/core/access';
+import { createFragmentAssembler, GM_FRAGMENT_ASSEMBLER_LIMITS } from '@/core/fragment-assembler';
 import type { JsonValue } from '@/core/json';
-import { assembleRecords, compareGenerations } from '@/core/merge';
+import { compareGenerations } from '@/core/merge';
 import {
   fitsOneMessage,
   fragmentRecord,
@@ -31,6 +32,12 @@ import type { CatchUp, CatchUpDecision } from '@/replica/catch-up';
 import type { PendingEdits } from '@/replica/pending-edits';
 import type { RoomSender } from '@/replica/party-roster';
 import type { RollFlow } from '@/replica/roll-flow';
+import {
+  MessageRejectedFailure,
+  RecordTooLargeFailure,
+  SendDroppedFailure,
+  type FailureReporter,
+} from '@/replica/failures';
 
 export type RoomProtocolEvent = {
   data: JsonValue;
@@ -49,6 +56,7 @@ type RoomProtocolCatchUp = Pick<
 >;
 
 export type RoomProtocolPorts = {
+  report: FailureReporter;
   senderOf: (connectionId: string) => Promise<RoomSender | null>;
   role: () => PlayerRole;
   stopped: () => boolean;
@@ -81,10 +89,11 @@ export type RoomProtocol = {
   receive: (event: RoomProtocolEvent) => void;
 };
 
-const PROPOSAL_MAX_PARTS = 32;
-const PROPOSAL_MAX_BYTES = 480_000;
-const PROPOSAL_MAX_ASSEMBLIES = 32;
-const PROPOSAL_RETENTION_MS = 60_000;
+export function catchUpRunner(
+  run: RoomProtocolPorts['runCatchUp'],
+): Pick<RoomProtocolPorts, 'runCatchUp'> {
+  return { runCatchUp: run };
+}
 
 function staleReplyFragments(
   stale: RejectMessage,
@@ -118,39 +127,33 @@ function staleReplyFragments(
   }
 }
 
-type ProposalAssembly = {
-  n: number;
-  parts: Map<number, VersionedRecord>;
-  bytes: number;
-  receivedAt: number;
-};
-
 export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   let roomMessages: Promise<void> = Promise.resolve();
-  const proposals = new Map<string, ProposalAssembly>();
+  const proposalFragments = createFragmentAssembler(GM_FRAGMENT_ASSEMBLER_LIMITS);
 
   function receive(event: RoomProtocolEvent): void {
-    // One message at a time in arrival order, so a sender lookup never lets a later message
-    // overtake. The catch keeps one failed handler from stopping the ingress queue.
-    roomMessages = roomMessages
-      .then(() => handleRoomMessage(event))
-      .catch((error) => {
-        console.error('Muster Roll could not handle a room message', error);
-      });
-  }
-
-  async function handleRoomMessage(event: RoomProtocolEvent): Promise<void> {
     const parsed = parseRoomMessage(event.data);
 
     if (!parsed.isOk()) {
       if (parsed.error === 'newer-version') {
         ports.onNewerVersion();
+      } else if (parsed.error === 'invalid-message') {
+        ports.report(new MessageRejectedFailure({ reason: parsed.error }));
       }
 
       return;
     }
 
-    const message = parsed.value;
+    // One message at a time in arrival order, so a sender lookup never lets a later message
+    // overtake. The catch keeps one failed handler from stopping the ingress queue.
+    roomMessages = roomMessages
+      .then(() => handleRoomMessage(event, parsed.value))
+      .catch((error) => {
+        ports.report(new MessageRejectedFailure({ reason: String(error) }));
+      });
+  }
+
+  async function handleRoomMessage(event: RoomProtocolEvent, message: RoomMessage): Promise<void> {
     const sender = await ports.senderOf(event.connectionId);
 
     if (ports.stopped()) {
@@ -281,70 +284,27 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
 
     if (message.n > 1) {
       const key = JSON.stringify([sender, message.g, editIdOf(record)]);
-      const now = Date.now();
 
-      if (message.n > PROPOSAL_MAX_PARTS) return;
+      const outcome = proposalFragments.add(
+        key,
+        { i: message.i, n: message.n, record },
+        Date.now(),
+      );
 
-      for (const [assemblyKey, assembly] of proposals) {
-        if (now - assembly.receivedAt >= PROPOSAL_RETENTION_MS) {
-          proposals.delete(assemblyKey);
+      switch (outcome.kind) {
+        case 'complete':
+          record = outcome.record;
+          break;
+        case 'waiting':
+        case 'ignored':
+        case 'dropped':
+          return;
+        default: {
+          const exhaustive: never = outcome;
+
+          return exhaustive;
         }
       }
-
-      const existing = proposals.get(key);
-
-      const assembly =
-        existing ??
-        (() => {
-          if (proposals.size >= PROPOSAL_MAX_ASSEMBLIES) {
-            const oldest = proposals.keys().next().value;
-
-            if (oldest !== undefined) {
-              proposals.delete(oldest);
-            }
-          }
-
-          return {
-            n: message.n,
-            parts: new Map<number, VersionedRecord>(),
-            bytes: 0,
-            receivedAt: now,
-          };
-        })();
-
-      if (assembly.n !== message.n) {
-        proposals.delete(key);
-
-        return;
-      }
-
-      const previous = assembly.parts.get(message.i);
-
-      if (previous !== undefined) {
-        if (JSON.stringify(previous) !== JSON.stringify(record)) {
-          proposals.delete(key);
-        }
-
-        return;
-      }
-
-      const bytes = jsonByteLength(record);
-
-      if (assembly.bytes + bytes > PROPOSAL_MAX_BYTES) {
-        proposals.delete(key);
-
-        return;
-      }
-
-      assembly.parts.set(message.i, record);
-      assembly.bytes += bytes;
-      proposals.set(key, assembly);
-
-      if (assembly.parts.size !== assembly.n) return;
-      proposals.delete(key);
-      record = assembleRecords(assembly.parts.values()).get(record.k);
-
-      if (record === undefined) return;
     }
 
     const edit = editIdOf(record);
@@ -445,13 +405,13 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
 
   function sendRoom(message: RejectMessage): void {
     if (!fitsOneMessage(message)) {
-      console.error('Muster Roll built a rejection too large for one message', message.k);
+      ports.report(new RecordTooLargeFailure({ key: message.k }));
 
       return;
     }
 
     ports.sendRemote(message).catch((error) => {
-      console.error('Muster Roll could not answer a proposal', error);
+      ports.report(new SendDroppedFailure({ channel: 'sync', reason: String(error) }));
     });
   }
 
@@ -482,7 +442,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
     const records = decodeStateRecords(message.records);
 
     if (!records.isOk()) {
-      console.error('Muster Roll dropped a state message it could not read');
+      ports.report(new MessageRejectedFailure({ reason: records.error }));
 
       return;
     }
@@ -515,7 +475,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
 
   function continueCatchUp(decisions: readonly CatchUpDecision[], message: string): void {
     void ports.runCatchUp(decisions).catch((error) => {
-      console.error(message, error);
+      ports.report(new MessageRejectedFailure({ reason: `${message}: ${String(error)}` }));
     });
   }
 

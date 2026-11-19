@@ -7,6 +7,11 @@ import { commitEnvelope, SYNC_CHANNEL, type EditId } from '@/core/room-messages'
 import type { Generation } from '@/core/storage-key';
 import type { BroadcastOptions } from '@/platform/ports';
 import type { SendQueue } from '@/platform/send-queue';
+import {
+  RecordTooLargeFailure,
+  SendDroppedFailure,
+  type FailureReporter,
+} from '@/replica/failures';
 
 const REMOTE: BroadcastOptions = { destination: 'REMOTE' };
 
@@ -35,7 +40,9 @@ export type CommitOutbox = {
 export function createCommitOutbox(
   sendQueue: SendQueue,
   generation: () => Generation,
+  options: { report?: FailureReporter } = {},
 ): CommitOutbox {
+  const report = options.report ?? (() => undefined);
   const held = new Map<string, VersionedRecord>();
   const heldAcks = new Map<string, EditId[]>();
   let scheduled = false;
@@ -47,7 +54,7 @@ export function createCommitOutbox(
     unsentSends += 1;
     send
       .catch((error) => {
-        console.error('Muster Roll could not send a commit', error);
+        report(new SendDroppedFailure({ channel: 'sync', reason: String(error) }));
       })
       .finally(() => {
         unsentSends -= 1;
@@ -70,7 +77,7 @@ export function createCommitOutbox(
       const fragments = fragmentRecord(assembled);
 
       if (!fragments.isOk()) {
-        console.error('Muster Roll dropped a commit record too large for one message', assembled.k);
+        report(new RecordTooLargeFailure({ key: assembled.k }));
         held.delete(assembled.k);
         heldAcks.delete(assembled.k);
         continue;
@@ -104,7 +111,7 @@ export function createCommitOutbox(
 
       // A record passes the one-message check before it is applied, so this means a broken one.
       if (fitting === null) {
-        console.error('Muster Roll dropped a commit record too large for one message', record.k);
+        report(new RecordTooLargeFailure({ key: record.k }));
         held.delete(record.k);
         heldAcks.delete(record.k);
         continue;

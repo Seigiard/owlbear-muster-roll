@@ -1,6 +1,8 @@
-import { expect, jest, test } from 'bun:test';
+import { expect, test } from 'bun:test';
+import { Result } from 'better-result';
 import type { CatchUpDecision, CatchUpTimer, PartyMember } from './catch-up';
 import { createCatchUpEffects, type CatchUpEffectsPorts } from './catch-up-effects';
+import type { ReplicaFailure } from './failures';
 import type { Schedule } from './timers';
 
 type Scheduled = {
@@ -13,6 +15,7 @@ type Subject = {
   readonly effects: ReturnType<typeof createCatchUpEffects>;
   readonly log: string[];
   readonly scheduled: Scheduled[];
+  readonly reported: ReplicaFailure[];
 };
 
 type SubjectOptions = {
@@ -38,6 +41,7 @@ function createSubject(options: SubjectOptions = {}): Subject {
   const controller = new AbortController();
   const log: string[] = [];
   const scheduled: Scheduled[] = [];
+  const reported: ReplicaFailure[] = [];
 
   const schedule: Schedule = (_signal: AbortSignal, ms: number, fn: () => void) => {
     const entry: Scheduled = { ms, fn };
@@ -52,6 +56,7 @@ function createSubject(options: SubjectOptions = {}): Subject {
   const ports: CatchUpEffectsPorts = {
     signal: controller.signal,
     schedule,
+    report: (failure) => reported.push(failure),
     catchUp: {
       fired: (timer: CatchUpTimer) => {
         log.push(`fired:${timer.kind}${'r' in timer ? `:${timer.r}` : ''}`);
@@ -82,7 +87,7 @@ function createSubject(options: SubjectOptions = {}): Subject {
     readParty: async () => {
       log.push('read-party');
 
-      return options.readParty?.() ?? [];
+      return Result.ok(await (options.readParty?.() ?? []));
     },
     sendStateRequest: (r: string) => {
       log.push(`request:${r}`);
@@ -107,7 +112,7 @@ function createSubject(options: SubjectOptions = {}): Subject {
     },
   };
 
-  return { controller, effects: createCatchUpEffects(ports), log, scheduled };
+  return { controller, effects: createCatchUpEffects(ports), log, scheduled, reported };
 }
 
 async function flush(): Promise<void> {
@@ -328,34 +333,26 @@ test('an aborted interpreter does not run direct decisions', async () => {
 
 test('a failed read logs its failure and leaves the interpreter resolved', async () => {
   // #given
-  const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-
   const subject = createSubject({
     readRoomCopy: async () => Promise.reject(new Error('room-copy-failed')),
     readParty: async () => Promise.reject(new Error('party-read-failed')),
   });
 
   // #when
-  try {
-    await subject.effects.run([
-      { type: 'read-room-copy', r: 'request-1', fresh: true },
-      { type: 'read-party', r: 'request-1' },
-    ]);
+  await subject.effects.run([
+    { type: 'read-room-copy', r: 'request-1', fresh: true },
+    { type: 'read-party', r: 'request-1' },
+  ]);
 
-    // #then
-    expect(consoleError.mock.calls.map(([message]) => message)).toEqual([
-      'Muster Roll could not continue a room copy read',
-      'Muster Roll could not read the party',
-    ]);
-  } finally {
-    consoleError.mockRestore();
-  }
+  // #then
+  expect(subject.reported.map((failure) => failure._tag)).toEqual([
+    'message-rejected',
+    'PartyReadFailure',
+  ]);
 });
 
 test('a failed timer continuation logs its failure', async () => {
   // #given
-  const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-
   const subject = createSubject({
     fired: () => {
       throw new Error('timer-failed');
@@ -363,16 +360,10 @@ test('a failed timer continuation logs its failure', async () => {
   });
 
   // #when
-  try {
-    await subject.effects.run([{ type: 'arm', timer: REQUEST, delayMs: 10 }]);
-    subject.scheduled[0]?.fn();
-    await flush();
+  await subject.effects.run([{ type: 'arm', timer: REQUEST, delayMs: 10 }]);
+  subject.scheduled[0]?.fn();
+  await flush();
 
-    // #then
-    expect(consoleError.mock.calls.map(([message]) => message)).toEqual([
-      'Muster Roll could not run a catch-up timer',
-    ]);
-  } finally {
-    consoleError.mockRestore();
-  }
+  // #then
+  expect(subject.reported.map((failure) => failure._tag)).toEqual(['message-rejected']);
 });
