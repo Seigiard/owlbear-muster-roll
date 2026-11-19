@@ -557,3 +557,8 @@ not optional scope. Evidence: `task-79-window5-review.md`.
 ## Deferred from: TASK-114.1 (2026-11-18)
 
 - The Builder preview command handler in `src/builder/preview-pane.tsx` and `src/preview/` keep the wire form until architecture-review candidate 3 replaces the preview with the engine.
+
+## Deferred from: TASK-115.3 (2026-11-19)
+
+- Deviation from the epic oracle "literals in `src/replica/engine-*.test.ts` do not change": `better-result` values are class instances, so a test that compared an in-memory result with a plain `{ ok, value }` literal now compares with `Result.ok(...)`/`Result.err(...)` holding the same payload, and `.ok` checks read `.isOk()`. No expected payload changed. Hunks: `engine-access.test.ts:772`; `engine-catch-up.test.ts:1, 485, 1492`; `engine-client.test.ts:18, 215, 224-226, 486, 966-969, 1199-1202, 1446-1454, 1551, 1669, 1729, 1851, 1867, 2022, 2704, 2756`; `engine-dice-extension.test.ts:11, 371`; `engine-import.test.ts:8, 224`; `engine-open.test.ts:639, 670`; `engine-preset.test.ts:6, 926`. TASK-115.11 reconciles the oracle wording in DESIGN.md.
+- `tests/open.e2e.ts:253` ("a GM on the NPC tab who opens another repeat block from its token scrolls to it") failed once on `toBeFocused` in a full browser run on the TASK-115.3 tip and passed 3 of 3 in `--repeat-each=3` and in the implementer's full run. Focus under full-suite load; not traced to the Result swap.
