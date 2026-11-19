@@ -13,7 +13,6 @@ import {
   type ClientParams,
   type RoomClient,
   type StoredRecord,
-  waitForElapsed,
 } from './support/room';
 
 const NO_GM = 'Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку.';
@@ -93,16 +92,25 @@ test('a player sees the no-GM banner once the GM pages close, and loses it when 
 }) => {
   // #given
   const gm = await openGm(context);
-  const player = await openClient(context, PLAYER, null);
+  const player = await openClient(context, PLAYER, null, true);
   const banner = player.window.getByRole('status');
   await expect(player.window.getByRole('tab', { name: 'Брок' })).toBeVisible();
-  // Two timeouts with only pings and their answers from the GM.
-  await waitForElapsed(2 * GM_LINK_TIMEOUT_MS);
+  // The controlled replica clock crosses two timeouts while the GM answers its pings.
+  await player.background.clock.runFor(2 * GM_LINK_TIMEOUT_MS);
+  await expect
+    .poll(() => syncRead(player.window))
+    .toEqual({
+      state: 'live',
+      firstCatchUpDone: true,
+      gmLink: 'online',
+      role: 'PLAYER',
+    });
   await expect(banner).toHaveText('');
   // #when
   await gm.background.close({ runBeforeUnload: true });
   await gm.window.close();
   // #then
+  await player.background.clock.runFor(2 * GM_LINK_TIMEOUT_MS);
   await expect(banner).toHaveText(NO_GM);
   // #when
   await openGm(context);
@@ -114,9 +122,9 @@ test('a GM alone in the room never shows the no-GM banner, though its link is of
   context,
 }) => {
   // #given
-  const gm = await openGm(context);
+  const gm = await openGm(context, true);
   // #when
-  await waitForElapsed(2 * GM_LINK_TIMEOUT_MS);
+  await gm.background.clock.runFor(2 * GM_LINK_TIMEOUT_MS);
   // #then
   expect({
     banner: await gm.window.getByRole('status').textContent(),
@@ -164,8 +172,8 @@ test('a new version shows over the no-GM banner', async ({ context }) => {
 });
 
 // A live GM whose device holds the preset and the records.
-async function openGm(context: BrowserContext): Promise<RoomClient> {
-  const gm = await openClient(context, GM, RECORDS);
+async function openGm(context: BrowserContext, controlClock = false): Promise<RoomClient> {
+  const gm = await openClient(context, GM, RECORDS, controlClock);
   await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
 
   return gm;
@@ -176,6 +184,7 @@ async function openClient(
   context: BrowserContext,
   params: ClientParams,
   records: readonly StoredRecord[] | null,
+  controlClock = false,
 ): Promise<RoomClient> {
   const window = await openClientWindow(context, params);
 
@@ -183,7 +192,7 @@ async function openClient(
     await seedStorage(window, records, PRESET_TEXT, params.device);
   }
 
-  const background = await openClientBackground(context, params);
+  const background = await openClientBackground(context, params, controlClock);
 
   return { window, background, connectionId: connectionIdOf(params) };
 }

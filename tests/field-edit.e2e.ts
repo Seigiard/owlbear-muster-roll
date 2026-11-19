@@ -11,7 +11,6 @@ import {
   record,
   storedCell,
   type StoredRecord,
-  waitForElapsed,
 } from './support/room';
 
 const CHANNEL = 'app.muster-roll/ui';
@@ -138,6 +137,7 @@ declare global {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.clock.install();
   await page.setViewportSize({ width: 600, height: 800 });
 });
 
@@ -167,9 +167,9 @@ test('typing sends nothing per keystroke and one save after the pause', async ({
   await watchWire(page);
   // #when
   await field(page, 'Ловкость').pressSequentially('123', { delay: 100 });
-  await waitForElapsed(WITHIN_PAUSE_MS);
+  await page.clock.runFor(WITHIN_PAUSE_MS);
   const duringTyping = (await fieldPatches(page)).length;
-  await waitForElapsed(PAST_PAUSE_MS);
+  await page.clock.runFor(PAST_PAUSE_MS);
   // #then
   expect({
     duringTyping,
@@ -204,7 +204,7 @@ test('a blur with no change since focus sends nothing', async ({ page, context }
   await field(page, 'Сила').focus();
   await field(page, 'Сила').fill('14,0');
   await page.keyboard.press('Tab');
-  await waitForElapsed(PAST_PAUSE_MS);
+  await page.clock.runFor(PAST_PAUSE_MS);
   // #then
   expect({
     sent: (await fieldPatches(page)).length,
@@ -220,10 +220,10 @@ test('a blur after a pause save with no further change sends nothing more', asyn
   await openSheet(page, context);
   await watchWire(page);
   await field(page, 'Сила').fill('15');
-  await waitForElapsed(PAST_PAUSE_MS);
+  await page.clock.runFor(PAST_PAUSE_MS);
   // #when
   await page.keyboard.press('Tab');
-  await waitForElapsed(WITHIN_PAUSE_MS);
+  await page.clock.runFor(WITHIN_PAUSE_MS);
   // #then
   expect((await fieldPatches(page)).map((sent) => sent.command.value)).toEqual([15]);
 });
@@ -290,7 +290,7 @@ test('an invalid value is not saved when its tab goes away', async ({ page, cont
       tab.click();
     }
   });
-  await waitForElapsed(PAST_PAUSE_MS);
+  await page.clock.runFor(PAST_PAUSE_MS);
   // #then
   expect({
     sent: (await fieldPatches(page)).length,
@@ -351,7 +351,7 @@ test('an invalid value is not saved when the window closes', async ({ page, cont
   await field(page, 'Ловкость').fill('abc');
   // #when
   await page.close();
-  await waitForElapsed(PAST_PAUSE_MS);
+  await page.clock.runFor(PAST_PAUSE_MS);
   // #then
   expect(await storedCell(background, 'blk:brok', 'dex')).toBe(ABSENT);
 });
@@ -423,7 +423,7 @@ for (const [label, typed] of [
     // #when
     await field(page, 'Сила').fill(typed);
     await page.keyboard.press('Tab');
-    await waitForElapsed(PAST_PAUSE_MS);
+    await page.clock.runFor(PAST_PAUSE_MS);
     // #then
     await expect(field(page, 'Сила')).toHaveAccessibleDescription(BAD_NUMBER);
     expect({
@@ -467,7 +467,7 @@ test('a value too long for its record shows the message under it, stays and is n
   // #when
   await field(page, 'Заметки').fill(long);
   await page.keyboard.press('Tab');
-  await waitForElapsed(PAST_PAUSE_MS);
+  await page.clock.runFor(PAST_PAUSE_MS);
   // #then
   await expect(field(page, 'Заметки')).toHaveAccessibleDescription(TOO_LONG);
   expect({
@@ -523,9 +523,9 @@ test('Escape cancels the unsaved edit and shows the record value', async ({ page
   await field(page, 'Сила').fill('99');
   // #when
   await field(page, 'Сила').press('Escape');
-  await waitForElapsed(PAST_PAUSE_MS);
+  await page.clock.runFor(PAST_PAUSE_MS);
   await page.keyboard.press('Tab');
-  await waitForElapsed(WITHIN_PAUSE_MS);
+  await page.clock.runFor(WITHIN_PAUSE_MS);
   // #then
   expect({
     shown: await field(page, 'Сила').inputValue(),
@@ -584,7 +584,7 @@ test('passing through a number field that holds a string or an exponent form cha
   await field(page, 'Ловкость').focus();
   await page.keyboard.press('Enter');
   await page.keyboard.press('Tab');
-  await waitForElapsed(PAST_PAUSE_MS);
+  await page.clock.runFor(PAST_PAUSE_MS);
   // #then
   expect({
     messages: await page.getByText(BAD_NUMBER).count(),

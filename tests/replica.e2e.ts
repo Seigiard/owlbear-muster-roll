@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import type { JsonValue } from '@/core/json';
 import type { VersionedRecord } from '@/core/records';
-import { openBackground, presetRecord, STORAGE_PREFIX, waitForElapsed } from './support/room';
+import { openBackground, presetRecord, STORAGE_PREFIX } from './support/room';
 
 const CHANNEL = 'app.muster-roll/ui';
 const LOCAL_SAVE_FAILED = 'Не удалось сохранить в браузере. Скачайте снимок.';
@@ -149,9 +149,12 @@ test('a whole record in a command has no effect', async ({ page, context }) => {
       l: [1, 'seed'],
     },
   });
-  await waitForElapsed(200);
+  await sendCommand(page, 'whole-barrier');
+  await expect
+    .poll(() => projectedSheets(page, 'after-whole-barrier'))
+    .toEqual(['blk:whole-barrier']);
   // #then
-  expect(await projectedSheets(page, 'after-whole')).toEqual([]);
+  expect(await projectedSheets(page, 'after-whole')).toEqual(['blk:whole-barrier']);
 });
 
 test('a command delivered twice has one effect', async ({ page, context }) => {
@@ -164,9 +167,16 @@ test('a command delivered twice has one effect', async ({ page, context }) => {
   await sendCommand(page, 'echoed');
   await sendCommand(page, 'echoed');
   await expect.poll(() => projectedSheets(page, 'echo-check')).toEqual(['blk:echoed']);
-  await waitForElapsed(200);
+  await sendCommand(page, 'echo-barrier');
+  await expect
+    .poll(() => projectedSheets(page, 'echo-barrier-check'))
+    .toEqual(expect.arrayContaining(['blk:echo-barrier', 'blk:echoed']));
+  await expect.poll(() => projectedSheets(page, 'echo-barrier-count')).toHaveLength(2);
   // #then
-  expect(await projectedSheets(page, 'echo-final')).toEqual(['blk:echoed']);
+  expect(await projectedSheets(page, 'echo-final')).toEqual(
+    expect.arrayContaining(['blk:echo-barrier', 'blk:echoed']),
+  );
+  expect(await projectedSheets(page, 'echo-final-count')).toHaveLength(2);
 });
 
 test('a window closed and opened again shows the same records', async ({ page, context }) => {

@@ -182,14 +182,6 @@ export async function openBackground(
   return background;
 }
 
-export async function waitForElapsed(durationMs: number): Promise<void> {
-  const startedAt = Date.now();
-
-  await expect
-    .poll(() => Date.now() - startedAt, { intervals: [10, 25, 50], timeout: durationMs + 1000 })
-    .toBeGreaterThanOrEqual(durationMs);
-}
-
 // The window loads first, so the storage it seeds is what the background reads at start.
 export async function openRoom(
   page: Page,
@@ -264,8 +256,18 @@ export async function openClientWindow(
 export async function openClientBackground(
   context: BrowserContext,
   params: ClientParams = {},
+  controlClock = false,
 ): Promise<Page> {
-  return openBackground(context, `/background.html${clientQuery(params)}`);
+  const background = await context.newPage();
+
+  if (controlClock) {
+    await background.clock.install();
+  }
+
+  await background.goto(`/background.html${clientQuery(params)}`);
+  await expect(background).toHaveTitle('Muster Roll background');
+
+  return background;
 }
 
 // GM clients in one browser, so they share the storage seeded once. Each window shows its sheets.
