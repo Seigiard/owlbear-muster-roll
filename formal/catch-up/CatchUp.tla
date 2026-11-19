@@ -276,12 +276,12 @@ Fired(c, M, k) ==
 \* `r` is the active request of a client that catches up.
 ActiveR(c, M, r) == M.phase \in CatchingUp /\ r = Own(c, M)
 
-\* answersOwn(r): `phase.kind === 'catching-up'`, so an adopting client's
-\* active `r` does not count (TASK-129). The Mutation "fix-answers-own" is the
-\* fix that TASK-129 asks for: it counts in both phases, as before TASK-115.
+\* answersOwn(r): the active `r` of a client in ordinary catch-up or adoption.
+\* The Mutation "answers-own-ordinary-only" is the TASK-129 regression: only an
+\* ordinary catch-up counts, so an adopting client drops its own answer.
 AnswersOwn(c, M, r) ==
-    IF Mutated("fix-answers-own") THEN ActiveR(c, M, r)
-    ELSE M.phase = "ordinary" /\ r = Own(c, M)
+    IF Mutated("answers-own-ordinary-only") THEN M.phase = "ordinary" /\ r = Own(c, M)
+    ELSE ActiveR(c, M, r)
 
 (***************************************************************************)
 (* The engine: catch-up-effects.ts run interprets the decisions           *)
