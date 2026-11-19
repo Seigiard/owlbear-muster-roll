@@ -9,7 +9,7 @@ import type {
 } from '@/core/ui-messages';
 import type { PlayerRole } from '@/core/visibility';
 import type { ComposeContext, Composers } from '@/core/compose';
-import type { PendingEdits } from '@/replica/pending-edits';
+import type { DenialCause, PendingEdits } from '@/replica/pending-edits';
 import type { PendingEntry, PendingQueue } from '@/replica/pending-queue';
 import type { RecordIdKind } from '@/core/ids';
 import { MessageRejectedFailure, type FailureReporter } from '@/replica/failures';
@@ -122,7 +122,7 @@ export type CommandRoutingPorts = {
     changed?: { count: number; sheets: number; digest: string },
   ) => void;
   commandDone: (id: string) => void;
-  notifyDenied: () => void;
+  notifyDenied: (cause?: DenialCause) => void;
   publish: () => void;
   hasPersistence: () => boolean;
   flushOutbox: () => void;
@@ -340,7 +340,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
     }
 
     if (result.value.notify) {
-      ports.notifyDenied();
+      ports.notifyDenied(result.value.cause);
     }
 
     ports.publish();
