@@ -113,8 +113,8 @@ export function PreviewPane({
     [preset, role, sourceRecords],
   );
 
-  const localValues = useMemo(createLocalFieldValues, []);
-  const pageHideFlushes = useMemo(createFieldFlushes, []);
+  const localValues = useMemo(() => createLocalFieldValues(), []);
+  const pageHideFlushes = useMemo(() => createFieldFlushes(), []);
 
   const [createdTabBlock, setCreatedTabBlock] = useState<{
     sheetId: string;
@@ -234,6 +234,7 @@ export function PreviewPane({
           : sample
             ? previewRecords(template)
             : records,
+    // oxlint-disable-next-line react/preserve-manual-memoization -- Rendered sheet records must keep a stable identity between unchanged snapshots.
     [hiddenTemplate, records, renderSheetId, sample, template],
   );
 
@@ -378,6 +379,7 @@ export function PreviewPane({
         : renderTabs(template, renderRecords, renderSheetId).filter((candidate) =>
             tabIsShown(candidate.sourceIndex),
           ),
+    // oxlint-disable-next-line react/preserve-manual-memoization -- Tab entries are derived from immutable preset and record snapshots.
     [renderRecords, renderSheetId, tabIsShown, template],
   );
 
@@ -393,6 +395,7 @@ export function PreviewPane({
               (candidate, index, all) =>
                 all.findIndex((other) => other.repeat?.id === candidate.repeat?.id) === index,
             ),
+    // oxlint-disable-next-line react/preserve-manual-memoization -- Tab entries are derived from immutable preset snapshots.
     [renderSheetId, tabIsShown, template],
   );
 
@@ -453,6 +456,7 @@ export function PreviewPane({
 
     if (index === -1) return;
 
+    // oxlint-disable-next-line react/set-state-in-effect -- A created tab is selected only after its command appears in rendered records.
     setSelectedRenderedTab(index);
     setCreatedTabBlock(null);
   }, [createdTabBlock, visibleRenderedTabs]);

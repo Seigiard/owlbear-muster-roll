@@ -83,6 +83,7 @@ export function useRepeatBlocks(
     const present = instanceIds.includes(wait.instanceId);
 
     if (wait.kind === 'added' && present) {
+      // oxlint-disable-next-line react/set-state-in-effect -- Clear the pending command after the rendered instance list confirms the add.
       setWait(null);
 
       // The GM may have moved on while the repeat block was on its way. Then the focus stays there.

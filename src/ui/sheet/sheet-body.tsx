@@ -141,19 +141,19 @@ export function SheetBody({
           renderedTab.block === null ? null : blockKeyOf(renderedTab.block.block),
         ]);
 
-  const previousRenderedTab = useRef<RenderedTab | null>(null);
+  const [previousRenderedTab, setPreviousRenderedTab] = useState<RenderedTab | null>(null);
 
   const [settledVanishedTab, setSettledVanishedTab] = useState<string | null>(null);
 
   const vanishedTab =
-    previousRenderedTab.current !== null &&
+    previousRenderedTab !== null &&
     renderedTab !== null &&
-    previousRenderedTab.current.block !== null &&
-    !sameRenderedTab(previousRenderedTab.current, renderedTab) &&
-    !hasRepeatBlock(records, sheetId, previousRenderedTab.current) &&
+    previousRenderedTab.block !== null &&
+    !sameRenderedTab(previousRenderedTab, renderedTab) &&
+    !hasRepeatBlock(records, sheetId, previousRenderedTab) &&
     settledVanishedTab !== renderedTabKey;
 
-  const displayedTab = vanishedTab ? previousRenderedTab.current : renderedTab;
+  const displayedTab = vanishedTab ? previousRenderedTab : renderedTab;
 
   const displayedTabKey =
     displayedTab === null
@@ -164,9 +164,11 @@ export function SheetBody({
         ]);
 
   useEffect(() => {
-    previousRenderedTab.current = renderedTab;
+    // oxlint-disable-next-line react/set-state-in-effect -- Keep the prior committed tab for the disappearance transition.
+    setPreviousRenderedTab(renderedTab);
 
     if (vanishedTab) {
+      // oxlint-disable-next-line react/set-state-in-effect -- Record which rendered tab completed the disappearance transition.
       setSettledVanishedTab(renderedTabKey);
     }
   }, [renderedTab, renderedTabKey, vanishedTab]);

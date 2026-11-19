@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { createContext, useContext, useId, useRef, useState } from 'react';
+import { createContext, useContext, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { dicePlaceOf, type DicePlace } from '@/core/dice-roll';
@@ -70,7 +70,9 @@ export function DiceButton({
   const [message, setMessage] = useState<ShownMessage | null>(null);
   const latestSignature = useRef(sheet.valuesSignature);
 
-  latestSignature.current = sheet.valuesSignature;
+  useLayoutEffect(() => {
+    latestSignature.current = sheet.valuesSignature;
+  }, [sheet.valuesSignature]);
 
   if (message !== null && message.signature !== sheet.valuesSignature) {
     setMessage(null);
