@@ -5,20 +5,15 @@ import { Button as AriaButton } from 'react-aria-components';
 import { Result } from 'better-result';
 
 import { rollDiceCell } from '@/core/dice-roll';
-import { blockAddress, blockIdOf, fieldPatchTargetOf, sectionIdOf } from '@/core/block-address';
-import { wireCommandOf, type Command, type RollOutcome } from '@/core/ui-messages';
-import {
-  acceptedFieldValue,
-  findPatchField,
-  patchRecordKey,
-  patchedRecord,
-} from '@/core/field-patch';
-import { DEFAULT_WINDOW_SIZE, type RenderedTab } from '@/core/preset';
+import { blockAddress, blockIdOf, sectionIdOf } from '@/core/block-address';
+import { type Command, type RollOutcome } from '@/core/ui-messages';
+import { DEFAULT_WINDOW_SIZE, encodePreset, type RenderedTab } from '@/core/preset';
 import { newInstanceId } from '@/core/ids';
 import { renderedTabs as renderTabs } from '@/core/rendered-tabs';
-import { blockPathKey, repDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
+import type { VersionedRecord } from '@/core/records';
 import { TIMING } from '@/core/timing';
 import { sheetName } from '@/core/sheets';
+import { createVersionMinter } from '@/core/version-minter';
 import { tabShownTo, templateShownTo, visibleRecordMap, type PlayerRole } from '@/core/visibility';
 import { copy } from '@/copy';
 import { SECONDARY_BUTTON_CLASS } from '@/ui/primitives/button';
@@ -52,6 +47,7 @@ import {
   uidAt,
   type BuilderDocument,
 } from './document';
+import { previewCompose } from './preview-compose';
 import { previewRecords, previewSheetName, PREVIEW_SHEET_ID } from './preview-records';
 import {
   findSidebarSheet,
@@ -109,6 +105,8 @@ export function PreviewPane({
   );
 
   const preset = useMemo(() => toPreset(document), [document]);
+  const presetData = useMemo(() => encodePreset(preset), [preset]);
+  const minter = useMemo(() => createVersionMinter('builder'), []);
 
   const records = useMemo(
     () => visibleRecordMap(role, preset, sourceRecords),
@@ -137,146 +135,6 @@ export function PreviewPane({
       window.removeEventListener('pagehide', flush);
     };
   }, [pageHideFlushes]);
-
-  const fieldEditing = useMemo<FieldEditing>(
-    () => ({
-      // SAFETY: the preview sends only field patches; every other command is answered without side
-      // effects except local repeat-tab lifecycle, which changes only the builder snapshot.
-      sendCommand: ((input: Command) => {
-        const command = wireCommandOf(input);
-
-        if (command.type === 'repeat-block-add') {
-          const path = command.path ?? [command.sectionId, command.instanceId];
-          const key = blockPathKey(command.sheetId, path);
-          const prefix = `${key.slice(0, key.lastIndexOf(':'))}:`;
-
-          const blocks = snapshotRecords
-            .map((record) => (repDataSchema.safeParse(record.d).success ? record : null))
-            .filter((record): record is VersionedRecord => record !== null)
-            .filter((record) => record.k.startsWith(prefix));
-
-          const order =
-            blocks.reduce((highest, record) => {
-              const data = repDataSchema.parse(record.d);
-
-              return Math.max(highest, data.order);
-            }, -1) + 1;
-
-          const record = recordSchema.parse({
-            k: key,
-            d: { order, cells: {} },
-            c: 1,
-            a: 'builder',
-            l: [1, 'builder'],
-          });
-
-          store.setSnapshot([...snapshotRecords, record]);
-          setCreatedTabBlock({
-            sheetId: command.sheetId,
-            scopeId: command.sectionId,
-            instanceId: command.instanceId,
-          });
-
-          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
-        }
-
-        if (command.type === 'repeat-block-delete') {
-          const path = command.path ?? [command.sectionId, command.instanceId];
-          const key = blockPathKey(command.sheetId, path);
-          const current = snapshotRecords.find((record) => record.k === key);
-
-          if (current !== undefined) {
-            store.setSnapshot(
-              snapshotRecords.map((record) =>
-                record.k === key
-                  ? {
-                      ...record,
-                      d: null,
-                      c: record.c + 1,
-                      a: 'builder',
-                      l: record.l ?? [record.c + 1, 'builder'],
-                    }
-                  : record,
-              ),
-            );
-          }
-
-          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
-        }
-
-        if (command.type !== 'field-patch') {
-          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
-        }
-
-        const fieldTemplate = selection === null ? null : templateOf(document, selection);
-
-        const editable = role === 'GM' || fieldTemplate?.players === 'edit';
-
-        if (!editable) {
-          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
-        }
-
-        const layout = fieldTemplate === null ? null : templateToPreset(fieldTemplate);
-
-        const target =
-          command.target.kind === 'row'
-            ? command.target
-            : fieldPatchTargetOf(command.sheetId, command.target);
-
-        const field =
-          layout === null || target === null
-            ? null
-            : findPatchField(layout, target, command.fieldId);
-
-        const value = field === null ? null : acceptedFieldValue(field, command.value);
-
-        if (value === null || !value.isOk() || target === null) {
-          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
-        }
-
-        const key = patchRecordKey(command.sheetId, target);
-        const current = records.get(key);
-
-        const patched = patchedRecord(
-          command.sheetId,
-          target,
-          current,
-          command.fieldId,
-          value.value,
-        );
-
-        if (!patched.isOk()) {
-          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
-        }
-
-        const next = recordSchema.parse({
-          ...patched.value,
-          c: (current?.c ?? 0) + 1,
-          a: 'builder',
-          l: current?.l ?? [(current?.c ?? 0) + 1, 'builder'],
-          d: {
-            ...patched.value.d,
-            cells: {
-              ...patched.value.d.cells,
-              [command.fieldId]: [value.value, (current?.c ?? 0) + 1, 'builder'],
-            },
-          },
-        });
-
-        const nextRecords = snapshotRecords.some((record) => record.k === key)
-          ? snapshotRecords.map((record) => (record.k === key ? next : record))
-          : [...snapshotRecords, next];
-
-        store.setSnapshot(nextRecords);
-
-        return Promise.resolve({ kind: 'answered' as const, answer: undefined });
-      }) as ReplicaClient['sendCommand'],
-      pauseMs: TIMING.fieldSavePauseMs,
-      pageHideFlushes,
-      localValues,
-    }),
-    [document, localValues, pageHideFlushes, records, role, selection, snapshotRecords, store],
-  );
 
   const size = document.window ?? DEFAULT_WINDOW_SIZE;
   const width = Math.max(size.width, MIN_FRAME_PX);
@@ -379,6 +237,59 @@ export function PreviewPane({
     [hiddenTemplate, records, renderSheetId, sample, template],
   );
 
+  const fieldEditing = useMemo<FieldEditing>(
+    () => ({
+      // SAFETY: the preview's local sender returns the same answered outcome as ReplicaClient after
+      // applying only the three commands that the preview composes.
+      sendCommand: ((command: Command) => {
+        const editable =
+          problems.length === 0 &&
+          template !== null &&
+          (role === 'GM' || template.players === 'edit');
+
+        if (!editable) {
+          setCreatedTabBlock(null);
+
+          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+        }
+
+        const result = previewCompose(
+          snapshotRecords,
+          sample ? previewRecords(template) : sourceRecords,
+          presetData,
+          minter,
+          command,
+        );
+
+        if (!result.ok) {
+          setCreatedTabBlock(null);
+
+          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+        }
+
+        store.setSnapshot(result.snapshot);
+
+        return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+      }) as ReplicaClient['sendCommand'],
+      pauseMs: TIMING.fieldSavePauseMs,
+      pageHideFlushes,
+      localValues,
+    }),
+    [
+      localValues,
+      minter,
+      pageHideFlushes,
+      problems,
+      presetData,
+      role,
+      sample,
+      snapshotRecords,
+      sourceRecords,
+      store,
+      template,
+    ],
+  );
+
   const hiddenSheetNote =
     hiddenTemplate && template !== null
       ? copy.builder.hiddenSheet(sheetNameFor(selectedSourceSheet, sourceRecords, preset, template))
@@ -389,7 +300,8 @@ export function PreviewPane({
   const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
   const previewSelection = useRef<string | null>(null);
 
-  const canEdit = role === 'GM' || docTemplate?.players === 'edit';
+  const roleCanEdit = role === 'GM' || docTemplate?.players === 'edit';
+  const canEdit = problems.length === 0 && roleCanEdit;
 
   useEffect(() => {
     dispatchEditing({ type: 'selection-changed', uid: selection });
@@ -437,7 +349,7 @@ export function PreviewPane({
       }
 
       event.preventDefault();
-      dispatchEditing({ type: 'enter-pressed', uid: selection, editable: canEdit });
+      dispatchEditing({ type: 'enter-pressed', uid: selection, editable: roleCanEdit });
     }
 
     window.addEventListener('keydown', handleKeyDown);
@@ -445,7 +357,7 @@ export function PreviewPane({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [canEdit, document, editingInstanceId, editingUid, selection]);
+  }, [document, editingInstanceId, editingUid, roleCanEdit, selection]);
 
   const selectedTab = useMemo(
     () => (selection === null ? null : tabIndexOf(document, selection)),
@@ -641,7 +553,7 @@ export function PreviewPane({
             ?.cells[path.cell]
         : undefined;
 
-    const editable = !sample && cell?.kind === 'field' && canEdit;
+    const editable = !sample && cell?.kind === 'field' && roleCanEdit;
 
     if (!selected) {
       previewSelection.current = uid;

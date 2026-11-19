@@ -8,7 +8,7 @@ import type {
   RejectionReason,
 } from '@/core/ui-messages';
 import type { PlayerRole } from '@/core/visibility';
-import type { ComposeContext, Composers } from '@/replica/composers';
+import type { ComposeContext, Composers } from '@/core/compose';
 import type { PendingEdits } from '@/replica/pending-edits';
 import type { PendingEntry, PendingQueue } from '@/replica/pending-queue';
 import type { RecordIdKind } from '@/core/ids';

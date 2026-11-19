@@ -158,9 +158,7 @@
                   "@/ui",
                   "@/ui/**",
                   "@/builder",
-                  "@/builder/**",
-                  "@/preview",
-                  "@/preview/**"
+                  "@/builder/**"
                 ],
                 "message": "The core layer cannot depend on application layers."
               }
@@ -204,15 +202,8 @@
                 "message": "Import the adapter through @/platform/current, so the build mode picks it."
               },
               {
-                "group": [
-                  "@/ui",
-                  "@/ui/**",
-                  "@/builder",
-                  "@/builder/**",
-                  "@/preview",
-                  "@/preview/**"
-                ],
-                "message": "The replica layer cannot depend on UI, builder or preview."
+                "group": ["@/ui", "@/ui/**", "@/builder", "@/builder/**"],
+                "message": "The replica layer cannot depend on UI or builder."
               }
             ]
           }
@@ -260,9 +251,7 @@
                   "@/ui",
                   "@/ui/**",
                   "@/builder",
-                  "@/builder/**",
-                  "@/preview",
-                  "@/preview/**"
+                  "@/builder/**"
                 ],
                 "message": "The platform layer cannot depend on application layers."
               }
@@ -302,9 +291,7 @@
                   "@/ui",
                   "@/ui/**",
                   "@/builder",
-                  "@/builder/**",
-                  "@/preview",
-                  "@/preview/**"
+                  "@/builder/**"
                 ],
                 "message": "The platform layer cannot depend on application layers."
               }
@@ -348,15 +335,8 @@
                 "message": "Import the adapter through @/platform/current, so the build mode picks it."
               },
               {
-                "group": [
-                  "@/replica",
-                  "@/replica/**",
-                  "@/platform",
-                  "@/platform/**",
-                  "@/preview",
-                  "@/preview/**"
-                ],
-                "message": "The builder layer cannot depend on replica, platform or preview."
+                "group": ["@/replica", "@/replica/**", "@/platform", "@/platform/**"],
+                "message": "The builder layer cannot depend on replica or platform."
               }
             ]
           }
@@ -398,15 +378,8 @@
                 "message": "Import the adapter through @/platform/current, so the build mode picks it."
               },
               {
-                "group": [
-                  "@/replica",
-                  "@/replica/**",
-                  "@/builder",
-                  "@/builder/**",
-                  "@/preview",
-                  "@/preview/**"
-                ],
-                "message": "The UI layer cannot depend on replica, builder or preview."
+                "group": ["@/replica", "@/replica/**", "@/builder", "@/builder/**"],
+                "message": "The UI layer cannot depend on replica or builder."
               }
             ]
           }
