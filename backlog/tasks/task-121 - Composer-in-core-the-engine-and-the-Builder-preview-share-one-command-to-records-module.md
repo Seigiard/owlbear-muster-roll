@@ -3,10 +3,10 @@ id: TASK-121
 title: >-
   Composer in core: the engine and the Builder preview share one
   command-to-records module
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19T07:45:00Z'
-updated_date: '2026-11-19T07:51:00Z'
+updated_date: '2026-11-19T09:06:00Z'
 labels: []
 dependencies: []
 references:
@@ -26,8 +26,20 @@ The Builder preview applies window commands with its own code (`src/builder/prev
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The engine and the Builder preview compose commands through the same `src/core/compose.ts` exports; `src/replica/composers.ts` does not exist and `src/builder/preview-pane.tsx` holds no record minting of its own
-- [ ] #2 ADR-0005 is accepted; AD-23 in ARCHITECTURE-SPINE.md describes value editing, dice rolls under the role policy and the shared composer; ADR-0003, deferred-work.md and TASK-114.3 no longer say the preview will run on the engine
-- [ ] #3 AD-20 still holds: `src/builder` imports nothing from `@/replica/**` or `@/platform/**` at runtime, the lint rule stays, `tests/build.test.ts` builder-chunk check unchanged
-- [ ] #4 A unit test proves that the preview sendCommand and `compose` produce the same records for field-patch, repeat-block-add and repeat-block-delete over the same inputs
+- [x] #1 The engine and the Builder preview compose commands through the same `src/core/compose.ts` exports; `src/replica/composers.ts` does not exist and `src/builder/preview-pane.tsx` holds no record minting of its own
+- [x] #2 ADR-0005 is accepted; AD-23 in ARCHITECTURE-SPINE.md describes value editing, dice rolls under the role policy and the shared composer; ADR-0003, deferred-work.md and TASK-114.3 no longer say the preview will run on the engine
+- [x] #3 AD-20 still holds: `src/builder` imports nothing from `@/replica/**` or `@/platform/**` at runtime, the lint rule stays, `tests/build.test.ts` builder-chunk check unchanged
+- [x] #4 A unit test (`src/builder/preview-compose.test.ts`) asserts literal expected records for field-patch, repeat-block-add and repeat-block-delete composed for the preview; no parity test against `compose` (owner decision in the TASK-121.2 spec)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+AC 4 reworded 2026-11-19 to match the owner-approved TASK-121.2 spec, which forbids a parity test against compose. Delivered in two PRs: TASK-121.1 (#59, merged) and TASK-121.2.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+One command-to-records module: src/core/compose.ts (moved from src/replica in TASK-121.1) is called by both the engine and the Builder preview (TASK-121.2). The preview's own minting and src/preview/ are gone; AD-20 still holds and is lint-enforced.
+<!-- SECTION:FINAL_SUMMARY:END -->

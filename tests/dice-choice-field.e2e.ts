@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import type { Preset } from '@/core/preset';
-import { previewSheets } from '@/preview/sample-records';
 import {
   connectionIdOf,
   openClientBackground,
@@ -60,22 +59,6 @@ const SHEET = pcSheet('brok', 'Брок', 0);
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
-});
-
-test('the preview sample value is the first dice option', () => {
-  // #given
-  const preset = PRESET;
-  // #when
-  const preview = previewSheets(preset, 'sample');
-  // #then
-  expect(preview.records.get('blk:preview-1')?.d).toEqual({
-    set: 'pc',
-    order: 1,
-    cells: {
-      name: ['Имя', 1, 'preview'],
-      weapon_die: ['d4', 1, 'preview'],
-    },
-  });
 });
 
 test('a GM picks d8, saves it, and the damage roll notification names 1d8', async ({ context }) => {
