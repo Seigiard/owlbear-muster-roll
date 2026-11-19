@@ -1,11 +1,11 @@
 ---
 id: TASK-114.3
 title: 'UI: rows, reveal and tab identity carry the block address'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-18T18:24:00Z'
-updated_date: '2026-11-19T03:12:00Z'
+updated_date: '2026-11-19T04:05:00Z'
 labels: []
 dependencies:
   - TASK-114.2
@@ -21,12 +21,12 @@ Third PR of TASK-114. preset-section.tsx builds DiceRow with `instanceId`, `targ
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 src/ui holds no even-index filter, `path.length > 2 ? path : undefined` or `[sectionId, instanceId]` reconstruction outside `replica-client.ts` wireCommand
-- [ ] #2 Reveal of a nested block, a copied nested block and a repeat tab finds its element by the address key: the existing e2e journeys for TASK-109 and nested token open pass
-- [ ] #3 `TemplateTabSelection` has no string-encoded path form
-- [ ] #4 UI "lock" tests (`link-picker-*-v4`, `*-review-fix`) that assert the old shapes are folded into the owning module tests or deleted when the type now forbids the case
-- [ ] #5 deferred-work.md records that the Builder preview keeps the wire form until candidate 3
-- [ ] #6 Full check passes: oxfmt, lint, typecheck, bun test, test:browser, build
+- [x] #1 src/ui holds no even-index filter, `path.length > 2 ? path : undefined` or `[sectionId, instanceId]` reconstruction outside `replica-client.ts` wireCommand
+- [x] #2 Reveal of a nested block, a copied nested block and a repeat tab finds its element by the address key: the existing e2e journeys for TASK-109 and nested token open pass
+- [x] #3 `TemplateTabSelection` has no string-encoded path form
+- [x] #4 UI "lock" tests (`link-picker-*-v4`, `*-review-fix`) that assert the old shapes are folded into the owning module tests or deleted when the type now forbids the case
+- [x] #5 deferred-work.md records that the Builder preview keeps the wire form until candidate 3
+- [x] #6 Full check passes: oxfmt, lint, typecheck, bun test, test:browser, build
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -39,4 +39,16 @@ Run the tdd chain against _bmad-output/implementation-artifacts/spec-task-114-3-
 
 <!-- SECTION:NOTES:BEGIN -->
 Spec decision: the dice place (roll-request, LOCAL wire) sends `path` whenever its block is not null, so plain rows in a tab block start sending path:[scope,id]; intended, nothing stores that message.
+
+Implementation completed on task-114.3-block-address-ui.
+
+Verification: bunx oxfmt --ignore-path .gitignore --check .; bun run lint; bun run typecheck; bun test (3499 pass, 1 skip, 0 fail); bun run test:browser (583 passed); bun run build; git diff --check.
+
+Structural checks: no forbidden path arithmetic remains in src/ui; no tests or e2e files changed. Targeted field-edit/open browser checks passed 44/44.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+UI rows, reveals, dice places, commands, and tab selections now carry BlockAddress directly. Nested and repeat-tab reveal flows resolve through data-block address keys; Builder preview wire handling remains deferred to architecture-review candidate 3. Full local checks pass: 3499 unit tests, 583 browser tests, lint, format, typecheck, and build.
+<!-- SECTION:FINAL_SUMMARY:END -->

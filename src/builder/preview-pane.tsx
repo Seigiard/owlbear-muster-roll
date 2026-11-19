@@ -4,7 +4,7 @@ import type { MouseEvent, ReactNode } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 
 import { rollDiceCell } from '@/core/dice-roll';
-import { blockAddress, fieldPatchTargetOf } from '@/core/block-address';
+import { blockAddress, blockIdOf, fieldPatchTargetOf, sectionIdOf } from '@/core/block-address';
 import { wireCommandOf, type Command, type RollOutcome } from '@/core/ui-messages';
 import {
   acceptedFieldValue,
@@ -533,8 +533,9 @@ export function PreviewPane({
 
     const index = visibleRenderedTabs.findIndex(
       (candidate) =>
-        candidate.block?.scopeId === createdTabBlock.scopeId &&
-        candidate.block.instanceId === createdTabBlock.instanceId,
+        candidate.block !== null &&
+        sectionIdOf(candidate.block.block) === createdTabBlock.scopeId &&
+        blockIdOf(candidate.block.block) === createdTabBlock.instanceId,
     );
 
     if (index === -1) return;

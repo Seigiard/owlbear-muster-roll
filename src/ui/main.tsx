@@ -4,10 +4,17 @@ import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { playerMayEdit, playerMayEditField } from '@/core/access';
-import { blockAddress, scopePathOf, sheetRootAddress } from '@/core/block-address';
+import {
+  blockAddress,
+  childAddress,
+  sameAddress,
+  scopePathOf,
+  sheetRootAddress,
+  type BlockAddress,
+} from '@/core/block-address';
 import { newInstanceId, newSheetId } from '@/core/ids';
 import { openTabIndex, type RenderedTab, type SheetSetTemplate } from '@/core/preset';
-import { renderedTabs as renderTabs } from '@/core/rendered-tabs';
+import { renderedTabs as renderTabs, sameRenderedTab } from '@/core/rendered-tabs';
 import { isSheetSet, sheetKey } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
 import {
@@ -32,7 +39,7 @@ import { createPendingMarks, type PendingMarks } from '@/ui/pending-marks';
 import { PresetUpload, uploadDisabledReason } from '@/ui/preset-actions';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
 import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
-import { initialState, SETTINGS_TAB, transition } from '@/ui/navigation';
+import { initialState, SETTINGS_TAB, transition, type TemplateTabSelection } from '@/ui/navigation';
 import { SettingsView } from '@/ui/settings/settings-view';
 import { DeleteConfirmation } from '@/ui/sheet/delete-confirmation';
 import type { DiceRolling } from '@/ui/sheet/dice-button';
@@ -48,7 +55,6 @@ import {
   focusSidebarEntry,
   revealSidebarEntry,
   templateTabKey,
-  templateTabSourceIndexFromKey,
   templateTabLabel,
   type WindowFrameLayout,
 } from '@/ui/shell/window-frame';
@@ -179,8 +185,7 @@ function WindowRoot({
 
   const [creatingBlock, setCreatingBlock] = useState<{
     sheet: string;
-    scopeId: string;
-    instanceId: string;
+    block: BlockAddress;
   } | null>(null);
 
   // CAP-34, AD-26: the template tab this window chose on each sheet, by the sheet's tab id. It is
@@ -330,7 +335,7 @@ function WindowRoot({
       dispatch({
         type: 'block-revealed',
         sheet: blockReveal.sheet,
-        path: blockReveal.path,
+        block: blockReveal.block,
       });
     }
   }, [blockReveal]);
@@ -348,10 +353,7 @@ function WindowRoot({
     const template =
       tab === null ? undefined : tabs.find((listed) => listed.id === tab)?.policy.template;
 
-    const block =
-      openRequest.path === undefined
-        ? sheetRootAddress(openRequest.sheetId)
-        : blockAddress(openRequest.sheetId, openRequest.path);
+    const block = blockAddress(openRequest.sheetId, openRequest.path ?? []);
 
     const blockTab =
       block === null || template === undefined || block.path.length === 0
@@ -398,10 +400,16 @@ function WindowRoot({
       type: 'open-request',
       request: openRequest,
       focusInWindow: focusInWindow(),
-      tab,
+      sheet: tab,
       blockTab,
       cellTab,
-      tabKey: openedTab === null ? undefined : templateTabKey(openedTab),
+      tab:
+        openedTab === null
+          ? undefined
+          : {
+              sourceIndex: openedTab.sourceIndex,
+              block: openedTab.block?.block ?? null,
+            },
       ready,
     });
   }, [openRequest, preset, ready, records, tabIds, tabs, takenOpen]);
@@ -465,13 +473,11 @@ function WindowRoot({
       ? chosen
       : chosen === undefined
         ? undefined
-        : visible.findIndex((candidate) => templateTabKey(candidate) === chosen);
+        : visible.findIndex((candidate) => sameTemplateTabSelection(candidate, chosen));
 
     const fallbackIndex =
       chosen !== undefined && !isLegacyTemplateTabSelection(chosen) && chosenIndex === -1
-        ? visible.findIndex(
-            (candidate) => candidate.sourceIndex === templateTabSourceIndexFromKey(chosen),
-          )
+        ? visible.findIndex((candidate) => candidate.sourceIndex === chosen.sourceIndex)
         : chosenIndex;
 
     const index = openTabIndex(tab.policy.template, fallbackIndex, undefined, visible);
@@ -505,11 +511,7 @@ function WindowRoot({
 
       const targetTab = targetIndex === null ? undefined : targetTabs[targetIndex];
 
-      return (
-        targetTab?.sourceIndex === rendered.sourceIndex &&
-        targetTab.block?.scopeId === rendered.block?.scopeId &&
-        targetTab.block?.instanceId === rendered.block?.instanceId
-      );
+      return targetTab !== undefined && sameRenderedTab(targetTab, rendered);
     });
   }
 
@@ -518,10 +520,8 @@ function WindowRoot({
 
     const instanceId = newInstanceId();
 
-    setCreatingBlock({ sheet: tab.id, scopeId, instanceId });
-    const block = blockAddress(tab.sheetId, [scopeId, instanceId]);
-
-    if (block === null) return;
+    const block = childAddress(sheetRootAddress(tab.sheetId), scopeId, instanceId);
+    setCreatingBlock({ sheet: tab.id, block });
 
     void sendCommand({
       type: 'repeat-block-add',
@@ -548,8 +548,7 @@ function WindowRoot({
 
     const index = visible.findIndex(
       (candidate) =>
-        candidate.block?.scopeId === creatingBlock.scopeId &&
-        candidate.block.instanceId === creatingBlock.instanceId,
+        candidate.block !== null && sameAddress(candidate.block.block, creatingBlock.block),
     );
 
     const created = index === -1 ? undefined : visible[index];
@@ -560,7 +559,10 @@ function WindowRoot({
       type: 'select-template-tab',
       sheet: tab.id,
       index,
-      key: templateTabKey(created),
+      tab: {
+        sourceIndex: created.sourceIndex,
+        block: created.block?.block ?? null,
+      },
       visible: true,
     });
     setCreatingBlock(null);
@@ -847,7 +849,7 @@ function WindowRoot({
 
     const contentSourceIndex =
       chosen !== undefined && !isLegacyTemplateTabSelection(chosen)
-        ? (templateTabSourceIndexFromKey(chosen) ?? opened?.tab.sourceIndex ?? null)
+        ? chosen.sourceIndex
         : (opened?.tab.sourceIndex ?? null);
 
     let content: ReactNode;
@@ -929,7 +931,10 @@ function WindowRoot({
             type: 'select-template-tab',
             sheet: sheet.id,
             index: visibleTabs.indexOf(selected),
-            key: id,
+            tab: {
+              sourceIndex: selected.sourceIndex,
+              block: selected.block?.block ?? null,
+            },
             visible: true,
           });
         }
@@ -954,10 +959,14 @@ function focusInWindow(): boolean {
   return active !== null && active !== document.body && active !== document.documentElement;
 }
 
-function sameRenderedTab(left: RenderedTab, right: RenderedTab): boolean {
+function sameTemplateTabSelection(
+  rendered: RenderedTab,
+  selection: Exclude<TemplateTabSelection, number>,
+): boolean {
   return (
-    left.sourceIndex === right.sourceIndex &&
-    left.block?.scopeId === right.block?.scopeId &&
-    left.block?.instanceId === right.block?.instanceId
+    rendered.sourceIndex === selection.sourceIndex &&
+    (rendered.block === null
+      ? selection.block === null
+      : selection.block !== null && sameAddress(rendered.block.block, selection.block))
   );
 }

@@ -108,7 +108,7 @@ export function SheetCell({
   tokenTools,
 }: SheetCellProps): ReactNode {
   const preview = useContext(CellPreviewContext);
-  const cellKey = `${row.tabIndex}.${row.sectionIndex}.${row.rowIndex}.${cellIndex}.${row.instanceId ?? ''}`;
+  const cellKey = `${row.tabIndex}.${row.sectionIndex}.${row.rowIndex}.${cellIndex}.${row.block === null ? '' : (blockIdOf(row.block) ?? '')}`;
   const previewEditable = preview?.editableCell === cellKey;
 
   const node = (

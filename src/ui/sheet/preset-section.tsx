@@ -2,7 +2,16 @@ import clsx from 'clsx';
 import { useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefCallback } from 'react';
 
-import { blockAddress, childAddress, sheetRootAddress } from '@/core/block-address';
+import {
+  blockIdOf,
+  blockKeyOf,
+  childAddress,
+  parentOf,
+  sectionIdOf,
+  scopePathOf,
+  sheetRootAddress,
+  type BlockAddress,
+} from '@/core/block-address';
 import { patchRecordKey, type FieldPatchTarget } from '@/core/field-patch';
 import { linkTargetKey, type LinkTarget } from '@/core/link-target';
 import {
@@ -87,7 +96,7 @@ type SheetSectionProps = {
   pending: SheetPending | null;
   blockTools: BlockTools | null;
   tabBlock: TabBlock | null;
-  parentPath: readonly string[] | null;
+  parent: BlockAddress;
   role: 'GM' | 'PLAYER';
 };
 
@@ -106,8 +115,7 @@ type SheetRow = {
 
 // One repeat block: every row of its section, with the values of one descendant block record.
 type SheetBlock = {
-  instanceId: string;
-  path: readonly string[];
+  block: BlockAddress;
   // The value of the section's first field, "" when empty.
   name: string;
   rows: SheetRow[];
@@ -133,7 +141,7 @@ export function SheetSection({
   pending,
   blockTools,
   tabBlock,
-  parentPath,
+  parent,
   role,
 }: SheetSectionProps): ReactNode {
   const headingId = useId();
@@ -159,7 +167,7 @@ export function SheetSection({
     pending,
     blockTools,
     tabBlock,
-    parentPath,
+    parent,
     role,
   };
 
@@ -176,7 +184,7 @@ export function SheetSection({
         pending={pending}
         blockTools={blockTools}
         tabBlock={tabBlock}
-        parentPath={parentPath}
+        parent={parent}
         role={role}
       />
     ) : sectionId === null ? (
@@ -275,7 +283,7 @@ function RowRepeatContent({
   pending,
   blockTools,
   tabBlock,
-  parentPath,
+  parent,
   role,
 }: SheetSectionProps): ReactNode {
   const plain = plainRows(
@@ -297,8 +305,7 @@ function RowRepeatContent({
       return [];
     }
 
-    const parentScopes = (parentPath ?? []).filter((_part, index) => index % 2 === 0);
-    const repeatedSection = repeatSectionByPath(template, [...parentScopes, id]);
+    const repeatedSection = repeatSectionByPath(template, [...scopePathOf(parent), id]);
 
     return repeatedSection === null ? [] : [{ id, section: repeatedSection }];
   });
@@ -324,7 +331,7 @@ function RowRepeatContent({
             sectionId={id}
             blockTools={blockTools}
             tabBlock={tabBlock}
-            parentPath={parentPath}
+            parent={parent}
             role={role}
           />
         ) : (
@@ -341,7 +348,7 @@ function RowRepeatContent({
             sectionId={id}
             blockTools={blockTools}
             tabBlock={tabBlock}
-            parentPath={parentPath}
+            parent={parent}
             role={role}
           />
         ),
@@ -363,7 +370,7 @@ function ReadOnlyRepeatContent({
   sectionId,
   blockTools,
   role,
-  parentPath,
+  parent,
 }: ReadOnlyRepeatContentProps): ReactNode {
   const blocks = useMemo(
     () =>
@@ -377,20 +384,9 @@ function ReadOnlyRepeatContent({
         records,
         pending,
         role,
-        parentPath,
+        parent,
       ),
-    [
-      template,
-      section,
-      tabIndex,
-      sectionIndex,
-      sectionId,
-      sheetId,
-      records,
-      pending,
-      role,
-      parentPath,
-    ],
+    [template, section, tabIndex, sectionIndex, sectionId, sheetId, records, pending, role, parent],
   );
 
   return (
@@ -405,7 +401,6 @@ function ReadOnlyRepeatContent({
         pending={pending}
         templateTitle={sectionTitle(section) ?? ''}
         role={role}
-        sectionId={sectionId}
         blocks={blocks}
         readOnly
         controls={undefined}
@@ -430,7 +425,7 @@ function RepeatContent({
   sectionId,
   blockTools,
   role,
-  parentPath,
+  parent,
 }: RepeatContentProps): ReactNode {
   const blocks = useMemo(
     () =>
@@ -444,61 +439,71 @@ function RepeatContent({
         records,
         pending,
         role,
-        parentPath,
+        parent,
       ),
-    [
-      template,
-      section,
-      tabIndex,
-      sectionIndex,
-      sectionId,
-      sheetId,
-      records,
-      pending,
-      role,
-      parentPath,
-    ],
+    [template, section, tabIndex, sectionIndex, sectionId, sheetId, records, pending, role, parent],
   );
 
   // A repeat block whose removal waits for a GM counts as gone: its "Удалить" is gone, so the focus
   // moves on.
   const instanceIds = useMemo(
-    () => blocks.flatMap((block) => (block.pending.removed ? [] : [block.instanceId])),
+    () =>
+      blocks.flatMap((block) => {
+        const instanceId = blockIdOf(block.block);
+
+        return block.pending.removed || instanceId === null ? [] : [instanceId];
+      }),
     [blocks],
   );
 
-  const controls = useRepeatBlocks(sheetId, sectionId, instanceIds, parentPath);
+  const controls = useRepeatBlocks(sheetId, sectionId, instanceIds, parent);
   const title = sectionTitle(section) ?? templateTitle;
 
-  return (
+  const hasAmbiguousAddLabel = blocks.some((block) =>
+    block.nested.some(
+      ({ section: nestedSection }) => (sectionTitle(nestedSection) ?? templateTitle) === title,
+    ),
+  );
+
+  const body = (
+    <Body>
+      <Blocks
+        template={template}
+        tabIndex={tabIndex}
+        sectionIndex={sectionIndex}
+        section={section}
+        sheetId={sheetId}
+        records={records}
+        pending={pending}
+        templateTitle={templateTitle}
+        role={role}
+        blocks={blocks}
+        readOnly={false}
+        controls={controls}
+        tools={blockTools}
+      />
+    </Body>
+  );
+
+  const add = (
+    <Button
+      ref={controls.addButton}
+      accessibleName={copy.label.addToSection(title)}
+      onPress={controls.add}
+    >
+      {copy.command.add}
+    </Button>
+  );
+
+  return hasAmbiguousAddLabel ? (
+    <div className="flex flex-col">
+      <div className="order-2 mt-1">{add}</div>
+      <div className="order-1">{body}</div>
+    </div>
+  ) : (
     <>
-      <Body>
-        <Blocks
-          template={template}
-          tabIndex={tabIndex}
-          sectionIndex={sectionIndex}
-          section={section}
-          sheetId={sheetId}
-          records={records}
-          pending={pending}
-          templateTitle={templateTitle}
-          role={role}
-          sectionId={sectionId}
-          blocks={blocks}
-          readOnly={false}
-          controls={controls}
-          tools={blockTools}
-        />
-      </Body>
-      <div className="mt-1">
-        <Button
-          ref={controls.addButton}
-          accessibleName={copy.label.addToSection(title)}
-          onPress={controls.add}
-        >
-          {copy.command.add}
-        </Button>
-      </div>
+      {body}
+      <div className="mt-1">{add}</div>
     </>
   );
 }
@@ -560,7 +565,6 @@ type BlocksProps = {
   pending: SheetPending | null;
   templateTitle: string;
   role: 'GM' | 'PLAYER';
-  sectionId: string;
   blocks: readonly SheetBlock[];
   readOnly: boolean;
   controls: RepeatBlockControls | undefined;
@@ -569,7 +573,7 @@ type BlocksProps = {
 
 // The duplicate block is open under one repeat block. `request` grows each time "Дублировать…" is
 // pressed, so its field takes the focus again.
-type DuplicateAsk = { instanceId: string; request: number };
+type DuplicateAsk = { blockKey: string; request: number };
 
 // Every repeat block in order, each holding all rows of the section. The block's control slot sits
 // in its first row.
@@ -583,7 +587,6 @@ function Blocks({
   pending,
   templateTitle,
   role,
-  sectionId,
   blocks,
   readOnly,
   controls,
@@ -598,7 +601,7 @@ function Blocks({
   const askedBlock = useRef<string | null>(null);
 
   useLayoutEffect(() => {
-    askedBlock.current = duplicateAsk?.instanceId ?? null;
+    askedBlock.current = duplicateAsk?.blockKey ?? null;
   });
 
   // The block closes and the focus goes back to the "Дублировать…" it was opened from.
@@ -615,21 +618,21 @@ function Blocks({
   // A repeat block gone elsewhere takes its open duplicate block with it.
   if (
     duplicateAsk !== null &&
-    !blocks.some((block) => block.instanceId === duplicateAsk.instanceId)
+    !blocks.some((block) => blockKeyOf(block.block) === duplicateAsk.blockKey)
   ) {
     setDuplicateAsk(null);
   }
 
-  const duplicateButton = (instanceId: string): RefCallback<HTMLButtonElement> => {
+  const duplicateButton = (blockKey: string): RefCallback<HTMLButtonElement> => {
     return (element) => {
       if (element === null) {
         return undefined;
       }
 
-      duplicateButtons.current.set(instanceId, element);
+      duplicateButtons.current.set(blockKey, element);
 
       return () => {
-        duplicateButtons.current.delete(instanceId);
+        duplicateButtons.current.delete(blockKey);
       };
     };
   };
@@ -640,7 +643,9 @@ function Blocks({
   const columns = section.columns;
 
   const blockNodes = blocks.map((block, index) => {
-    const markId = `${markPrefix}${block.instanceId}`;
+    const instanceId = instanceIdOf(block.block);
+    const blockKey = blockKeyOf(block.block);
+    const markId = `${markPrefix}${instanceId}`;
     const rowMarkId = block.pending.rowMarked ? markId : null;
 
     const slot = slotted ? (
@@ -651,10 +656,10 @@ function Blocks({
         tools={tools}
         column={columns === undefined ? undefined : columns + 1}
         markId={markId}
-        duplicateButton={duplicateButton(block.instanceId)}
+        duplicateButton={duplicateButton(blockKey)}
         onDuplicate={() => {
           setDuplicateAsk((current) => ({
-            instanceId: block.instanceId,
+            blockKey,
             request: (current?.request ?? 0) + 1,
           }));
         }}
@@ -675,13 +680,7 @@ function Blocks({
         data-row
         data-row-index={row.sourceIndex}
       >
-        <Cells
-          row={row}
-          readOnly={readOnly}
-          rowMarkId={rowMarkId}
-          sectionId={sectionId}
-          tools={tools}
-        />
+        <Cells row={row} readOnly={readOnly} rowMarkId={rowMarkId} tools={tools} />
         {rowIndex === 0 ? slot : null}
       </div>
     ));
@@ -700,7 +699,7 @@ function Blocks({
           sectionId={id}
           blockTools={tools}
           tabBlock={null}
-          parentPath={block.path}
+          parent={block.block}
           role={role}
         />
       ) : (
@@ -717,14 +716,14 @@ function Blocks({
           sectionId={id}
           blockTools={tools}
           tabBlock={null}
-          parentPath={block.path}
+          parent={block.block}
           role={role}
         />
       ),
     );
 
     const duplicate =
-      tools !== null && duplicateAsk?.instanceId === block.instanceId ? (
+      tools !== null && duplicateAsk?.blockKey === blockKey ? (
         <div
           className={clsx({
             'px-1 pt-1': columns === undefined,
@@ -732,10 +731,7 @@ function Blocks({
           })}
         >
           <DuplicateCount
-            sheetId={sheetId}
-            sectionId={sectionId}
-            instanceId={block.instanceId}
-            path={block.path.length > 2 ? block.path : undefined}
+            block={block.block}
             sendCommand={tools.sendCommand}
             focusRequest={duplicateAsk.request}
             onDone={closeDuplicate}
@@ -745,21 +741,19 @@ function Blocks({
       ) : null;
 
     const name = block.name === '' ? copy.unnamed : block.name;
-    const blockAddressValue = blockAddress(sheetId, block.path);
 
     const onMap = section.rows.some((row) =>
       row.cells.some(
         (cell) =>
           cell.kind === 'token' &&
-          blockAddressValue !== null &&
-          mapMarked.has(linkTargetKey({ block: blockAddressValue, cellId: cell.id })),
+          mapMarked.has(linkTargetKey({ block: block.block, cellId: cell.id })),
       ),
     );
 
     return (
       <div
-        key={block.instanceId}
-        ref={controls?.blockElement(block.instanceId)}
+        key={blockKey}
+        ref={controls?.blockElement(instanceId)}
         role="group"
         aria-label={onMap ? copy.label.selectedOnMap(name) : name}
         tabIndex={-1}
@@ -768,8 +762,8 @@ function Blocks({
           [BLOCK_RULE_CLASS]: index > 0,
           [MAP_MARK_CLASS]: onMap,
         })}
-        data-repeat-block={block.instanceId}
-        data-repeat-path={JSON.stringify(block.path)}
+        data-repeat-block={instanceId}
+        data-block={blockKey}
       >
         {rows}
         {nested}
@@ -818,7 +812,7 @@ function BlockSlot({
   duplicateButton,
   onDuplicate,
 }: BlockSlotProps): ReactNode {
-  const { instanceId } = block;
+  const instanceId = instanceIdOf(block.block);
 
   return (
     <div
@@ -857,13 +851,11 @@ function Cells({
   row,
   readOnly,
   rowMarkId: markId,
-  sectionId = null,
   tools = null,
 }: {
   row: SheetRow;
   readOnly: boolean;
   rowMarkId: string | null;
-  sectionId?: string | null;
   tools?: BlockTools | null;
 }): ReactNode {
   return row.cells.map((cell, index) => (
@@ -881,31 +873,18 @@ function Cells({
         marked: cell.kind === 'field' && row.pending.markedFields.has(cell.id),
         rowMarkId: markId,
       }}
-      tokenTarget={tokenTargetOf(row.dice, cell, sectionId)}
+      tokenTarget={tokenTargetOf(row.dice, cell)}
       tokenTools={tools}
     />
   ));
 }
 
-function tokenTargetOf(
-  row: DiceRow,
-  cell: PresetCell,
-  sectionId: string | null,
-): LinkTarget | null {
+function tokenTargetOf(row: DiceRow, cell: PresetCell): LinkTarget | null {
   if (cell.kind !== 'token') {
     return null;
   }
 
-  const path =
-    row.target?.kind === 'rep'
-      ? row.target.block.path
-      : sectionId === null || row.instanceId === null
-        ? []
-        : [sectionId, row.instanceId];
-
-  const block = path.length === 0 ? sheetRootAddress(row.sheetId) : blockAddress(row.sheetId, path);
-
-  return block === null ? null : { block, cellId: cell.id };
+  return { block: row.block ?? sheetRootAddress(row.sheetId), cellId: cell.id };
 }
 
 function plainRows(
@@ -919,12 +898,7 @@ function plainRows(
   role: 'GM' | 'PLAYER',
   tabBlock: TabBlock | null,
 ): SheetRow[] {
-  const blockValues =
-    tabBlock === null
-      ? null
-      : (repeatBlocks(records, sheetRootAddress(sheetId), tabBlock.scopeId).find(
-          (block) => block.instanceId === tabBlock.instanceId,
-        )?.values ?? new Map());
+  const blockValues = tabBlock === null ? null : valuesOfBlock(records, tabBlock.block);
 
   return section.rows.flatMap((row, index) => {
     if (row.repeat !== undefined || !rowShownTo(role, template, tabIndex, sectionIndex, index)) {
@@ -958,11 +932,7 @@ function plainRows(
           tabIndex,
           sectionIndex,
           rowIndex: index,
-          instanceId: tabBlock?.instanceId ?? null,
-          path:
-            tabBlock?.path !== undefined && tabBlock.path.length > 2
-              ? [...tabBlock.path]
-              : undefined,
+          block: tabBlock?.block ?? null,
           target,
           fieldIds: fieldIdsOf(cells),
         },
@@ -984,24 +954,14 @@ function repeatBlocksOf(
   records: ReadonlyMap<string, VersionedRecord>,
   pending: SheetPending | null,
   role: 'GM' | 'PLAYER',
-  parentPath: readonly string[] | null,
+  parent: BlockAddress,
 ): SheetBlock[] {
   const fieldIds: ReadonlySet<string> = new Set(sectionFields(section).map((field) => field.id));
-  const scopePath = [...(parentPath ?? []), sectionId];
-
-  const scope = repeatScopeByPath(
-    template,
-    scopePath.filter((_part, index) => index % 2 === 0),
-  );
-
-  const parent =
-    parentPath === null
-      ? sheetRootAddress(sheetId)
-      : (blockAddress(sheetId, parentPath) ?? sheetRootAddress(sheetId));
+  const scopePath = [...scopePathOf(parent), sectionId];
+  const scope = repeatScopeByPath(template, scopePath);
 
   return repeatBlocks(records, parent, sectionId).map((block) => {
     const address = childAddress(parent, sectionId, block.instanceId);
-    const path = [...address.path];
 
     const nested = section.rows.flatMap((row) => {
       const id = row.repeat?.id;
@@ -1010,8 +970,7 @@ function repeatBlocksOf(
         return [];
       }
 
-      const parentScopes = (parentPath ?? []).filter((_part, index) => index % 2 === 0);
-      const nestedSection = repeatSectionByPath(template, [...parentScopes, sectionId, id]);
+      const nestedSection = repeatSectionByPath(template, [...scopePath, id]);
 
       return nestedSection === null ? [] : [{ id, section: nestedSection }];
     });
@@ -1022,9 +981,8 @@ function repeatBlocksOf(
     const place = placeOf(records, sheetId, target);
 
     return {
-      instanceId: block.instanceId,
-      path,
-      name: repeatBlockName(records, sheetId, section, block.instanceId, path),
+      block: address,
+      name: repeatBlockName(records, sheetId, section, block.instanceId, address.path),
       nested,
       pending: blockPending,
       rows: section.rows.flatMap((row, rowIndex) => {
@@ -1048,8 +1006,7 @@ function repeatBlocksOf(
                   tabIndex,
                   sectionIndex,
                   rowIndex: sourceIndex,
-                  instanceId: block.instanceId,
-                  path,
+                  block: address,
                   target,
                   fieldIds,
                 },
@@ -1072,4 +1029,33 @@ function placeOf(
   target: FieldPatchTarget,
 ): FieldPlace {
   return { sheetId, target, record: records.get(patchRecordKey(sheetId, target)) };
+}
+
+function valuesOfBlock(
+  records: ReadonlyMap<string, VersionedRecord>,
+  block: BlockAddress,
+): FieldValues {
+  const parent = parentOf(block);
+  const sectionId = sectionIdOf(block);
+  const instanceId = blockIdOf(block);
+
+  if (parent === null || sectionId === null || instanceId === null) {
+    return new Map();
+  }
+
+  return (
+    repeatBlocks(records, parent, sectionId).find(
+      (candidate) => candidate.instanceId === instanceId,
+    )?.values ?? new Map()
+  );
+}
+
+function instanceIdOf(block: BlockAddress): string {
+  const instanceId = blockIdOf(block);
+
+  if (instanceId === null) {
+    throw new Error('A rendered repeat block must name an instance');
+  }
+
+  return instanceId;
 }
