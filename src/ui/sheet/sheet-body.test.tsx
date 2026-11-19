@@ -269,29 +269,48 @@ test('a nested row carries one address to field, dice and token consumers', asyn
 test('nested add and delete commands preserve their parent and block addresses', async () => {
   // #given
   const view = await renderSheet(NESTED, nestedRecords());
+  const addName = copy.label.addToSection('Противники');
+  const parentBlock = groupNamed(view.container, 'Alpha');
+  const nestedBlock = groupNamed(parentBlock, 'Клык');
+  const nestedAdd = buttonNamed(parentBlock, addName);
+  const nestedDelete = buttonNamed(nestedBlock, copy.label.deleteBlock(1));
+
+  const outerAdd = buttonsNamed(view.container, addName).find(
+    (button) => !parentBlock.contains(button),
+  );
+
+  if (outerAdd === undefined) {
+    throw new Error(`the sheet has no outer button named "${addName}"`);
+  }
 
   // #when
-  await act(async () =>
-    lastButtonNamed(view.container, copy.label.addToSection('Противники')).click(),
-  );
-  await act(async () => lastButtonNamed(view.container, copy.label.deleteBlock(1)).click());
+  await act(async () => nestedAdd.click());
+  await act(async () => nestedDelete.click());
 
   // #then
-  expect(view.commands).toEqual([
-    {
-      type: 'repeat-block-add',
-      sheetId: 'npc',
-      block: {
+  expect({
+    commands: view.commands,
+    outerAddAfterBlocks: Boolean(
+      parentBlock.compareDocumentPosition(outerAdd) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ),
+  }).toEqual({
+    commands: [
+      {
+        type: 'repeat-block-add',
         sheetId: 'npc',
-        path: ['npc', 'a', 'attack', expect.any(String)],
+        block: {
+          sheetId: 'npc',
+          path: ['npc', 'a', 'attack', expect.any(String)],
+        },
       },
-    },
-    {
-      type: 'repeat-block-delete',
-      sheetId: 'npc',
-      block: address('npc', ['npc', 'a', 'attack', 'x']),
-    },
-  ]);
+      {
+        type: 'repeat-block-delete',
+        sheetId: 'npc',
+        block: address('npc', ['npc', 'a', 'attack', 'x']),
+      },
+    ],
+    outerAddAfterBlocks: true,
+  });
 });
 
 test('nested duplicate sends the address of the rendered block unchanged', async () => {
@@ -599,6 +618,18 @@ function buttonNamed(container: HTMLElement, name: string): HTMLButtonElement {
   }
 
   return button;
+}
+
+function groupNamed(container: HTMLElement, name: string): HTMLElement {
+  const group = [...container.querySelectorAll<HTMLElement>('[role="group"]')].find(
+    (candidate) => candidate.getAttribute('aria-label') === name,
+  );
+
+  if (group === undefined) {
+    throw new Error(`the sheet has no group named "${name}"`);
+  }
+
+  return group;
 }
 
 function lastButtonNamed(container: HTMLElement, name: string): HTMLButtonElement {

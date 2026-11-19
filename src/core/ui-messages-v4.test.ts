@@ -11,41 +11,52 @@ test('parses a cell-target open request with its repeat block address', () => {
     cellId: 'portrait',
   };
 
+  const untouched = structuredClone(message);
+
   // #when
   const parsed = parseEngineMessage(message);
 
   // #then
-  expect(parsed).toEqual({
-    ok: true,
-    value: {
-      t: 'open-sheet',
-      id: 'open-1',
-      block: { sheetId: 'heroes', path: ['attacks', 'attack-1'] },
-      cellId: 'portrait',
+  expect({ message, parsed }).toEqual({
+    message: untouched,
+    parsed: {
+      ok: true,
+      value: {
+        t: 'open-sheet',
+        id: 'open-1',
+        block: { sheetId: 'heroes', path: ['attacks', 'attack-1'] },
+        cellId: 'portrait',
+      },
     },
   });
 });
 
-test('round-trips a cell-target open request with its repeat path', () => {
+test('round-trips a cell-target open request without changing its internal form', () => {
   // #given
-  const message = {
+  const literal = {
     t: 'open-sheet',
     id: 'open-1',
     sheetId: 'heroes',
     path: ['attacks', 'attack-1'],
     cellId: 'portrait',
   };
-  // #when
 
-  const parsed = parseEngineMessage(message);
+  // #when
+  const parsed = parseEngineMessage(structuredClone(literal));
 
   if (!parsed.ok || parsed.value.t !== 'open-sheet') {
     throw new Error('the wire open-sheet message must parse');
   }
 
+  const internal = structuredClone(parsed.value);
   const wire = wireOpenSheetOf(parsed.value);
+
   // #then
-  expect(wire).toEqual(message);
+  expect({ internal: parsed.value, newObject: !Object.is(wire, parsed.value), wire }).toEqual({
+    internal,
+    newObject: true,
+    wire: literal,
+  });
 });
 
 test('drops an open request whose repeat path has an odd number of segments', () => {

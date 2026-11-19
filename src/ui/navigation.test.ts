@@ -464,6 +464,36 @@ describe('transition', () => {
       tabReveal: { tab: 'blk:hero', focus: false },
     });
   });
+  test('focuses only the target cell when a root open request enters the window', () => {
+    // #given
+    const state = readyState();
+
+    // #when
+    const opened = transition(state, {
+      type: 'open-request',
+      request: {
+        id: 'open-hero-root',
+        sheetId: 'hero',
+        cellId: 'portrait',
+      },
+      focusInWindow: true,
+      sheet: 'blk:hero',
+      blockTab: null,
+      cellTab: 0,
+      ready: true,
+    });
+
+    // #then
+    expect({ blockReveal: opened.blockReveal, tabReveal: opened.tabReveal }).toEqual({
+      blockReveal: {
+        sheet: 'blk:hero',
+        block: null,
+        cellId: 'portrait',
+        focus: true,
+      },
+      tabReveal: { tab: 'blk:hero', focus: false },
+    });
+  });
   test('opens a repeat block on its template tab and clears another sheet name focus', () => {
     // #given
     const state = stateWith({ focusNameOf: 'blk:rival' });

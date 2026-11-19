@@ -737,6 +737,11 @@ test('real engine commands add, edit and remove a repeat-row block in its row sc
 
   await rowRig.waitUntil(() => outcome(gm, linked) !== undefined);
 
+  const beforeRemove = {
+    block: values(shown(gm, 'blk:journal:conditions:c1')),
+    link: structuredClone(shown(gm, 'link:token')?.d),
+  };
+
   const removed = send(gm, {
     type: 'repeat-block-delete',
     sheetId: 'journal',
@@ -749,10 +754,15 @@ test('real engine commands add, edit and remove a repeat-row block in its row sc
   // #then
   expect({
     outcomes: [added, edited, linked, removed].map((id) => outcome(gm, id)?.kind),
+    beforeRemove,
     afterRemove: shown(gm, 'blk:journal:conditions:c1')?.d,
     linkAfterRemove: shown(gm, 'link:token')?.d,
   }).toEqual({
     outcomes: ['answered', 'answered', 'answered', 'answered'],
+    beforeRemove: {
+      block: { name: 'Отравлен' },
+      link: { s: 'journal', path: ['conditions', 'c1'], c: 'badge' },
+    },
     afterRemove: null,
     linkAfterRemove: null,
   });

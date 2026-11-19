@@ -2,10 +2,12 @@ import { fixtureCells, fixtureRecord } from '../../tests/support/block-fixtures'
 import { describe, expect, spyOn, test } from 'bun:test';
 import { mergeRecords, type Version } from '@/core/merge';
 import type { TemplateLayout } from '@/core/preset';
+import { presetMoves } from '@/core/preset-migrate';
 import { blockDataSchema, cellValues, type VersionedRecord } from '@/core/records';
 import {
   combinePatches,
   createProposalQueue,
+  movedPatches,
   proposedRecord,
   strippedPatch,
   type ProposalPatch,
@@ -395,6 +397,48 @@ describe('combinePatches', () => {
 
     // #then
     expect(combined).toEqual([{ kind: 'remove' }, { kind: 'remove' }]);
+  });
+});
+
+describe('movedPatches', () => {
+  test('keeps pending edits under every unchanged repeat scope', () => {
+    // #given
+    const template: TemplateLayout = {
+      tabs: [
+        {
+          repeat: { id: 'npc', nameField: 'npc_name' },
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [{ kind: 'field', type: 'text', id: 'npc_name' }],
+                },
+              ],
+            },
+            {
+              repeat: { id: 'atk', nameField: 'attack_name' },
+              rows: [
+                {
+                  cells: [{ kind: 'field', type: 'text', id: 'attack_name' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const patch: ProposalPatch = { kind: 'fields', values: { npc_name: 'Skeleton' } };
+    const moves = presetMoves(template, template);
+
+    // #when
+    const moved = [
+      movedPatches('blk:s:npc:a', patch, moves),
+      movedPatches('blk:s:npc:a:atk:x', patch, moves),
+    ];
+
+    // #then
+    expect(moved).toEqual([[{ k: 'blk:s:npc:a', patch }], [{ k: 'blk:s:npc:a:atk:x', patch }]]);
   });
 });
 
