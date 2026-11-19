@@ -1,0 +1,16 @@
+# The files this model describes, confirmed at the sync commit.
+# formal/drift.sh fails when a listed file changed after the sync commit.
+# Move the sync commit only after the model describes the new code
+# (.claude/skills/room-copy/SKILL.md, coverage record).
+sync 995e1c7
+src/replica/room-copy.ts
+src/replica/room-copy-table.ts
+src/replica/machine.ts
+src/replica/engine.ts
+src/replica/catch-up-table.ts
+src/replica/catch-up-effects.ts
+src/replica/room-protocol.ts
+src/replica/command-routing.ts
+src/replica/background-main.ts
+src/platform/schedule.ts
+src/core/snapshot.ts
