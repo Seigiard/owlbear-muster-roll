@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-18T19:41:00Z'
-updated_date: '2026-11-19T12:28:00Z'
+updated_date: '2026-11-19T12:54:00Z'
 labels:
   - tests
   - replica
@@ -38,3 +38,9 @@ After the clock port lands (ADR-0004 step 3), `tests/support/room-rig.ts` still 
 3. Literals in those engine tests stay; only helpers and waits change. Junit list equals the baseline; wall time of the three files drops.
 4. tdd chain (run ~/.claude/artifacts/task-115-20261119/TASK-116); full check.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented on task-116-rig-explicit-time (b7388f2). tests/support/room-rig.ts: createRoomRig({ clock: 'manual' }) gives every client of the room one manual clock (now() from a counter, schedule() into one queue by due time then insertion) and rig.advance(ms) fires due timers in order and lets their promise work settle; real time stays the default. engine-catch-up, engine-liveness and engine-no-gm run on it: no pause() left, three elapsed-time observations read roomRig.now(), literals unchanged. Wall time: 6.68->0.42 s, 4.25->0.25 s, 4.35->0.22 s. Checks: fmt, lint, typecheck, build; browser 587/587; bun: no baseline line lost; the three files green in three repeats.
+<!-- SECTION:NOTES:END -->

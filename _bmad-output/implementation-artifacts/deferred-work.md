@@ -621,3 +621,8 @@ Deviations from DESIGN.md that TASK-115.11 reconciles:
 
 - The `stopped` phase carries the write in flight: an ordinary or import write sent before `stop()` may still finish its read-back, publish its status and complete a waiting import, but never writes again, merges records or arms the pause. The first lock forbade every effect in `stopped`; `room-copy.test.ts` 'a healthy observer receives stopped-write import completion…' (today's behavior) won, and the lock was corrected.
 - Import and ordinary writes share the table's phase as their mutex; the import arrives through an existing event with its data in the event, not through a new event kind.
+
+## Deferred from: TASK-116 (2026-11-19)
+
+- Only `engine-catch-up`, `engine-liveness` and `engine-no-gm` run on the manual clock (`createRoomRig({ clock: 'manual' })`, `rig.advance(ms)`); every other engine file keeps real time and `pause()`. Migrate the rest file by file.
+- Three expectations in `engine-catch-up.test.ts` read elapsed time from `roomRig.now()` instead of `Date.now()`; their numeric bounds did not change.
