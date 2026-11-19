@@ -1178,9 +1178,9 @@ function TopBar({
   return (
     <header className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-4 py-2">
       <h1 className="text-sheet-title">{copy.builder.pageName}</h1>
-      <span role="status" className="text-label-sm text-text-muted">
+      <output className="text-label-sm text-text-muted">
         {state.draft === 'saved' ? copy.builder.draftSaved : copy.builder.draftNotSaved}
-      </span>
+      </output>
       <div className="flex gap-2">
         <AriaButton
           className={TOP_BUTTON_CLASS}
@@ -1252,6 +1252,7 @@ function TopBar({
         <input
           type="checkbox"
           role="switch"
+          aria-checked={theme === 'light'}
           className="accent-accent"
           checked={theme === 'light'}
           onChange={(event) => {
@@ -1270,7 +1271,7 @@ type OpenConfirmationProps = { label: string; onConfirm: () => void; onCancel: (
 function OpenConfirmation({ label, onConfirm, onCancel }: OpenConfirmationProps): ReactNode {
   const textId = useId();
 
-  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLFieldSetElement>): void {
     if (event.key === 'Escape') {
       event.stopPropagation();
       onCancel();
@@ -1278,8 +1279,8 @@ function OpenConfirmation({ label, onConfirm, onCancel }: OpenConfirmationProps)
   }
 
   return (
-    <div
-      role="group"
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Escape cancels from any focused control in this confirmation.
+    <fieldset
       aria-labelledby={textId}
       onKeyDown={handleKeyDown}
       className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface p-2"
@@ -1291,11 +1292,11 @@ function OpenConfirmation({ label, onConfirm, onCancel }: OpenConfirmationProps)
         <Button variant="primary" onPress={onConfirm}>
           {copy.builder.confirmOpen}
         </Button>
-        <Button autoFocus onPress={onCancel}>
+        <Button focusOnMount onPress={onCancel}>
           {copy.command.cancel}
         </Button>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -1318,8 +1319,7 @@ function ClearConfirmation({
     kind === 'preset' ? copy.builder.fileBlock.preset : copy.builder.fileBlock.snapshot;
 
   return (
-    <div
-      role="group"
+    <fieldset
       aria-labelledby={textId}
       className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface p-2"
     >
@@ -1330,11 +1330,11 @@ function ClearConfirmation({
         <Button variant="primary" onPress={onConfirm}>
           {copy.builder.fileBlock.confirmClear}
         </Button>
-        <Button autoFocus onPress={onCancel}>
+        <Button focusOnMount onPress={onCancel}>
           {copy.command.cancel}
         </Button>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -1347,8 +1347,7 @@ function ConflictConfirmation({ onTakeFile, onKeepMine }: ConflictConfirmationPr
   const textId = useId();
 
   return (
-    <div
-      role="group"
+    <fieldset
       aria-labelledby={textId}
       className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface p-2"
     >
@@ -1361,7 +1360,7 @@ function ConflictConfirmation({ onTakeFile, onKeepMine }: ConflictConfirmationPr
         </Button>
         <Button onPress={onKeepMine}>{copy.builder.keepMine}</Button>
       </div>
-    </div>
+    </fieldset>
   );
 }
 

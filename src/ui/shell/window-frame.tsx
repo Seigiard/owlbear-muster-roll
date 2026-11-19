@@ -189,7 +189,9 @@ function Sidebar({ entries, selected, onSelect, onAdd, settings }: SidebarProps)
           data-sidebar-heading={section.title}
           style={{ order }}
           className="px-2 pt-2 pb-1 text-caption text-text-muted"
-        ></h2>,
+        >
+          <span className="sr-only">{section.title}</span>
+        </h2>,
       );
       order += 1;
 

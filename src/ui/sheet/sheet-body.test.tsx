@@ -621,9 +621,9 @@ function buttonNamed(container: HTMLElement, name: string): HTMLButtonElement {
 }
 
 function groupNamed(container: HTMLElement, name: string): HTMLElement {
-  const group = [...container.querySelectorAll<HTMLElement>('[role="group"]')].find(
-    (candidate) => candidate.getAttribute('aria-label') === name,
-  );
+  const group = [
+    ...container.querySelectorAll<HTMLElement>('[role="group"], fieldset[aria-label]'),
+  ].find((candidate) => candidate.getAttribute('aria-label') === name);
 
   if (group === undefined) {
     throw new Error(`the sheet has no group named "${name}"`);

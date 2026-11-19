@@ -103,7 +103,7 @@ export function DuplicateCount({
     setProblem(null);
   }
 
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+  function handleKeyDown(event: KeyboardEvent<HTMLFieldSetElement>): void {
     if (event.key === 'Escape') {
       event.stopPropagation();
       onCancel();
@@ -111,14 +111,13 @@ export function DuplicateCount({
   }
 
   return (
-    <div
-      role="group"
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Escape cancels from any focused control in this inline form.
+    <fieldset
       aria-labelledby={labelId}
       onKeyDown={handleKeyDown}
       className="mb-3 rounded-lg border border-hairline bg-surface-raised p-2"
     >
       <TextField
-        autoFocus
         className="flex flex-col gap-1"
         value={text}
         isInvalid={problem === 'invalid'}
@@ -158,6 +157,6 @@ export function DuplicateCount({
           {problem === 'failed' ? copy.duplicateFailed : null}
         </span>
       </TextField>
-    </div>
+    </fieldset>
   );
 }

@@ -743,9 +743,9 @@ function Blocks({
 
     return (
       <div
+        role="group" // oxlint-disable-line jsx-a11y/prefer-tag-over-role -- A fieldset formatting wrapper breaks this nested subgrid's shared track alignment.
         key={blockKey}
         ref={controls?.blockElement(instanceId)}
-        role="group"
         aria-label={onMap ? copy.label.selectedOnMap(name) : name}
         tabIndex={-1}
         className={clsx({
