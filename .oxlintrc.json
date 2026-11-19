@@ -6,6 +6,7 @@
     "perf": "warn",
     "style": "off"
   },
+  "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y"],
   "ignorePatterns": [
     "dist/",
     "node_modules/",
@@ -27,15 +28,30 @@
     "tools/oxlint/anti-slop/**"
   ],
   "jsPlugins": [
-    { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" },
-    { "name": "muster-roll", "specifier": "./tools/oxlint/muster-roll/index.ts" },
-    "eslint-plugin-better-tailwindcss"
+    {
+      "name": "anti-slop",
+      "specifier": "./tools/oxlint/anti-slop/index.ts"
+    },
+    {
+      "name": "muster-roll",
+      "specifier": "./tools/oxlint/muster-roll/index.ts"
+    },
+    "eslint-plugin-better-tailwindcss",
+    {
+      "name": "playwright",
+      "specifier": "eslint-plugin-playwright"
+    }
   ],
   "settings": {
     "better-tailwindcss": {
       "entryPoint": "src/ui/main.css",
       "selectors": {
-        "extends": [{ "kind": "variable", "name": "^.*_CLASS$" }]
+        "extends": [
+          {
+            "kind": "variable",
+            "name": "^.*_CLASS$"
+          }
+        ]
       }
     }
   },
@@ -104,7 +120,21 @@
     "better-tailwindcss/no-unnecessary-whitespace": "warn",
     "better-tailwindcss/no-deprecated-classes": "warn",
     "better-tailwindcss/enforce-canonical-classes": "warn",
-    "better-tailwindcss/enforce-consistent-variant-order": "warn"
+    "better-tailwindcss/enforce-consistent-variant-order": "warn",
+    "react/react-in-jsx-scope": "off",
+    "react/exhaustive-deps": "warn",
+    "react/immutability": "warn",
+    "react/preserve-manual-memoization": "warn",
+    "react/refs": "warn",
+    "react/set-state-in-effect": "warn",
+    "react/use-memo": "warn",
+    "jsx-a11y/aria-role": "warn",
+    "jsx-a11y/heading-has-content": "warn",
+    "jsx-a11y/no-autofocus": "warn",
+    "jsx-a11y/no-noninteractive-element-interactions": "warn",
+    "jsx-a11y/no-noninteractive-element-to-interactive-role": "warn",
+    "jsx-a11y/prefer-tag-over-role": "warn",
+    "jsx-a11y/role-has-required-aria-props": "warn"
   },
   "overrides": [
     {
@@ -384,6 +414,47 @@
             ]
           }
         ]
+      }
+    },
+    {
+      "files": ["tests/**/*.e2e.ts", "tests/support/**"],
+      "rules": {
+        "playwright/expect-expect": "warn",
+        "playwright/max-nested-describe": "warn",
+        "playwright/missing-playwright-await": "error",
+        "playwright/no-conditional-expect": "warn",
+        "playwright/no-conditional-in-test": "warn",
+        "playwright/no-duplicate-hooks": "warn",
+        "playwright/no-duplicate-slow": "warn",
+        "playwright/no-element-handle": "warn",
+        "playwright/no-eval": "warn",
+        "playwright/no-focused-test": "error",
+        "playwright/no-force-option": "warn",
+        "playwright/no-identical-title": "warn",
+        "playwright/no-nested-step": "warn",
+        "playwright/no-networkidle": "warn",
+        "playwright/no-page-pause": "warn",
+        "playwright/no-skipped-test": "warn",
+        "playwright/no-standalone-expect": "error",
+        "playwright/no-unnecessary-assertions": "error",
+        "playwright/no-unsafe-references": "error",
+        "playwright/no-unused-locators": "error",
+        "playwright/no-useless-await": "warn",
+        "playwright/no-useless-not": "warn",
+        "playwright/no-wait-for-navigation": "error",
+        "playwright/no-wait-for-selector": "warn",
+        "playwright/no-wait-for-timeout": "warn",
+        "playwright/prefer-hooks-in-order": "warn",
+        "playwright/prefer-hooks-on-top": "warn",
+        "playwright/prefer-locator": "warn",
+        "playwright/prefer-to-have-count": "warn",
+        "playwright/prefer-to-have-length": "warn",
+        "playwright/prefer-web-first-assertions": "warn",
+        "playwright/valid-describe-callback": "error",
+        "playwright/valid-expect": "error",
+        "playwright/valid-expect-in-promise": "error",
+        "playwright/valid-test-tags": "error",
+        "playwright/valid-title": "error"
       }
     }
   ]
