@@ -6,7 +6,8 @@
 #   formal/generation-adoption/check.sh <name>.cfg one config, with TLC's output
 #
 # Expected outcomes:
-#   GenerationAdoption, TwoImports, Liveness, LivenessCopyFails  pass
+#   GenerationAdoption, TwoImports, Promoted, Liveness,
+#   LivenessCopyFails, LivenessPromoted                          pass
 #   finding-*  fail: open findings in the code, see the skill
 #   bug-*      fail: broken variants that show each rule can fail
 set -u

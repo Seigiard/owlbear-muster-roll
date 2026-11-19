@@ -1,15 +1,15 @@
 ---
 name: replica-catch-up
-description: Model-check catch-up and the GM link (AD-6, AD-7; src/replica/catch-up.ts and its engine wiring) with TLA+. Use when a change touches catch-up phases, enter/leave, state requests and answers, held requests, ping, alive, gm-silence or `gmLink`, the catch-up timers in engine.ts, or room-protocol admission; or to answer whether a client can stay in catch-up forever, lose a request, or show a GM online who is gone or offline who answers.
+description: Model-check catch-up and the GM link (AD-6, AD-7; src/replica/catch-up.ts, catch-up-table.ts, catch-up-effects.ts and their engine wiring) with TLA+. Use when a change touches catch-up phases, enter/leave, state requests and answers, held requests, ping, alive, gm-silence or `gmLink`, the catch-up timers in engine.ts, or room-protocol admission; or to answer whether a client can stay in catch-up forever, lose a request, or show a GM online who is gone or offline who answers.
 ---
 
 # Catch-up and GM link model
 
-A TLA+ model of one room in `formal/catch-up/CatchUp.tla`: a player `p` and a GM `g`, each running the real `createCatchUp` logic, plus an importer `x` (a GM of a higher generation). TLC checks every order of the modeled steps. The model answers: can a client stay in catch-up with no exit, lose a state request a GM could answer, or show the GM link wrong.
+A TLA+ model of one room in `formal/catch-up/CatchUp.tla`: a player `p` and a GM `g`, each running the real `createCatchUp` logic (its `catchUpTable` and `livenessTable`), plus an importer `x` (a GM of a higher generation, which can import more than once). TLC checks every order of the modeled steps. The model answers: can a client stay in catch-up with no exit, lose a state request a GM could answer, drop an answer to its own request, or show the GM link wrong.
 
 ## 1. Does my change touch the verified code?
 
-Run `git diff --stat 19232ad -- src/replica/catch-up.ts src/replica/engine.ts src/replica/room-protocol.ts src/core/room-messages.ts src/replica/generation-flow.ts src/replica/room-copy.ts`. Then read the coverage record below. A change in a function that the record names needs a model check. For a change elsewhere in those files, read the code map and confirm that no modeled step changed.
+Run `git diff --stat 995e1c7 -- src/replica/catch-up.ts src/replica/catch-up-table.ts src/replica/catch-up-effects.ts src/replica/machine.ts src/replica/engine.ts src/replica/room-protocol.ts src/core/room-messages.ts src/replica/generation-flow.ts src/replica/generation-table.ts src/replica/room-copy.ts src/replica/room-copy-table.ts`. Then read the coverage record below. A change in a function that the record names needs a model check. For a change elsewhere in those files, read the code map and confirm that no modeled step changed.
 
 ## 2. Run
 
@@ -19,11 +19,12 @@ From the repository root:
 formal/catch-up/check.sh
 ```
 
-The script runs every configuration and checks its outcome. It takes about 2.5 minutes; each TLC run takes under 60 seconds. Exit 0 means every outcome is as expected:
+The script runs every configuration and checks its outcome. It takes about 5 minutes on a busy machine. Most TLC runs take under 60 seconds; `imports-gm.cfg` and `fixes/own-answer-kept-gm.cfg` (1.4 million states each) and `role.cfg` take 1 to 2 minutes when other jobs share the CPU. Exit 0 means every outcome is as expected:
 
-- `formal/catch-up/*.cfg` must hold (TLC exit 0): `CatchUp.cfg` (open, catch up, page return, close), `adoption.cfg` (importer, `reset`, room copy), `return.cfg` (a client closes and opens again), `role.cfg` (one role change each).
+- `formal/catch-up/*.cfg` must hold (TLC exit 0): `CatchUp.cfg` (open, catch up, page return, close), `adoption.cfg` (importer, `reset`, room copy), `imports.cfg` (the importer imports twice; player only), `imports-gm.cfg` (the importer imports twice with the GM `g` too, no ping traffic), `return.cfg` (a client closes and opens again), `role.cfg` (one role change each), `save-fails.cfg` (the room of `adoption.cfg`, the GM's `saveAdoption` can fail, no ping traffic).
+- `fixes/*.cfg` must hold. Each one switches on a proposed code fix through the `Mutation` constant and shows that its finding holds with that fix. `own-answer-kept.cfg` checks the TASK-129 fix with the player alone, `own-answer-kept-gm.cfg` with a GM that adopts twice too.
 - `findings/*.cfg` must fail on the invariant in its `INVARIANT` line. These are the open findings below. When a fix lands, the finding config holds: move it next to the others, so that it must hold from then on.
-- `mutations/*.cfg` must fail on their invariant. Each one switches on a scratch break through the `Mutation` constant and proves that its invariant can fail.
+- `mutations/*.cfg` must fail on their invariant. Each one switches on a scratch break through the `Mutation` constant and proves that its invariant can fail. `save-fail-reenters.cfg` breaks the retry of a failed save (a failed save takes a new `r` and asks again); only a room with `SaveCanFail = TRUE` reaches it.
 
 `formal/catch-up/check.sh holds` runs only the configurations that must hold. To run one configuration: `formal/tlc.sh formal/catch-up/CatchUp.tla formal/catch-up/<name>.cfg`. The script keeps each TLC log in the folder it prints.
 
@@ -57,42 +58,49 @@ When the model describes the code again and `check.sh` passes, move the sync com
 | `NoAnswerDroppedInAdoption` | A GM does not lose a request because its answer timer fired while it adopted. | As `AnswerKept`. | fails: finding 2 |
 | `OnlineGmAnswers` | A client shows the GM online only while the GM that keeps it online can answer. | A GM whose saved records cannot be read never answers, yet players see it online. | fails: finding 3 |
 | `AdoptionCanComplete` | A client that adopts a generation can still get it: from the room copy or a GM of that generation. | The client stays in catch-up forever. | fails: finding 4 (known, `deferred-work.md`, TASK-31) |
+| `OwnAnswerKeepsRequest` | A `state` that answers a client's active request keeps that request: the client does not take a new `r` and ask again. The promise is the comment in `room-protocol.ts` `handleRoomMessage`: "An answer to this client's own request keeps that request." | Every GM sends its full state once more, and adoption ends one answer delay later. No data is lost. | holds in `CatchUp.cfg`, `adoption.cfg`, `return.cfg`, `role.cfg` and `save-fails.cfg`; fails: finding 5 (TASK-129) |
 
 ## Open findings
 
 1. **Offline after a pause** (`findings/hidden-page-offline.cfg`). A player is live and hears the GM: `watch()` arms ping and gm-silence. The page's timers stop longer than `gmLinkTimeoutMs`. When they run again, `fired('ping')` sends a ping and `fired('gm-silence')` runs at once, so `setGmLink('offline')`. The GM's `alive` comes back, `heard` sets `online` and, as the player is live, `enter('gm-return')` starts a catch-up. Replayed on the module.
-2. **Answer dropped during adoption** (`findings/answer-dropped-in-adoption.cfg`). The GM is live and arms an answer to the player's request; the player has already adopted generation 1 from the room copy and asked in it. The GM follows the copy and adopts. `fired('answer')` runs while it adopts: `canAnswer()` is false and the phase is not ordinary, so it neither answers nor holds (`catch-up.ts` fired, case `answer`). The GM finishes adoption and goes live in generation 1; the player still waits on that `r` and ends unanswered. Replayed on the module. `catch-up.test.ts` "an answer timer held during adoption is not armed after adoption completes" asserts the drop on purpose, for a request of the old generation.
+2. **Answer dropped during adoption** (`findings/answer-dropped-in-adoption.cfg`). The GM is live and arms an answer to the player's request; the player has already adopted generation 1 from the room copy and asked in it. The GM follows the copy and adopts. `fired('answer')` runs while it adopts: `canAnswer()` is false and the phase is not ordinary, so it neither answers nor holds (`catch-up-table.ts` `catchUpFired`, case `answer`). The GM finishes adoption and goes live in generation 1; the player still waits on that `r` and ends unanswered. Replayed on the module. `catch-up.test.ts` "an answer timer held during adoption is not armed after adoption completes" asserts the drop on purpose, for a request of the old generation.
 3. **Unreadable GM shows online** (`findings/unreadable-gm-online.cfg`). `heard` counts every admitted GM message, and a GM with unreadable storage still sends pings from its ping timer. It answers no ping and no request (`canAnswer()` needs `vouches()`), but players keep `gmLink` online. Replayed on the module.
 4. **Adoption with no source** (`findings/adoption-without-source.cfg`). Known: the importer leaves and its room copy did not fit.
+5. **Own answer dropped during adoption** (`findings/own-answer-dropped-in-adoption.cfg`), TASK-129, introduced by `79c879a` (TASK-115.1). A player opens. The importer imports generation 1, and its copy does not fit. The player hears `reset`, `enterFromGeneration` makes it adopt 1 with a new `r`, and it asks with that `r`. The importer imports generation 2 and answers that `r` with a `state` of generation 2. `answersOwn(r)` checks only `phase.kind === 'catching-up'`, so it is false in the `adopting` phase. `handleRoomMessage` passes `keepNonce = false` to `seeGeneration`, and the player takes a new `r`, drops the answer and asks again. Replayed on `createCatchUp` with `createRoomProtocol`. `fixes/own-answer-kept.cfg` holds with the fix (Mutation `fix-answers-own`: `answersOwn` counts the `adopting` phase too). When the fix lands, make that behavior the model's `AnswersOwn`, move the finding config next to the others, add `OwnAnswerKeepsRequest` to `imports.cfg` and `imports-gm.cfg`, and turn the old behavior into a mutation `answers-own-ordinary-only` that must fail on `OwnAnswerKeepsRequest`; then delete both fix configs. The same room with the GM `g` drops `g`'s own answer in the same way: without the fix, `fixes/own-answer-kept-gm.cfg` fails on `OwnAnswerKeepsRequest` for `g`.
 
-The owner's verdicts, 2026-11-19. Finding 1 is TASK-120, low. Findings 2-4 are accepted: generations will settle once the preset format does, an unreadable GM storage is rare, and finding 4 is covered by TASK-117. Keep their configs as expected failures and do not report them again.
+The owner's verdicts, 2026-11-19. Finding 1 is TASK-120, low. Findings 2-4 are accepted: generations will settle once the preset format does, an unreadable GM storage is rare, and finding 4 is covered by TASK-117. Finding 5 is TASK-129, shipped on the owner's decision. Keep their configs as expected failures and do not report them again.
 
 ## Code map
 
-One step is one event that the engine hands to the module, together with the synchronous interpretation of the decision list it returns (`ApplyAll` = `runCatchUp` in `engine.ts`). Room copy and party reads are separate steps when they end; either may never end. A room message is one step after the sender lookup in `room-protocol.ts` `receive`. Timers have no clock: an armed timer can fire at any step, except where `TimingOK` keeps the order that the real delays give.
+One step is one event that the engine hands to the module, together with the synchronous interpretation of the decision list it returns (`ApplyAll` = `catch-up-effects.ts` `run`). `createCatchUp` `feed` steps `catchUpTable`, saves a pending adoption, then steps `livenessTable` for `heard`, `fired` and `watch`, and orders the two decision lists. Room copy and party reads are separate steps when they end; either may never end. A room message is one step after the sender lookup in `room-protocol.ts` `handleRoomMessage`. Timers have no clock: an armed timer can fire at any step, except where `TimingOK` keeps the order that the real delays give.
 
 | Model | Code |
 | --- | --- |
-| `CanAnswer`, `ScheduleAnswer`, `RequestR`, `Ask`, `Leave`, `Enter`, `Watch`, `SetGmLink`, `EnterFromGeneration`, `FinishAdoption`, `RoomCopyRead`, `PartyRead`, `MarkSeen`, `StateMerged`, `Heard`, `StateRequested`, `Fired` | `catch-up.ts` `createCatchUp`: `canAnswer`, `scheduleAnswer`, `request`, `ask`, `leave`, `enter`, `watch`, `setGmLink`, `enterFromGeneration`, `finishAdoption`, `roomCopyRead`, `partyRead`, `markAnswerSeen`, `stateMerged`, `heard`, `stateRequested`, `fired` |
-| `Apply1`, `ApplyAll`, `RunWithD` | `engine.ts` `runCatchUp`, `armCatchUpTimer`, `disarmCatchUpTimer`, `catchUpTimerKey` |
-| `Open` | `engine.ts` startup: `enterCatchUp('start')`, then `runCatchUp(catchUp.watch())` |
-| `Close` | `engine.ts` `stop()` (clears `catchUpTimers`); `flushNow` → `closing()` has no lasting effect |
+| `CanAnswer`, `ScheduleAnswer`, `RequestR`, `Ask`, `Leave`, `Enter`, `EnterFromGeneration`, `RoomCopyRead`, `PartyRead`, `MarkSeen`, `StateMergedStep`, `StateRequested` | `catch-up-table.ts`: `canAnswer`, `scheduleAnswer`, `request`, `ask`, `leave`, `catchUpEnter`, `enterFromGeneration`, `catchUpRoomCopyRead`, `catchUpPartyRead`, `markAnswerSeen`, `catchUpStateMerged`, `catchUpStateRequested` |
+| `Watch`, `SetGmLink`, `Heard`, `Fired` | `catch-up-table.ts` `livenessWatch`, `livenessHeard`, `livenessFired`, `catchUpHeard`, `catchUpFired`; `catch-up.ts` `feed` orders their decisions |
+| `SavePending`, `AdoptionStaged`, `StateMerged` | `catch-up.ts` `feed` (`isPendingAdoption`, `options.saveAdoption`, the `adoption-saved` event), `catch-up-table.ts` `catchUpAdoptionStaged`, `catchUpAdoptionSaved` |
+| `AnswersOwn`, `ActiveR` | `catch-up.ts` `answersOwn` |
+| `Apply1`, `ApplyAll`, `RunWithD` | `catch-up-effects.ts` `createCatchUpEffects`: `run`, `arm`, `disarm`, `timerKey` |
+| `Open` | `engine.ts` startup: `enterCatchUp('start')`, then `catchUpEffects.run(catchUp.watch())` |
+| `Close` | `engine.ts` `stop()` aborts the signal, which cancels every catch-up timer; `flushNow` → `closing()` has no lasting effect |
 | `PageHidden` | browser pauses the page's timers; `engine.ts` `pageHidden` touches only the room copy |
-| `PageReturn` | `engine.ts` `catchUp()` → `enterCatchUp('page-return')` |
+| `PageReturn` | `engine.ts` `catchUp()` → `roomCopy.pageReturned()`, `enterCatchUp('page-return')` |
 | `RoleChange` | `engine.ts` `changeRole` → `catchUp.replicaReplaced()`, `enterCatchUp('role')` |
-| `Fire` | `engine.ts` `armCatchUpTimer` callback → `catchUp.fired` |
-| `Deliver`, `Receive`, `Admit`, `Dispatch` | `room-protocol.ts` `receive` (`seeGeneration` → `generationHeard`, `admitRoomMessage`, `heard`), `dispatchRoomMessage`, `receiveState`; `room-messages.ts` `ADMISSION` |
-| `CopyReadDone`, `AdoptFromCopy` | `runCatchUp` `read-room-copy` → `room-copy.ts` `read` → `generation-flow.ts` `adoptFromCopy` (`generationRead`, `adoptionStaged`) → `catchUp.roomCopyRead` |
-| `PartyReadDone` | `runCatchUp` `read-party` → `platform.party.getPlayers` → `catchUp.partyRead` |
-| `FollowCopy` | `room-copy.ts` `followMetadata` → engine `adopt` → `adoptFromCopy` |
-| `XImport`, `XReceive`, `XLeave` | another GM client of a higher generation: writes the copy, sends `reset`, answers on receipt, leaves |
+| `Fire` | `catch-up-effects.ts` `arm` callback → `catchUp.fired` |
+| `Deliver`, `Receive`, `Admit`, `Dispatch` | `room-protocol.ts` `handleRoomMessage` (`seeGeneration` → `generation-table.ts` `seeGeneration` → `generationHeard`, `admitRoomMessage`, `heard`), `dispatchRoomMessage`, `receiveState`; `room-messages.ts` `ADMISSION` |
+| `CopyReadDone`, `AdoptFromCopy` | `catch-up-effects.ts` `read-room-copy` → `room-copy.ts` `read` → `mergeReadRoomCopy` → engine `adopt` → `generation-flow.ts` `adoptFromCopy` (`generation-table.ts` `adoptFromCopy`: `generationRead`, then `adoptionStaged`) → `catchUp.roomCopyRead` |
+| `PartyReadDone` | `catch-up-effects.ts` `read-party` → `platform.party.getPlayers` → `catchUp.partyRead` |
+| `FollowCopy` | `room-copy.ts` `followMetadata`, or the write loop's read-back (`room-copy-table.ts` `adoptForOrdinary`) → engine `adopt` → `adoptFromCopy` |
+| `XImport`, `XReceive`, `XLeave` | another GM client of a higher generation: writes the copy, sends `reset`, answers on receipt, imports again, leaves |
 
-Ghost variables (`pinged`, `owed`, `dropped`, `lastHeard`, `badOffline`) record history for the invariants; no code holds them.
+Ghost variables (`pinged`, `owed`, `dropped`, `lastHeard`, `badOffline`, `ownDropped`) record history for the invariants; no code holds them.
 
 ## Bounds and what is left out
 
 - Two clients (player `p`, GM `g`) and the importer `x`. Two GMs answering one request, and the suppression between their answers, are not checked.
-- Per configuration: up to 3 catch-up ids per client (2 in `adoption.cfg`, findings and mutations), 2 messages in flight, 1 page return, 1 reopen, 1 role change, and `saveAdoption` always succeeds (the `generation-adoption` skill covers failed saves).
+- Per configuration: up to 3 catch-up ids per client (2 in `adoption.cfg`, `save-fails.cfg`, most findings and mutations; 4 in `imports.cfg` and `fixes/own-answer-kept.cfg`), 2 messages in flight, 1 page return, 1 reopen, 1 role change. `saveAdoption` always succeeds, except in `save-fails.cfg` and `mutations/save-fail-reenters.cfg` (`SaveCanFail = TRUE`): there a GM's save can fail any number of times, and the next `state` or room copy saves again (`SavePending` keeps `pend`). These two run with `NoPingTraffic` (below), as with pings the room took 2.6 million states and over 3 minutes. The `generation-adoption` skill covers what a failed save does to storage.
+- `NoPingTraffic` is an extra `CONSTRAINT`: TLC does not explore a state with a ping or `alive` on its way, so the configurations that use it leave out pings and gm-silence (a gm-silence fires only after a ping that reached nobody). They still check the answers, requests, adoption and saves.
+- Two imports (`Imports = 2`) with the player alone (`imports.cfg`, finding 5, `fixes/own-answer-kept.cfg`) keep pings, page return and 4 ids. With the GM `g` too (`imports-gm.cfg`, `fixes/own-answer-kept-gm.cfg`), the room has 3 ids, no page return and `NoPingTraffic`. With pings, the same room passed 5 million states in 3 minutes and was still growing. A VIEW that drops the answer ghosts saved only about 10 %, so no configuration uses one.
 - Answers are one message (`n = 1`). Partial answers, lost and duplicated messages, and unknown senders are left out. Messages can arrive in any order.
 - Drift (`aliveReceived` digests, `DRIFT_ALIVE_COUNT`, ignored digests) is left out: `alive` only refreshes the link.
 - The held-request limit (256) is left out.
@@ -102,11 +110,13 @@ Ghost variables (`pinged`, `owed`, `dropped`, `lastHeard`, `badOffline`) record 
 
 ## Coverage record
 
-Sync commit: `19232ad`. At that commit the model describes:
+Sync commit: `995e1c7`. At that commit the model describes:
 
-- `src/replica/catch-up.ts`: all of `createCatchUp` apart from the drift part of `aliveReceived` and `partyChanged`.
-- `src/replica/engine.ts`: `catchUpTimerKey`, `disarmCatchUpTimer`, `armCatchUpTimer`, `runCatchUp`, `enterCatchUp`, `changeRole` (the catch-up part), the startup lines that enter `start` and watch, `stop`, `flushNow`, `catchUp`.
-- `src/replica/room-protocol.ts`: `receive`, `dispatchRoomMessage` (`state-request`, `state`, `ping`, `alive`, `reset`), `receiveState`.
+- `src/replica/catch-up.ts`: `createCatchUp` (`feed`, `answersOwn`, `adopting`, `live`).
+- `src/replica/catch-up-table.ts`: `catchUpTable` and `livenessTable`, apart from the drift part of `catchUpAlive`, `rememberAlive`, `catchUpPartyChanged`, `catchUpReplicaReplaced` and multi-part answers.
+- `src/replica/catch-up-effects.ts`: `createCatchUpEffects`.
+- `src/replica/engine.ts`: `enterCatchUp`, `changeRole` (the catch-up part), the startup lines that enter `start` and watch, `stop`, `flushNow`, `catchUp`, the `adopt` callback.
+- `src/replica/room-protocol.ts`: `receive`, `handleRoomMessage`, `dispatchRoomMessage` (`state-request`, `state`, `ping`, `alive`, `reset`), `receiveState`.
 - `src/core/room-messages.ts`: `admitRoomMessage` and `ADMISSION`.
-- `src/replica/generation-flow.ts`: `seeGeneration`, `adoptFromCopy`, the result of `saveAdoption`.
-- `src/replica/room-copy.ts`: `read` and `followMetadata`, as far as they adopt.
+- `src/replica/generation-flow.ts` and `generation-table.ts`: `seeGeneration`, `adoptFromCopy`, the result of `saveAdoption`.
+- `src/replica/room-copy.ts` and `room-copy-table.ts`: `read` (`mergeReadRoomCopy`), `followMetadata` and `adoptForOrdinary`, as far as they adopt.

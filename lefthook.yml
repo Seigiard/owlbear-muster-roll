@@ -13,3 +13,5 @@ pre-push:
   commands:
     typecheck:
       run: bun run typecheck
+    formal-drift:
+      run: formal/drift.sh

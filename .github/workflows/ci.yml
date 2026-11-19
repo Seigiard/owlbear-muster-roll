@@ -33,3 +33,38 @@ jobs:
       - run: bun test
       - run: bun run mutants
       - run: bun run build
+
+  formal:
+    name: Formal models
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # A model that passes on code it no longer describes looks like a proof.
+      - name: Check that no model drifted from its code
+        run: formal/drift.sh
+      # TLC takes minutes, so it runs only when a model changes, or on demand.
+      - name: Decide whether to run the models
+        id: models
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] ||
+            { [ "$GITHUB_EVENT_NAME" = pull_request ] &&
+              git diff --name-only "origin/$GITHUB_BASE_REF...HEAD" -- formal | grep -q .; }; then
+            echo run=true >> "$GITHUB_OUTPUT"
+          fi
+      - uses: jdx/mise-action@v2
+        if: steps.models.outputs.run == 'true'
+        with:
+          install: false
+      - name: Run every model
+        if: steps.models.outputs.run == 'true'
+        run: |
+          failed=0
+          for check in formal/*/check.sh; do
+            echo "::group::$check"
+            "$check" || failed=1
+            echo "::endgroup::"
+          done
+          exit $failed

@@ -4,11 +4,11 @@
 (* reaching the room through one GM client.                                *)
 (*                                                                         *)
 (* Player side: src/replica/pending-edits.ts over proposal-queue.ts and    *)
-(* version-minter.ts. GM side: receiveProposal in room-protocol.ts with    *)
-(* checkProposal in core/access.ts, commit-outbox.ts and the FIFO send     *)
-(* queue of platform/send-queue.ts. Each action names the function it      *)
-(* models. The skill .claude/skills/edit-delivery/SKILL.md holds the code  *)
-(* map, the bounds and what is left out.                                   *)
+(* src/core/version-minter.ts. GM side: receiveProposal in                 *)
+(* room-protocol.ts with checkProposal in core/access.ts, commit-outbox.ts *)
+(* and the FIFO send queue of platform/send-queue.ts. Each action names    *)
+(* the function it models. The skill .claude/skills/edit-delivery/SKILL.md *)
+(* holds the code map, the bounds and what is left out.                    *)
 (*                                                                         *)
 (* A cell is [v |-> value, c |-> counter, a |-> author, s |-> edit]. `s`   *)
 (* is a ghost: the number of the player's edit that made the cell, 0 for   *)
@@ -40,7 +40,7 @@ VARIABLES
   lastMinted, \* version-minter lastMintedByKey for the key
   edits,      \* edits accepted so far; edit n gets seq n
   \* GM client
-  gLive,      \* the GM client is live and has persistence (room-protocol.ts:271 gate)
+  gLive,      \* the GM client is live and has persistence (receiveProposal's gate)
   gCell,      \* the GM's replica record of the field
   gAllowed,   \* the GM's replica gives the player write access
   outbox,     \* commit-outbox: held field record, the player's ack, a held revoke, `scheduled`
@@ -50,7 +50,7 @@ VARIABLES
   toP,        \* messages to the player, FIFO: `commit` and `reject`
   \* ghosts
   applyCount, \* edit seq -> how many times the GM merged a cell of that edit
-  reported,   \* edit seqs dropped with the "Нет прав на правку" notice
+  reported,   \* edit seqs dropped with a denial notice (its text names the cause)
   noop,       \* edit seqs dropped because the known record already held the value
   proposed,   \* <<c, seq>> of every version the player sent
   \* budgets
@@ -95,7 +95,7 @@ Slot == Msg("slot", NoCell, 0, "none", FALSE)
 AppendNew(q, m) == IF \E i \in 1..Len(q) : q[i] = m THEN q ELSE Append(q, m)
 RemoveAt(q, i) == SubSeq(q, 1, i - 1) \o SubSeq(q, i + 1, Len(q))
 
-\* version-minter.ts mint: above the highest known counter and the last one minted.
+\* core/version-minter.ts mint: above the highest known counter and the last one minted.
 \* Broken variant "mint-forgets": the minter keeps no last counter per key.
 Mint(highest) ==
   IF Mutation = "mint-forgets" THEN highest + 1 ELSE Max(highest, lastMinted) + 1
@@ -198,7 +198,8 @@ ResendFires ==
   /\ UNCHANGED <<entry, pCell, pAllowed, catching, pLink, lastMinted, edits>>
   /\ UNCHANGED <<gmVars, toGM, toP, ghostVars, budgetVars>>
 
-\* catch-up.ts setGmLink offline: no GM-origin message for the timeout.
+\* catch-up-table.ts livenessFired on 'gm-silence': no GM-origin message for the timeout,
+\* so the liveness phase goes offline.
 GmLinkLost ==
   /\ pLink = "online"
   /\ ~gLive
@@ -206,8 +207,10 @@ GmLinkLost ==
   /\ UNCHANGED <<entry, armed, queued, pCell, pAllowed, catching, lastMinted, edits>>
   /\ UNCHANGED <<gmVars, toGM, toP, ghostVars, budgetVars>>
 
-\* catch-up.ts setGmLink online: `gm-back` runs pending-edits gmBack = resendAll, and a
-\* live player enters catch-up ('gm-return').
+\* A GM-origin message heard while offline (catch-up.ts heard): catch-up-table.ts
+\* livenessHeard emits `gm-back`, which catch-up-effects.ts runs as pending-edits gmBack =
+\* resendAll, and catchUpHeard makes a live player enter catch-up ('gm-return'). Both run in
+\* one synchronous catch-up-effects.ts run.
 GmBack ==
   /\ pLink = "offline"
   /\ gLive
@@ -219,7 +222,8 @@ GmBack ==
   /\ UNCHANGED <<entry, pCell, pAllowed, lastMinted, edits>>
   /\ UNCHANGED <<gmVars, toGM, toP, ghostVars, budgetVars>>
 
-\* catch-up.ts enter on a party or role change.
+\* engine.ts enterCatchUp on a role change or a page return -> catch-up-table.ts
+\* catchUpEnter.
 CatchUpStarts ==
   /\ ~catching
   /\ catchUps < MaxCatchUps
@@ -228,9 +232,10 @@ CatchUpStarts ==
   /\ UNCHANGED <<entry, armed, queued, pCell, pAllowed, pLink, lastMinted, edits>>
   /\ UNCHANGED <<gmVars, toGM, toP, ghostVars, gmEdits, gmFlips, revokes, losses>>
 
-\* catch-up.ts leave -> engine.ts performCaughtUp -> pending-edits.ts caughtUp. With the
-\* GM live, its `state` answer merged first (receiveRecords -> recordsChanged); without
-\* it, the timeout exit.
+\* catch-up-table.ts leave emits `caught-up` -> catch-up-effects.ts -> engine.ts
+\* performCaughtUp -> pending-edits.ts caughtUp. With the GM live, its `state` answer
+\* merged first in the same handler (room-protocol.ts receiveState: receiveRecords ->
+\* recordsChanged, then stateMerged -> leave); without it, the 'catch-up' timer's exit.
 CatchUpEnds ==
   /\ catching
   /\ catching' = FALSE
