@@ -1264,6 +1264,29 @@ describe('ported reverse-picker ordering and link command contracts', () => {
     ]);
   });
 
+  test('keeps the latest token order when superseded scene bounds arrive last', async () => {
+    // #given
+    const staleBounds = Promise.withResolvers<Map<string, Bounds>>();
+    const picker = await openPicker(() => staleBounds.promise);
+
+    // #when
+    await picker.render();
+    const beforeStaleAnswer = listedChoices(picker.container).map(({ name }) => name);
+    await act(async () => {
+      staleBounds.resolve(sceneItemBounds({ nearFree: 100, farFree: 1 }));
+    });
+
+    // #then
+    const latestOrder = ['near-free', 'far-free', 'near-linked', 'near-other-linked', 'far-linked'];
+    expect({
+      beforeStaleAnswer,
+      afterStaleAnswer: listedChoices(picker.container).map(({ name }) => name),
+    }).toEqual({
+      beforeStaleAnswer: latestOrder,
+      afterStaleAnswer: latestOrder,
+    });
+  });
+
   test('reassigns selected tokens and selectively unlinks only selected links to this cell', async () => {
     // #given
     const picker = await openPicker();
@@ -1300,7 +1323,19 @@ describe('ported reverse-picker ordering and link command contracts', () => {
     });
   });
 
-  async function openPicker() {
+  function sceneItemBounds({ nearFree = 1, farFree = 100 } = {}): Map<string, Bounds> {
+    return new Map([
+      ['near-free', bounds(nearFree)],
+      ['near-linked', bounds(2)],
+      ['near-other-linked', bounds(3)],
+      ['far-free', bounds(farFree)],
+      ['far-linked', bounds(101)],
+    ]);
+  }
+
+  const defaultItemBounds = async () => sceneItemBounds();
+
+  async function openPicker(initialItemBounds = defaultItemBounds) {
     const store = createProjectionStore();
     const commands: Command[] = [];
     const container = document.createElement('div');
@@ -1317,41 +1352,42 @@ describe('ported reverse-picker ordering and link command contracts', () => {
     mounted.push(root);
     store.replaceAll(records, [], [], SYNC);
 
-    await act(async () => {
-      root.render(
-        <TokenCellPicker
-          target={TARGET}
-          store={store}
-          sendCommand={(command) => {
-            commands.push(command);
+    const viewport = { getBounds: async () => bounds(0, 10) };
 
-            return Promise.resolve({ kind: 'answered', answer: undefined });
-          }}
-          scene={{
-            getItemIds: async () => [
-              'far-linked',
-              'near-free',
-              'near-linked',
-              'far-free',
-              'near-other-linked',
-            ],
-            getItemBounds: async () =>
-              new Map([
-                ['near-free', bounds(1)],
-                ['near-linked', bounds(2)],
-                ['near-other-linked', bounds(3)],
-                ['far-free', bounds(100)],
-                ['far-linked', bounds(101)],
-              ]),
-          }}
-          viewport={{ getBounds: async () => bounds(0, 10) }}
-          onLinked={async () => undefined}
-        />,
-      );
-    });
-    await settle();
+    const sendCommand: ComponentProps<typeof TokenCellPicker>['sendCommand'] = async (command) => {
+      commands.push(command);
 
-    return { container, commands };
+      return { kind: 'answered', answer: undefined };
+    };
+
+    async function render(getItemBounds = defaultItemBounds): Promise<void> {
+      await act(async () => {
+        root.render(
+          <TokenCellPicker
+            target={TARGET}
+            store={store}
+            sendCommand={sendCommand}
+            scene={{
+              getItemIds: async () => [
+                'far-linked',
+                'near-free',
+                'near-linked',
+                'far-free',
+                'near-other-linked',
+              ],
+              getItemBounds,
+            }}
+            viewport={viewport}
+            onLinked={async () => undefined}
+          />,
+        );
+      });
+      await settle();
+    }
+
+    await render(initialItemBounds);
+
+    return { container, commands, render };
   }
 
   function bounds(minimum: number, maximum = minimum + 1): Bounds {
