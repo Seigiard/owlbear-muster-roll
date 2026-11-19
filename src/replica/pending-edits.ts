@@ -1,5 +1,5 @@
 import { playerMayEdit, proposalAllowed, type ProposalContext } from '@/core/access';
-import type { FieldPatchTarget } from '@/core/field-patch';
+import { parseBlockKey, sectionIdOf, type BlockAddress } from '@/core/block-address';
 import { assembleRecords, counterAbove, mergeRecords, type Version } from '@/core/merge';
 import { recordFitsOneMessage } from '@/core/message-size';
 import { plainRowIdOf, repeatTabById, type Preset, type Template } from '@/core/preset';
@@ -8,7 +8,6 @@ import { dependentSheetId, resolveSheet } from '@/core/sheets';
 import {
   blockDataSchema,
   cellValues,
-  parseBlockPathKey,
   repDataSchema,
   type FieldValue,
   type VersionedRecord,
@@ -16,7 +15,7 @@ import {
 import { err, ok, type Result } from '@/core/result';
 import { type EditId, type RejectMessage } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
-import type { Command, RejectionReason } from '@/core/ui-messages';
+import { type Command, type RejectionReason } from '@/core/ui-messages';
 import {
   combinePatches,
   createProposalQueue,
@@ -29,10 +28,17 @@ import {
   type ProposalQueueOptions,
 } from '@/replica/proposal-queue';
 
-export type PlayerEditCommand = Extract<
+type InternalPlayerEditCommand = Extract<
   Command,
   { type: 'field-patch' | 'repeat-block-add' | 'repeat-block-delete' }
 >;
+
+export type PlayerEditCommand =
+  | Extract<Command, { type: 'field-patch' }>
+  | Extract<Command, { type: 'repeat-block-add' }>
+  | Extract<Command, { type: 'repeat-block-delete' }>;
+
+type FieldPatchCommandTarget = Extract<Command, { type: 'field-patch' }>['target'];
 
 export type Denial = { notify: boolean };
 
@@ -105,7 +111,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
 
     if (
       (command.type === 'repeat-block-add' || command.type === 'repeat-block-delete') &&
-      repeatTabById(policy.template, command.sectionId) !== null
+      repeatTabById(policy.template, sectionIdOf(command.block) ?? '') !== null
     ) {
       return err('not-allowed');
     }
@@ -564,7 +570,7 @@ function deniesEdit(failure: ProposalFailure | null): boolean {
 
 // The patch an edit makes, read from the record it composed: a field's value as the composer
 // accepted it, a new repeat block with its order and cells, or a removal.
-function patchOf(command: PlayerEditCommand, record: VersionedRecord): ProposalPatch {
+function patchOf(command: InternalPlayerEditCommand, record: VersionedRecord): ProposalPatch {
   if (command.type === 'repeat-block-delete') {
     return { kind: 'remove' };
   }
@@ -583,19 +589,22 @@ function patchOf(command: PlayerEditCommand, record: VersionedRecord): ProposalP
 
 // The commands that make a player's entry again as a GM's own edit: a removal, or a new repeat
 // block and then its cells, or the fields it sets and clears.
-function commandsOf(entry: ProposalEntry, template: Template | null): PlayerEditCommand[] {
-  const parsed = parseBlockPathKey(entry.k);
-  const sectionId = parsed?.path.at(-2);
-  const instanceId = parsed?.path.at(-1);
-  const path = parsed?.path.length === 2 ? undefined : parsed?.path;
-  const sheetId = parsed?.sheetId ?? entry.k.split(':')[1] ?? '';
+function commandsOf(entry: ProposalEntry, template: Template | null): InternalPlayerEditCommand[] {
+  const parsed = parseBlockKey(entry.k);
 
-  const target: FieldPatchTarget =
-    sectionId === undefined
-      ? { kind: 'row', rowId: '' }
-      : repeatTarget(sectionId, instanceId ?? '', path);
+  if (parsed === null) {
+    return [];
+  }
 
-  const fieldPatches = (values: Readonly<Record<string, FieldValue | null>>): PlayerEditCommand[] =>
+  const sectionId = sectionIdOf(parsed);
+  const sheetId = parsed.sheetId;
+
+  const target: FieldPatchCommandTarget =
+    sectionId === null ? { kind: 'row', rowId: '' } : repeatTarget(parsed);
+
+  const fieldPatches = (
+    values: Readonly<Record<string, FieldValue | null>>,
+  ): InternalPlayerEditCommand[] =>
     Object.entries(values).map(([fieldId, value]) => ({
       type: 'field-patch',
       sheetId,
@@ -612,27 +621,21 @@ function commandsOf(entry: ProposalEntry, template: Template | null): PlayerEdit
 
   switch (entry.patch.kind) {
     case 'remove': {
-      const command: Extract<PlayerEditCommand, { type: 'repeat-block-delete' }> = {
+      const command: Extract<InternalPlayerEditCommand, { type: 'repeat-block-delete' }> = {
         type: 'repeat-block-delete',
         sheetId,
-        sectionId: sectionId ?? '',
-        instanceId: instanceId ?? '',
+        block: parsed,
       };
-
-      if (path !== undefined) command.path = path;
 
       return [command];
     }
 
     case 'add': {
-      const command: Extract<PlayerEditCommand, { type: 'repeat-block-add' }> = {
+      const command: Extract<InternalPlayerEditCommand, { type: 'repeat-block-add' }> = {
         type: 'repeat-block-add',
         sheetId,
-        sectionId: sectionId ?? '',
-        instanceId: instanceId ?? '',
+        block: parsed,
       };
-
-      if (path !== undefined) command.path = path;
 
       return [command, ...fieldPatches(cellValues(entry.patch.d.cells))];
     }
@@ -644,16 +647,8 @@ function commandsOf(entry: ProposalEntry, template: Template | null): PlayerEdit
   }
 }
 
-function repeatTarget(
-  sectionId: string,
-  instanceId: string,
-  path: readonly string[] | undefined,
-): FieldPatchTarget {
-  const target: FieldPatchTarget = { kind: 'rep', sectionId, instanceId };
-
-  if (path !== undefined) target.path = path;
-
-  return target;
+function repeatTarget(block: BlockAddress): FieldPatchCommandTarget {
+  return { kind: 'rep', block };
 }
 
 // AD-14: where a block's values go when its sheet's template changes from its form in `before` to
@@ -687,7 +682,7 @@ function templateOfKey(
   return sheetId === null ? null : (resolveSheet(records, preset, sheetId)?.template ?? null);
 }
 
-function isPlayerEdit(command: Command): command is PlayerEditCommand {
+function isPlayerEdit(command: Command): command is InternalPlayerEditCommand {
   return (
     command.type === 'field-patch' ||
     command.type === 'repeat-block-add' ||

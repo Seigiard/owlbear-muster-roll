@@ -14,6 +14,7 @@ import {
   lastRequest,
   pause,
   requestsOf,
+  sendWire,
   sync,
   type RigClient,
   type RigRoom,
@@ -280,7 +281,7 @@ describe('a player alone reads the room copy', () => {
 
     // #when: an edit attempt, and long enough for pings to go out.
     const settled = await Promise.resolve(
-      player.window.sendCommand({
+      sendWire(player.window, {
         type: 'field-patch',
         sheetId: 'brok',
         target: { kind: 'row', rowId: 'str' },

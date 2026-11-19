@@ -156,6 +156,109 @@ const NESTED_TOKEN_TEMPLATE: Template = {
 
 const NESTED_TOKEN_PRESET: Preset = { v: 4, templates: [NESTED_TOKEN_TEMPLATE] };
 
+test('labels an unnamed sheet-set sheet with its template title', () => {
+  // #given
+  const preset: Preset = {
+    v: 4,
+    templates: [
+      {
+        id: 'heroes',
+        title: 'Герои',
+        repeat: { nameField: 'sheet_name' },
+        tabs: [
+          {
+            sections: [
+              {
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'sheet_name' },
+                      { kind: 'token', id: 'portrait' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const records = new Map<string, VersionedRecord>([
+    [
+      'blk:h1',
+      {
+        k: 'blk:h1',
+        d: { set: 'heroes', order: 0, cells: { sheet_name: [null, 1, 'seed'] } },
+        c: 1,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
+    ],
+  ]);
+
+  // #then
+  expect(pickerGroups(records, preset)[0]?.targets[0]?.label).toBe('Герои');
+});
+
+test('lists literal root and scoped repeat-tab targets without a root target for the repeat-tab cell', () => {
+  // #given
+  const preset: Preset = {
+    v: 4,
+    templates: [
+      {
+        id: 'root',
+        title: 'Root',
+        tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'token', id: 'literal' }] }] }] }],
+      },
+      {
+        id: 'repeat',
+        title: 'Repeat',
+        tabs: [
+          {
+            repeat: { id: 'member', nameField: 'name' },
+            sections: [
+              {
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'name' },
+                      { kind: 'token', id: 'scoped' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const records = new Map<string, VersionedRecord>([
+    [
+      'blk:repeat:member:one',
+      {
+        k: 'blk:repeat:member:one',
+        d: { order: 0, cells: { name: ['One', 1, 'seed'] } },
+        c: 1,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
+    ],
+  ]);
+
+  // #when
+  const groups = pickerGroups(records, preset);
+
+  // #then
+  expect(groups.map((group) => group.targets.map((target) => target.target))).toEqual([
+    [{ block: { sheetId: 'root', path: [] }, cellId: 'literal' }],
+    [{ block: { sheetId: 'repeat', path: ['member', 'one'] }, cellId: 'scoped' }],
+  ]);
+});
+
 describe('liveLinks', () => {
   test('maps each token to the live target its link names, two tokens to one sheet included', () => {
     // #given
@@ -172,18 +275,16 @@ describe('liveLinks', () => {
     const links = liveLinks(records, PRESET);
     // #then
     expect([...links].map(([tokenId, live]) => [tokenId, live.target])).toEqual([
-      ['t1', { sheetId: 'brok', instanceId: null, path: null, cellId: 'token' }],
-      ['t2', { sheetId: 'brok', instanceId: null, path: null, cellId: 'token' }],
+      ['t1', { block: { sheetId: 'brok', path: [] }, cellId: 'token' }],
+      ['t2', { block: { sheetId: 'brok', path: [] }, cellId: 'token' }],
       [
         't3',
         {
-          sheetId: 'npc',
-          instanceId: 's1',
-          path: ['npc_name', 's1'],
+          block: { sheetId: 'npc', path: ['npc_name', 's1'] },
           cellId: 'token',
         },
       ],
-      ['t4', { sheetId: 'inventory', instanceId: null, path: null, cellId: 'token' }],
+      ['t4', { block: { sheetId: 'inventory', path: [] }, cellId: 'token' }],
     ]);
   });
   test('counts no link under a key whose token id no command could write', () => {
@@ -381,9 +482,7 @@ describe('pickerGroups', () => {
         targets: [
           {
             target: {
-              sheetId: 'encounter',
-              instanceId: 'a1',
-              path: ['npc', 'n1', 'attack', 'a1'],
+              block: { sheetId: 'encounter', path: ['npc', 'n1', 'attack', 'a1'] },
               cellId: 'attack_token',
             },
             cellId: 'attack_token',
@@ -569,15 +668,13 @@ describe('openTarget', () => {
   ]);
 
   test.each<[string, 'GM' | 'PLAYER', LinkTarget | null]>([
-    ['t-pc', 'GM', { sheetId: 'brok', instanceId: null, path: null, cellId: 'token' }],
-    ['t-pc', 'PLAYER', { sheetId: 'brok', instanceId: null, path: null, cellId: 'token' }],
+    ['t-pc', 'GM', { block: { sheetId: 'brok', path: [] }, cellId: 'token' }],
+    ['t-pc', 'PLAYER', { block: { sheetId: 'brok', path: [] }, cellId: 'token' }],
     [
       't-hidden-block',
       'GM',
       {
-        sheetId: 'brok',
-        instanceId: 'wolf',
-        path: ['pet', 'wolf'],
+        block: { sheetId: 'brok', path: ['pet', 'wolf'] },
         cellId: 'token',
       },
     ],
@@ -586,18 +683,12 @@ describe('openTarget', () => {
       't-npc',
       'GM',
       {
-        sheetId: 'npc',
-        instanceId: 's1',
-        path: ['npc_name', 's1'],
+        block: { sheetId: 'npc', path: ['npc_name', 's1'] },
         cellId: 'token',
       },
     ],
     ['t-npc', 'PLAYER', null],
-    [
-      't-inventory',
-      'PLAYER',
-      { sheetId: 'inventory', instanceId: null, path: null, cellId: 'token' },
-    ],
+    ['t-inventory', 'PLAYER', { block: { sheetId: 'inventory', path: [] }, cellId: 'token' }],
     ['t-journal', 'GM', null],
     ['t-gone', 'GM', null],
     ['t-cleared', 'GM', null],
@@ -728,7 +819,7 @@ function link(tokenId: string, sheetId: string, instanceId?: string): VersionedR
 
 function sheetTarget(sheetId: string, sheetName: string, linked: boolean) {
   return {
-    target: { sheetId, instanceId: null, cellId: 'token' },
+    target: { block: { sheetId, path: [] }, cellId: 'token' },
     cellId: 'token',
     sheetName,
     blockName: null,
@@ -748,9 +839,7 @@ function blockTarget(
 
   return {
     target: {
-      sheetId,
-      instanceId,
-      path: [sectionId, instanceId],
+      block: { sheetId, path: [sectionId, instanceId] },
       cellId: 'token',
     },
     cellId: 'token',

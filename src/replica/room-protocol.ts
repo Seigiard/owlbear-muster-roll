@@ -22,7 +22,8 @@ import {
 import { decodeStateRecords } from '@/core/state-records';
 import type { Generation } from '@/core/storage-key';
 import type { Preset } from '@/core/preset';
-import { blockDataSchema, parseRepKey, type VersionedRecord } from '@/core/records';
+import { parseBlockKey } from '@/core/block-address';
+import { blockDataSchema, type VersionedRecord } from '@/core/records';
 import type { PlayerRole } from '@/core/visibility';
 import type { ComposeContext } from '@/replica/composers';
 import { blockLinkTombstones } from '@/replica/composers';
@@ -427,15 +428,13 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   // AD-19: the GM client that commits a player's removal of a repeat block tombstones the links to
   // it in the next batch.
   function unlinkRemovedBlock(record: VersionedRecord): void {
-    const parts = record.d === null ? parseRepKey(record.k) : null;
+    const block = record.d === null ? parseBlockKey(record.k) : null;
 
-    if (parts === null) {
+    if (block === null || block.path.length === 0) {
       return;
     }
 
-    const applied = ports.apply(
-      blockLinkTombstones(ports.liveContext(), parts.sheetId, parts.instanceId),
-    );
+    const applied = ports.apply(blockLinkTombstones(ports.liveContext(), block));
 
     if (applied.length > 0) {
       ports.publish();

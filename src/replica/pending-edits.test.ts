@@ -1,4 +1,5 @@
 import { assembleRecords, mergeRecords } from '@/core/merge';
+import { blockAddress } from '@/core/block-address';
 import { fixturePatch } from '../../tests/support/block-fixtures';
 import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
@@ -271,7 +272,10 @@ describe('pending edits', () => {
 
     // #when
     const result = harness.pending.edit(
-      field('qty', 2, 'brok', { kind: 'rep', sectionId: 'item', instanceId: 'sword' }),
+      field('qty', 2, 'brok', {
+        kind: 'rep',
+        block: { sheetId: 'brok', path: ['item', 'sword'] },
+      }),
       view,
     );
 
@@ -418,7 +422,10 @@ describe('pending edits', () => {
 
     const command =
       current.k === SWORD.k
-        ? field('qty', 2, 'brok', { kind: 'rep', sectionId: 'item', instanceId: 'sword' })
+        ? field('qty', 2, 'brok', {
+            kind: 'rep',
+            block: { sheetId: 'brok', path: ['item', 'sword'] },
+          })
         : field('str', 11);
 
     harness.pending.edit(command, harness.records);
@@ -541,7 +548,10 @@ describe('pending edits', () => {
     const harness = createHarness();
     harness.pending.edit(add('new'), harness.records);
     harness.pending.edit(
-      field('qty', 2, 'brok', { kind: 'rep', sectionId: 'item', instanceId: 'new' }),
+      field('qty', 2, 'brok', {
+        kind: 'rep',
+        block: { sheetId: 'brok', path: ['item', 'new'] },
+      }),
       pendingView(harness),
     );
 
@@ -660,7 +670,10 @@ describe('pending edits', () => {
     // #given
     const harness = createHarness();
     harness.pending.edit(
-      field('qty', 2, 'brok', { kind: 'rep', sectionId: 'item', instanceId: 'sword' }),
+      field('qty', 2, 'brok', {
+        kind: 'rep',
+        block: { sheetId: 'brok', path: ['item', 'sword'] },
+      }),
       harness.records,
     );
     harness.records.set(SWORD.k, fixturePatch(SWORD, null, 2, 'gm'));
@@ -814,7 +827,10 @@ describe('pending edits', () => {
     const harness = createHarness();
     harness.pending.edit(field('str', 11), harness.records);
     harness.pending.edit(
-      field('qty', 2, 'brok', { kind: 'rep', sectionId: 'item', instanceId: 'sword' }),
+      field('qty', 2, 'brok', {
+        kind: 'rep',
+        block: { sheetId: 'brok', path: ['item', 'sword'] },
+      }),
       harness.records,
     );
     harness.pending.edit(add('new'), harness.records);
@@ -864,7 +880,10 @@ describe('pending edits', () => {
     harness.pending.edit(remove('sword'), harness.records);
     harness.pending.edit(add('new'), harness.records);
     harness.pending.edit(
-      field('qty', 2, 'brok', { kind: 'rep', sectionId: 'item', instanceId: 'new' }),
+      field('qty', 2, 'brok', {
+        kind: 'rep',
+        block: { sheetId: 'brok', path: ['item', 'new'] },
+      }),
       pendingView(harness),
     );
     harness.pending.edit(field('str', 11), harness.records);
@@ -875,7 +894,10 @@ describe('pending edits', () => {
       drained: [
         remove('sword'),
         add('new'),
-        field('qty', 2, 'brok', { kind: 'rep', sectionId: 'item', instanceId: 'new' }),
+        field('qty', 2, 'brok', {
+          kind: 'rep',
+          block: { sheetId: 'brok', path: ['item', 'new'] },
+        }),
         field('str', 11),
       ],
       size: 0,
@@ -1078,8 +1100,7 @@ function field(
       }
     | {
         kind: 'rep';
-        sectionId: string;
-        instanceId: string;
+        block: NonNullable<ReturnType<typeof blockAddress>>;
       } = { kind: 'row', rowId: 'str' },
 ): Extract<
   Command,
@@ -1096,7 +1117,11 @@ function add(instanceId: string): Extract<
     type: 'repeat-block-add';
   }
 > {
-  return { type: 'repeat-block-add', sheetId: 'brok', sectionId: 'item', instanceId };
+  return {
+    type: 'repeat-block-add',
+    sheetId: 'brok',
+    block: { sheetId: 'brok', path: ['item', instanceId] },
+  };
 }
 
 function remove(instanceId: string): Extract<
@@ -1105,7 +1130,11 @@ function remove(instanceId: string): Extract<
     type: 'repeat-block-delete';
   }
 > {
-  return { type: 'repeat-block-delete', sheetId: 'brok', sectionId: 'item', instanceId };
+  return {
+    type: 'repeat-block-delete',
+    sheetId: 'brok',
+    block: { sheetId: 'brok', path: ['item', instanceId] },
+  };
 }
 
 function reject(

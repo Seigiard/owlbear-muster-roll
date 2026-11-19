@@ -2,6 +2,7 @@ import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
 import type { PresetFieldCell, TemplateLayout } from '@/core/preset';
 import type { FieldValue, VersionedRecord } from '@/core/records';
+import { blockAddress } from './block-address';
 import {
   acceptedFieldValue,
   findPatchField,
@@ -18,6 +19,14 @@ const ATTACK: PresetFieldCell = { kind: 'field', type: 'text', id: 'attack' };
 const BONUS: PresetFieldCell = { kind: 'field', type: 'number', id: 'bonus' };
 const RANGE: PresetFieldCell = { kind: 'field', type: 'number', id: 'range' };
 const ARMOR = selectField('armor', ['Кожаная', 'Кольчуга']);
+
+function repeatTarget(path: readonly string[] = ['attack', 'i1']) {
+  const block = blockAddress('brok', path);
+
+  if (block === null) throw new Error('fixture must be a repeat block address');
+
+  return { kind: 'rep' as const, block };
+}
 
 function selectField(id: string, options: string[]): PresetFieldCell {
   return { kind: 'field', type: 'select', id, options };
@@ -64,9 +73,7 @@ describe('patchRecordKey', () => {
   });
   test('names the repeat block record of a repeat target', () => {
     // #then
-    expect(patchRecordKey('brok', { kind: 'rep', sectionId: 'attack', instanceId: 'i1' })).toBe(
-      'blk:brok:attack:i1',
-    );
+    expect(patchRecordKey('brok', repeatTarget())).toBe('blk:brok:attack:i1');
   });
 });
 
@@ -77,13 +84,13 @@ describe('findPatchField', () => {
   });
   test('finds a field of the repeat section', () => {
     // #given
-    const target = { kind: 'rep', sectionId: 'attack', instanceId: 'i1' } as const;
+    const target = repeatTarget();
     // #then
     expect(findPatchField(TEMPLATE, target, 'bonus')).toEqual(BONUS);
   });
   test('finds a field of the second row of a repeat block, which spans every row of its section', () => {
     // #given
-    const target = { kind: 'rep', sectionId: 'attack', instanceId: 'i1' } as const;
+    const target = repeatTarget();
     // #then
     expect(findPatchField(TEMPLATE, target, 'range')).toEqual(RANGE);
   });
@@ -96,11 +103,7 @@ describe('findPatchField', () => {
     ],
     ['an unknown field', { kind: 'row', rowId: 'str' } as const, 'dex'],
     ['a repeat field addressed as a row', { kind: 'row', rowId: 'attack' } as const, 'bonus'],
-    [
-      'a plain row addressed as a repeat section',
-      { kind: 'rep', sectionId: 'str', instanceId: 'i1' } as const,
-      'str',
-    ],
+    ['a plain row addressed as a repeat section', repeatTarget(['str', 'i1']), 'str'],
   ])('finds nothing for %s', (_name, target, fieldId) => {
     // #then
     expect(findPatchField(TEMPLATE, target, fieldId)).toBeNull();
@@ -110,11 +113,7 @@ describe('findPatchField', () => {
 describe('targetFields', () => {
   test('lists the fields of every row of a repeat section, in row order', () => {
     // #then
-    expect(targetFields(TEMPLATE, { kind: 'rep', sectionId: 'attack' })).toEqual([
-      ATTACK,
-      BONUS,
-      RANGE,
-    ]);
+    expect(targetFields(TEMPLATE, repeatTarget())).toEqual([ATTACK, BONUS, RANGE]);
   });
   test('lists only the fields of one plain row', () => {
     // #then
@@ -122,7 +121,7 @@ describe('targetFields', () => {
   });
   test('gives null for a section id that is the second field of a repeat section', () => {
     // #then
-    expect(targetFields(TEMPLATE, { kind: 'rep', sectionId: 'range' })).toBeNull();
+    expect(targetFields(TEMPLATE, repeatTarget(['range', 'i1']))).toBeNull();
   });
 });
 
@@ -215,7 +214,7 @@ function capture<Result>(operation: () => Result):
 
 describe('patchedRecord', () => {
   const ROW = { kind: 'row', rowId: 'str' } as const;
-  const REP = { kind: 'rep', sectionId: 'attack', instanceId: 'i1' } as const;
+  const REP = repeatTarget();
   test('merges the value into the row record and keeps its other fields', () => {
     // #then
     expect(patchedRecord('brok', ROW, row({ str: 9, str_tired: true }), 'str', 12)).toEqual({

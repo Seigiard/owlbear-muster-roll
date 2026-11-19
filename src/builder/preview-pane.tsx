@@ -4,7 +4,8 @@ import type { MouseEvent, ReactNode } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 
 import { rollDiceCell } from '@/core/dice-roll';
-import type { Command, RollOutcome } from '@/core/ui-messages';
+import { blockAddress, blockIdOf, fieldPatchTargetOf, sectionIdOf } from '@/core/block-address';
+import { wireCommandOf, type Command, type RollOutcome } from '@/core/ui-messages';
 import {
   acceptedFieldValue,
   findPatchField,
@@ -140,11 +141,13 @@ export function PreviewPane({
     () => ({
       // SAFETY: the preview sends only field patches; every other command is answered without side
       // effects except local repeat-tab lifecycle, which changes only the builder snapshot.
-      sendCommand: ((command: Command) => {
+      sendCommand: ((input: Command) => {
+        const command = wireCommandOf(input);
+
         if (command.type === 'repeat-block-add') {
           const path = command.path ?? [command.sectionId, command.instanceId];
           const key = blockPathKey(command.sheetId, path);
-          const prefix = `${blockPathKey(command.sheetId, path.slice(0, -1))}:`;
+          const prefix = `${key.slice(0, key.lastIndexOf(':'))}:`;
 
           const blocks = snapshotRecords
             .map((record) => (repDataSchema.safeParse(record.d).success ? record : null))
@@ -214,21 +217,28 @@ export function PreviewPane({
 
         const layout = fieldTemplate === null ? null : templateToPreset(fieldTemplate);
 
+        const target =
+          command.target.kind === 'row'
+            ? command.target
+            : fieldPatchTargetOf(command.sheetId, command.target);
+
         const field =
-          layout === null ? null : findPatchField(layout, command.target, command.fieldId);
+          layout === null || target === null
+            ? null
+            : findPatchField(layout, target, command.fieldId);
 
         const value = field === null ? null : acceptedFieldValue(field, command.value);
 
-        if (value === null || !value.ok) {
+        if (value === null || !value.ok || target === null) {
           return Promise.resolve({ kind: 'answered' as const, answer: undefined });
         }
 
-        const key = patchRecordKey(command.sheetId, command.target);
+        const key = patchRecordKey(command.sheetId, target);
         const current = records.get(key);
 
         const patched = patchedRecord(
           command.sheetId,
-          command.target,
+          target,
           current,
           command.fieldId,
           value.value,
@@ -523,8 +533,9 @@ export function PreviewPane({
 
     const index = visibleRenderedTabs.findIndex(
       (candidate) =>
-        candidate.block?.scopeId === createdTabBlock.scopeId &&
-        candidate.block.instanceId === createdTabBlock.instanceId,
+        candidate.block !== null &&
+        sectionIdOf(candidate.block.block) === createdTabBlock.scopeId &&
+        blockIdOf(candidate.block.block) === createdTabBlock.instanceId,
     );
 
     if (index === -1) return;
@@ -716,6 +727,11 @@ export function PreviewPane({
                         if (id.startsWith('template-tab-add:')) {
                           const scopeId = id.slice('template-tab-add:'.length);
                           const instanceId = newInstanceId();
+                          const block = blockAddress(renderSheetId ?? '', [scopeId, instanceId]);
+
+                          if (block === null) {
+                            return;
+                          }
 
                           setCreatedTabBlock({
                             sheetId: renderSheetId ?? '',
@@ -726,8 +742,7 @@ export function PreviewPane({
                             .sendCommand({
                               type: 'repeat-block-add',
                               sheetId: renderSheetId ?? '',
-                              sectionId: scopeId,
-                              instanceId,
+                              block,
                             })
                             .catch((error) => {
                               console.error('Muster Roll preview could not add a tab block', error);

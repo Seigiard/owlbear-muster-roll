@@ -1,11 +1,24 @@
 import { describe, expect, test } from 'bun:test';
-import { SETTINGS_TAB, transition } from './navigation';
+import { blockAddress } from '@/core/block-address';
+import { SETTINGS_TAB, transition, type TemplateTabSelection } from './navigation';
+
+type Assert<T extends true> = T;
+
+type TemplateTabSelectionHasNoString = Assert<string extends TemplateTabSelection ? false : true>;
 
 type NavigationState = Parameters<typeof transition>[0];
 
 type NavigationEvent = Parameters<typeof transition>[1];
 
 describe('transition', () => {
+  test('the nonlegacy template tab selection has no string form', () => {
+    // #given
+    const selectionHasNoString: TemplateTabSelectionHasNoString = true;
+
+    // #then
+    expect(selectionHasNoString).toBe(true);
+  });
+
   test('selects listed sidebar entries and ignores entries absent from the projection', () => {
     // #given
     const state = readyState();
@@ -62,12 +75,26 @@ describe('transition', () => {
 
     // #when
     const chosen = reduce(state, [
-      { type: 'select-template-tab', sheet: 'blk:hero', index: 1, visible: true },
-      { type: 'select-template-tab', sheet: 'blk:hero', index: 2, visible: false },
+      {
+        type: 'select-template-tab',
+        sheet: 'blk:hero',
+        index: 1,
+        tab: { sourceIndex: 1, block: address('hero', ['contacts', 'contact']) },
+        visible: true,
+      },
+      {
+        type: 'select-template-tab',
+        sheet: 'blk:hero',
+        index: 2,
+        tab: { sourceIndex: 2, block: address('hero', ['contacts', 'hidden']) },
+        visible: false,
+      },
     ]);
 
     // #then
-    expect(chosen.chosenTemplateTabs).toEqual(new Map([['blk:hero', 1]]));
+    expect(chosen.chosenTemplateTabs).toEqual(
+      new Map([['blk:hero', { sourceIndex: 1, block: address('hero', ['contacts', 'contact']) }]]),
+    );
   });
   test('records a sent creation', () => {
     // #given
@@ -307,7 +334,7 @@ describe('transition', () => {
         cellId: 'portrait',
       },
       focusInWindow: false,
-      tab: 'blk:rival',
+      sheet: 'blk:rival',
       blockTab: null,
       cellTab: null,
       ready: true,
@@ -402,9 +429,10 @@ describe('transition', () => {
         cellId: 'portrait',
       },
       focusInWindow: true,
-      tab: 'blk:hero',
+      sheet: 'blk:hero',
       blockTab: 1,
       cellTab: 1,
+      tab: { sourceIndex: 1, block: address('hero', ['contacts', 'contact']) },
       ready: true,
     });
 
@@ -412,7 +440,7 @@ describe('transition', () => {
       type: 'open-request',
       request: { id: 'open-hero', sheetId: 'rival', cellId: 'portrait' },
       focusInWindow: false,
-      tab: 'blk:rival',
+      sheet: 'blk:rival',
       blockTab: null,
       cellTab: null,
       ready: true,
@@ -429,7 +457,37 @@ describe('transition', () => {
       takenOpen: 'open-hero',
       blockReveal: {
         sheet: 'blk:hero',
-        path: ['contacts', 'contact'],
+        block: address('hero', ['contacts', 'contact']),
+        cellId: 'portrait',
+        focus: true,
+      },
+      tabReveal: { tab: 'blk:hero', focus: false },
+    });
+  });
+  test('focuses only the target cell when a root open request enters the window', () => {
+    // #given
+    const state = readyState();
+
+    // #when
+    const opened = transition(state, {
+      type: 'open-request',
+      request: {
+        id: 'open-hero-root',
+        sheetId: 'hero',
+        cellId: 'portrait',
+      },
+      focusInWindow: true,
+      sheet: 'blk:hero',
+      blockTab: null,
+      cellTab: 0,
+      ready: true,
+    });
+
+    // #then
+    expect({ blockReveal: opened.blockReveal, tabReveal: opened.tabReveal }).toEqual({
+      blockReveal: {
+        sheet: 'blk:hero',
+        block: null,
         cellId: 'portrait',
         focus: true,
       },
@@ -450,15 +508,18 @@ describe('transition', () => {
         cellId: 'portrait',
       },
       focusInWindow: true,
-      tab: 'blk:hero',
+      sheet: 'blk:hero',
       blockTab: 1,
       cellTab: 1,
+      tab: { sourceIndex: 1, block: address('hero', ['contacts', 'contact']) },
       ready: true,
     });
 
     // #then
     expect({ chosen: opened.chosenTemplateTabs, focusNameOf: opened.focusNameOf }).toEqual({
-      chosen: new Map([['blk:hero', 1]]),
+      chosen: new Map([
+        ['blk:hero', { sourceIndex: 1, block: address('hero', ['contacts', 'contact']) }],
+      ]),
       focusNameOf: null,
     });
   });
@@ -470,7 +531,7 @@ describe('transition', () => {
       deleteAsk: { sheet: 'blk:hero', request: 1 },
       blockReveal: {
         sheet: 'blk:hero',
-        path: ['contacts', 'contact'],
+        block: address('hero', ['contacts', 'contact']),
         cellId: 'portrait',
         focus: true,
       },
@@ -504,7 +565,7 @@ describe('transition', () => {
       focusActionsOf: 'blk:rival',
       blockReveal: {
         sheet: 'blk:hero',
-        path: ['contacts', 'contact'],
+        block: address('hero', ['contacts', 'contact']),
         cellId: 'portrait',
         focus: true,
       },
@@ -516,13 +577,26 @@ describe('transition', () => {
     const unmatched = reduce(state, [
       { type: 'name-focused', sheet: 'blk:rival' },
       { type: 'actions-focused', sheet: 'blk:hero' },
-      { type: 'block-revealed', sheet: 'blk:hero', path: ['contacts', 'other'] },
+      {
+        type: 'block-revealed',
+        sheet: 'blk:hero',
+        block: address('rival', ['contacts', 'contact']),
+      },
+      {
+        type: 'block-revealed',
+        sheet: 'blk:hero',
+        block: address('hero', ['rivals', 'contact']),
+      },
     ]);
 
     const cleared = reduce(unmatched, [
       { type: 'name-focused', sheet: 'blk:hero' },
       { type: 'actions-focused', sheet: 'blk:rival' },
-      { type: 'block-revealed', sheet: 'blk:hero', path: ['contacts', 'contact'] },
+      {
+        type: 'block-revealed',
+        sheet: 'blk:hero',
+        block: address('hero', ['contacts', 'contact']),
+      },
       { type: 'tab-revealed' },
       { type: 'focus-loss-handled' },
     ]);
@@ -547,7 +621,7 @@ describe('transition', () => {
         focusActionsOf: 'blk:rival',
         blockReveal: {
           sheet: 'blk:hero',
-          path: ['contacts', 'contact'],
+          block: address('hero', ['contacts', 'contact']),
           cellId: 'portrait',
           focus: true,
         },
@@ -559,6 +633,41 @@ describe('transition', () => {
         tabReveal: null,
         focusAfterLoss: null,
       },
+    });
+  });
+  test('clears a root reveal only for a matching root completion', () => {
+    // #given
+    const state = stateWith({
+      blockReveal: {
+        sheet: 'blk:hero',
+        block: null,
+        cellId: 'portrait',
+        focus: true,
+      },
+    });
+
+    // #when
+    const nested = transition(state, {
+      type: 'block-revealed',
+      sheet: 'blk:hero',
+      block: address('hero', ['contacts', 'contact']),
+    });
+
+    const root = transition(nested, {
+      type: 'block-revealed',
+      sheet: 'blk:hero',
+      block: null,
+    });
+
+    // #then
+    expect({ afterNested: nested.blockReveal, afterRoot: root.blockReveal }).toEqual({
+      afterNested: {
+        sheet: 'blk:hero',
+        block: null,
+        cellId: 'portrait',
+        focus: true,
+      },
+      afterRoot: null,
     });
   });
 });
@@ -587,4 +696,12 @@ function stateWith(overrides: Partial<NavigationState> = {}): NavigationState {
 
 function reduce(state: NavigationState, events: readonly NavigationEvent[]): NavigationState {
   return events.reduce(transition, state);
+}
+
+function address(sheetId: string, path: readonly string[]) {
+  const block = blockAddress(sheetId, path);
+
+  if (block === null) throw new Error('fixture must be a block address');
+
+  return block;
 }

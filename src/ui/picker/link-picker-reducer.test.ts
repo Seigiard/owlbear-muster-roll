@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { blockAddress } from '@/core/block-address';
 import type { LinkTarget } from '@/core/link-target';
 import type { CommandOutcomePromise } from '@/ui/replica-client';
 import {
@@ -10,8 +11,16 @@ import {
   type PickerState,
 } from './link-picker-reducer';
 
-const TARGET: LinkTarget = { sheetId: 'arag', instanceId: null };
-const BLOCK: LinkTarget = { sheetId: 'npc', instanceId: 'gob' };
+function linkTarget(sheetId: string, path: readonly string[] = []): LinkTarget {
+  const block = blockAddress(sheetId, path);
+
+  if (block === null) throw new Error('fixture must be a block address');
+
+  return { block };
+}
+
+const TARGET = linkTarget('arag');
+const BLOCK = linkTarget('npc', ['npc_name', 'gob']);
 
 const READY: PickerFacts = {
   loaded: true,
@@ -92,7 +101,7 @@ describe('link picker reducer', () => {
     // #when
     const next = pickerReducer(picked, {
       type: 'facts',
-      facts: { ...READY, arrived: { sheetId: 'npc', instanceId: 'other' } },
+      facts: { ...READY, arrived: linkTarget('npc', ['npc_name', 'other']) },
     });
 
     // #then

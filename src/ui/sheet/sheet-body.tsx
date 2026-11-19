@@ -3,6 +3,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import {
+  blockIdOf,
+  blockKeyOf,
+  isLiveBlock,
+  parseBlockKey,
+  sheetRootAddress,
+  type BlockAddress,
+} from '@/core/block-address';
+import {
   firstFieldId,
   layoutSections,
   type RenderedTab,
@@ -10,7 +18,7 @@ import {
   type TemplateLayout,
 } from '@/core/preset';
 import { rowKey, type VersionedRecord } from '@/core/records';
-import { repeatBlocks } from '@/core/sheet-values';
+import { sameRenderedTab } from '@/core/rendered-tabs';
 import type { Command } from '@/core/ui-messages';
 import { sectionShownTo } from '@/core/visibility';
 import { copy } from '@/copy';
@@ -24,9 +32,9 @@ import { SheetSection, type BlockTools } from './preset-section';
 import { FieldEditingContext, type FieldEditing } from './use-field-edit';
 
 // FR14: the token cell "Открыть лист" asked for. It scrolls into view once, and takes the focus
-// when `focus` is set. A null path addresses a root cell.
+// when `focus` is set. A null block addresses a root cell.
 export type BlockReveal = {
-  path: readonly string[] | null;
+  block: BlockAddress | null;
   cellId: string;
   focus: boolean;
 };
@@ -95,15 +103,17 @@ export function SheetBody({
 
     const frame = requestAnimationFrame(() => {
       const scope =
-        reveal.path === null
+        reveal.block === null
           ? body.current
           : body.current === null
             ? null
-            : repeatBlockForPath(body.current, reveal.path);
+            : body.current.querySelector<HTMLElement>(
+                `[data-block="${CSS.escape(blockKeyOf(reveal.block))}"]`,
+              );
 
       const cell = scope?.querySelector<HTMLElement>(
         `[data-cell-id="${CSS.escape(reveal.cellId)}"][data-cell-scope="${CSS.escape(
-          reveal.path?.at(-1) ?? 'root',
+          reveal.block === null ? 'root' : (blockIdOf(reveal.block) ?? 'root'),
         )}"]`,
       );
 
@@ -125,11 +135,10 @@ export function SheetBody({
 
   const renderedTabKey =
     renderedTab === null
-      ? JSON.stringify([openTab, null, null])
+      ? JSON.stringify([openTab, null])
       : JSON.stringify([
           renderedTab.sourceIndex,
-          renderedTab.block?.scopeId ?? null,
-          renderedTab.block?.instanceId ?? null,
+          renderedTab.block === null ? null : blockKeyOf(renderedTab.block.block),
         ]);
 
   const previousRenderedTab = useRef<RenderedTab | null>(null);
@@ -148,11 +157,10 @@ export function SheetBody({
 
   const displayedTabKey =
     displayedTab === null
-      ? JSON.stringify([openTab, null, null])
+      ? JSON.stringify([openTab, null])
       : JSON.stringify([
           displayedTab.sourceIndex,
-          displayedTab.block?.scopeId ?? null,
-          displayedTab.block?.instanceId ?? null,
+          displayedTab.block === null ? null : blockKeyOf(displayedTab.block.block),
         ]);
 
   useEffect(() => {
@@ -186,7 +194,7 @@ export function SheetBody({
             pending={pending}
             blockTools={blockTools}
             tabBlock={displayedTabBlock}
-            parentPath={displayedTabBlock?.path ?? null}
+            parent={displayedTabBlock?.block ?? sheetRootAddress(sheetId)}
             role={role}
           />,
         ]
@@ -200,9 +208,7 @@ export function SheetBody({
         <TabBlockControls
           key={displayedTabKey}
           sheetId={sheetId}
-          scopeId={displayedTabBlock.scopeId}
-          instanceId={displayedTabBlock.instanceId}
-          path={displayedTabBlock.path}
+          block={displayedTabBlock.block}
           name={displayedTabBlock.name}
           editing={tabBlockEditing}
         />
@@ -225,8 +231,8 @@ export function SheetBody({
             ) : (
               <div
                 className="contents"
-                data-repeat-block={displayedTabBlock.instanceId}
-                data-repeat-path={JSON.stringify(displayedTabBlock.path)}
+                data-repeat-block={blockIdOf(displayedTabBlock.block) ?? ''}
+                data-block={blockKeyOf(displayedTabBlock.block)}
               >
                 {tabContent}
               </div>
@@ -238,24 +244,6 @@ export function SheetBody({
   );
 }
 
-function sameRenderedTab(left: RenderedTab, right: RenderedTab): boolean {
-  return (
-    left.sourceIndex === right.sourceIndex &&
-    left.block?.scopeId === right.block?.scopeId &&
-    left.block?.instanceId === right.block?.instanceId
-  );
-}
-
-function repeatBlockForPath(body: HTMLElement, path: readonly string[]): HTMLElement | null {
-  const serializedPath = JSON.stringify(path);
-
-  return (
-    [...body.querySelectorAll<HTMLElement>('[data-repeat-path]')].find(
-      (candidate) => candidate.getAttribute('data-repeat-path') === serializedPath,
-    ) ?? null
-  );
-}
-
 function hasRepeatBlock(
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
@@ -263,26 +251,17 @@ function hasRepeatBlock(
 ): boolean {
   const block = renderedTab.block;
 
-  return (
-    block !== null &&
-    repeatBlocks(records, sheetId, block.path.slice(0, -1)).some(
-      (candidate) => candidate.instanceId === block.instanceId,
-    )
-  );
+  return block !== null && block.block.sheetId === sheetId && isLiveBlock(records, block.block);
 }
 
 function TabBlockControls({
   sheetId,
-  scopeId,
-  instanceId,
-  path,
+  block,
   name,
   editing,
 }: {
   sheetId: string;
-  scopeId: string;
-  instanceId: string;
-  path: readonly string[];
+  block: BlockAddress;
   name: string;
   editing: Pick<FieldEditing, 'sendCommand'>;
 }): ReactNode {
@@ -297,13 +276,8 @@ function TabBlockControls({
     const command: Extract<Command, { type: 'repeat-block-delete' }> = {
       type: 'repeat-block-delete',
       sheetId,
-      sectionId: scopeId,
-      instanceId,
+      block,
     };
-
-    if (path.length > 2) {
-      command.path = [...path];
-    }
 
     void editing
       .sendCommand(command)
@@ -373,12 +347,14 @@ function sheetValuesSignature(
     versions.push(record === undefined ? '' : versionOf(record));
   }
 
-  const repeatPrefix = `blk:${sheetId}:`;
-
   for (const record of records.values()) {
-    if (record.k.startsWith(repeatPrefix)) {
-      versions.push(versionOf(record));
+    const block = parseBlockKey(record.k);
+
+    if (block === null || block.sheetId !== sheetId || block.path.length === 0) {
+      continue;
     }
+
+    versions.push(versionOf(record));
   }
 
   // The records come in no set order.

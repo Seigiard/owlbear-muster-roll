@@ -1,10 +1,23 @@
 import { assembleRecords } from '@/core/merge';
+import { blockAddress } from '@/core/block-address';
 import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
 import { randomFaces } from '@/core/formula-evaluate';
-import type { PresetCell, TemplateLayout } from '@/core/preset';
+import {
+  parsePresetStructure,
+  presetProblems,
+  type PresetCell,
+  type TemplateLayout,
+} from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { prepareDiceRoll, rollDiceCell, type DicePlace, type ShownValue } from './dice-roll';
+import {
+  diceBlockOf,
+  dicePlaceOf,
+  prepareDiceRoll,
+  rollDiceCell,
+  type DicePlace,
+  type ShownValue,
+} from './dice-roll';
 
 // Every 1d20 shows 7: floor(0.3 * 20) + 1.
 const SEVEN = (): number => 0.3;
@@ -182,6 +195,221 @@ function diceChoiceRoll(
 
   return prepareDiceRoll(layout, records, 'brok', place, new Map());
 }
+
+describe('diceBlockOf', () => {
+  test('names the repeat block selected by a dice place', () => {
+    // #then
+    expect(diceBlockOf(TEMPLATE, 'brok', ATTACK)).toEqual({
+      sheetId: 'brok',
+      path: ['attack', 'i1'],
+    });
+  });
+
+  test('refuses a nested path whose block id differs from the place', () => {
+    // #given
+    const place: DicePlace = {
+      ...ATTACK,
+      instanceId: 'other',
+      path: ['attack', 'i1', 'spell', 's1'],
+    };
+
+    // #then
+    expect(diceBlockOf(TEMPLATE, 'brok', place)).toBeNull();
+  });
+});
+
+describe('dicePlaceOf', () => {
+  test('serialises a plain row in a one-pair tab block with its full path', () => {
+    // #given
+    const block = blockAddress('npc', ['npc', 'a']);
+
+    if (block === null) throw new Error('fixture must be a block address');
+
+    const place = {
+      tabIndex: 1,
+      sectionIndex: 0,
+      rowIndex: 2,
+      cellIndex: 3,
+      instanceId: null,
+    };
+
+    // #when
+    const wire = dicePlaceOf(place, block);
+
+    // #then
+    expect(wire).toEqual({
+      tabIndex: 1,
+      sectionIndex: 0,
+      rowIndex: 2,
+      cellIndex: 3,
+      instanceId: 'a',
+      path: ['npc', 'a'],
+    });
+  });
+
+  test('serialises a nested block with its leaf id and unchanged full path', () => {
+    // #given
+    const block = blockAddress('npc', ['npc', 'a', 'attack', 'x']);
+
+    if (block === null) throw new Error('fixture must be a block address');
+
+    const place = {
+      tabIndex: 1,
+      sectionIndex: 1,
+      rowIndex: 0,
+      cellIndex: 2,
+      instanceId: null,
+    };
+
+    // #when
+    const wire = dicePlaceOf(place, block);
+
+    // #then
+    expect(wire).toEqual({
+      tabIndex: 1,
+      sectionIndex: 1,
+      rowIndex: 0,
+      cellIndex: 2,
+      instanceId: 'x',
+      path: ['npc', 'a', 'attack', 'x'],
+    });
+  });
+
+  test('serialises a root row without a path', () => {
+    // #given
+    const place = {
+      tabIndex: 0,
+      sectionIndex: 0,
+      rowIndex: 0,
+      cellIndex: 1,
+      instanceId: 'stale',
+      path: ['stale', 'stale'],
+    };
+
+    // #when
+    const wire = dicePlaceOf(place, null);
+
+    // #then
+    expect(wire).toEqual({
+      tabIndex: 0,
+      sectionIndex: 0,
+      rowIndex: 0,
+      cellIndex: 1,
+      instanceId: null,
+    });
+  });
+});
+
+test('gives each repeat row its own field scope while repeat ids remain unique in the sheet scope', () => {
+  // #given
+  const candidate = {
+    v: 4,
+    templates: [
+      {
+        id: 'journal',
+        title: 'Журнал',
+        tabs: [
+          {
+            title: 'Первое',
+            sections: [
+              {
+                rows: [
+                  {
+                    repeat: { id: 'conditions', nameField: 'name' },
+                    cells: [{ kind: 'field', type: 'text', id: 'name' }],
+                  },
+                  {
+                    repeat: { id: 'contacts', nameField: 'name' },
+                    cells: [{ kind: 'field', type: 'text', id: 'name' }],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            title: 'Второе',
+            sections: [
+              {
+                repeat: { id: 'conditions', nameField: 'title' },
+                rows: [{ cells: [{ kind: 'field', type: 'text', id: 'title' }] }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  // #when
+  const structure = parsePresetStructure(candidate);
+
+  // #then
+  expect(structure === null ? null : presetProblems(structure)).toEqual([
+    {
+      failure: { code: 'duplicate-section', detail: 'conditions' },
+      path: [0, 1, 0],
+    },
+  ]);
+});
+
+test('rolls a repeat-row dice cell from the scoped descendant block', () => {
+  // #given
+  const layout: TemplateLayout = {
+    tabs: [
+      {
+        sections: [
+          {
+            rows: [
+              {
+                repeat: { id: 'conditions', nameField: 'name' },
+                cells: [
+                  { kind: 'field', type: 'text', id: 'name' },
+                  { kind: 'field', type: 'number', id: 'severity' },
+                  { kind: 'dice', formula: '1d20 + severity', name: 'Проверка' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const records = new Map<string, VersionedRecord>([
+    [
+      'blk:journal:conditions:c1',
+      {
+        k: 'blk:journal:conditions:c1',
+        d: {
+          order: 0,
+          cells: { name: ['Отравлен', 1, 'seed'], severity: [2, 1, 'seed'] },
+        },
+        c: 1,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
+    ],
+  ]);
+
+  // #when
+  const rolled = rollDiceCell(
+    layout,
+    records,
+    'journal',
+    { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 2, instanceId: 'c1' },
+    new Map(),
+    randomFaces(SEVEN),
+  );
+
+  // #then
+  expect(rolled).toEqual({
+    ok: true,
+    value: {
+      cell: 'Проверка',
+      result: { roll: 9, faces: [7], target: null, targetFaces: [], outcome: null },
+    },
+  });
+});
 
 describe('rollDiceCell', () => {
   test.each([

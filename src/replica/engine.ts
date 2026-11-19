@@ -32,8 +32,9 @@ import {
   UI_CHANNEL,
   type EngineMessage,
   type Notice,
-  type OpenSheetRequest,
+  type OpenSheetTarget,
   type RejectionReason,
+  wireOpenSheetOf,
 } from '@/core/ui-messages';
 import { linkTargetShownTo, type PlayerRole } from '@/core/visibility';
 import type { BroadcastOptions, Platform } from '@/platform/ports';
@@ -293,7 +294,7 @@ export async function startReplicaEngine(
   // FR14: the sheet "Открыть лист" asked for, until a window acknowledges it. A newer press
   // replaces it. It is dropped once this role cannot see the sheet, the sheet is gone, Owlbear
   // refuses to open the window, or it outlives its lifetime.
-  let heldOpen: OpenSheetRequest | null = null;
+  let heldOpen: OpenSheetTarget | null = null;
   // Read against the clock, not a timer, as a hidden tab's timers may not run.
   let heldOpenUntil = 0;
 
@@ -737,10 +738,9 @@ export async function startReplicaEngine(
 
     const id = newId();
 
-    heldOpen =
-      target.path === null || target.path === undefined
-        ? { id, sheetId: target.sheetId, cellId: target.cellId ?? '' }
-        : { id, sheetId: target.sheetId, path: target.path, cellId: target.cellId ?? '' };
+    const block = target.block;
+
+    heldOpen = { id, block, cellId: target.cellId ?? '' };
     heldOpenUntil = Date.now() + timing.openRequestTtlMs;
     // No window opens for it, so a window opened by hand later does not jump to it.
     platform.action.open().catch((error) => {
@@ -760,7 +760,9 @@ export async function startReplicaEngine(
       return;
     }
 
-    send({ t: 'open-sheet', ...heldOpen }).catch((error) => {
+    const message = wireOpenSheetOf(heldOpen);
+
+    send(message).catch((error) => {
       console.error('Muster Roll could not ask a window to open a sheet', error);
     });
   }
@@ -781,13 +783,8 @@ export async function startReplicaEngine(
     return live !== null && linkTargetShownTo(role, live);
   }
 
-  function openRequestTarget(request: OpenSheetRequest): LinkTarget {
-    return {
-      sheetId: request.sheetId,
-      instanceId: request.path?.at(-1) ?? null,
-      path: request.path,
-      cellId: request.cellId,
-    };
+  function openRequestTarget(request: OpenSheetTarget): LinkTarget {
+    return { block: request.block, cellId: request.cellId };
   }
 
   function dropOpen(id: string): void {

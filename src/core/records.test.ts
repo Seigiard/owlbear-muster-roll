@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { JsonObject, JsonValue } from '@/core/json';
-import { parseRecord, parseRepKey, parseStoredRecord, repKey } from '@/core/records';
+import { parseRecord, parseStoredRecord, repKey } from '@/core/records';
 
 const VALID_FORMS: [string, JsonValue][] = [
   ['preset', 'eJyrVgIAAS8Arg=='],
@@ -274,29 +274,6 @@ describe('repKey', () => {
     const key = repKey('s1', 'attack', 'i1');
     // #then
     expect(key).toBe('blk:s1:attack:i1');
-  });
-});
-
-describe('parseRepKey', () => {
-  test('reads the sheet, section and instance ids of a descendant block key', () => {
-    // #when
-    const parts = parseRepKey('blk:s1:attack:i1');
-    // #then
-    expect(parts).toEqual({ sheetId: 's1', sectionId: 'attack', instanceId: 'i1' });
-  });
-  test.each([
-    'row:s1:attack',
-    'rep:s1:attack',
-    'rep:s1:attack:',
-    'rep::attack:i1',
-    'rep:s1::i1',
-    'rep:s1:attack:i1:x',
-    'link:t1',
-  ])('refuses the key %j', (key) => {
-    // #when
-    const parts = parseRepKey(key);
-    // #then
-    expect(parts).toBeNull();
   });
 });
 

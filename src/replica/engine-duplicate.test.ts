@@ -11,7 +11,7 @@ import {
 } from '@/core/records';
 import { encodeStateRecords } from '@/core/state-records';
 import type { Timing } from '@/core/timing';
-import { UI_CHANNEL, type Command } from '@/core/ui-messages';
+import { UI_CHANNEL, type WireCommand } from '@/core/ui-messages';
 import type { PlayerRole } from '@/platform/ports';
 import type { ReplicaEngineOptions } from '@/replica/engine';
 import {
@@ -672,7 +672,12 @@ function base(): VersionedRecord[] {
   return [PRESET_RECORD, ...SOURCE];
 }
 
-function duplicate(sheetId: string, sectionId: string, instanceId: string, count: number): Command {
+function duplicate(
+  sheetId: string,
+  sectionId: string,
+  instanceId: string,
+  count: number,
+): WireCommand {
   return { type: 'repeat-block-duplicate', sheetId, sectionId, instanceId, count };
 }
 
@@ -733,7 +738,7 @@ function lastKeySegment(record: Pick<VersionedRecord, 'k'>): string {
   return record.k.split(':').at(-1) ?? '';
 }
 
-async function commandWithId(client: Client, id: string, command: Command): Promise<void> {
+async function commandWithId(client: Client, id: string, command: WireCommand): Promise<void> {
   await client.platform.broadcast.sendMessage(
     UI_CHANNEL,
     { t: 'command', id, command },

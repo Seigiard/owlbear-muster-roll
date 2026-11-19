@@ -1,13 +1,20 @@
 import { acceptedFieldValue } from '@/core/field-patch';
+import {
+  blockIdOf,
+  blockKeyOf,
+  childAddress,
+  parentOf,
+  parseBlockKey,
+  scopePathOf,
+  sectionIdOf,
+  type BlockAddress,
+} from '@/core/block-address';
 import { sameJson } from '@/core/json';
 import type { Version } from '@/core/merge';
 import type { TemplateLayout } from '@/core/preset';
 import { keptCells, templateScopes, type PresetMoves } from '@/core/preset-migrate';
 import {
   blockDataSchema,
-  blockKey,
-  blockPathKey,
-  parseBlockPathKey,
   versionCells,
   type FieldValue,
   type RepData,
@@ -267,7 +274,9 @@ export function proposedRecord(
     });
   }
 
-  if (instance === undefined && key.split(':').length !== 2) {
+  const parsedKey = parseBlockKey(key);
+
+  if (instance === undefined && (parsedKey === null || parsedKey.path.length !== 0)) {
     return err('gone');
   }
 
@@ -296,13 +305,13 @@ export function strippedPatch(
   patch: ProposalPatch,
   template: TemplateLayout,
 ): ProposalPatch | null {
-  const parsed = parseBlockPathKey(key);
+  const parsed = parseBlockKey(key);
   const scopes = templateScopes(template);
 
   const fields =
-    parsed === null
+    parsed === null || parsed.path.length === 0
       ? [...scopes.rowFields.values()].map((entry) => entry.field)
-      : (scopes.sectionsByPath.get(scopePathKey(parsed.path)) ?? null);
+      : (scopes.sectionsByPath.get(scopePathKey(parsed)) ?? null);
 
   if (fields === null) {
     return null;
@@ -341,19 +350,19 @@ export function movedPatches(
   patch: ProposalPatch,
   moves: PresetMoves,
 ): { k: string; patch: ProposalPatch }[] {
-  const parsed = parseBlockPathKey(key);
-  const sheetId = parsed?.sheetId ?? key.split(':')[1] ?? '';
+  const parsed = parseBlockKey(key);
 
-  if (parsed !== null) {
-    const sectionId = parsed.path.at(-2);
-    const instanceId = parsed.path.at(-1);
-    const target = sectionId === undefined ? null : moves.sectionOf(sectionId, parsed.path);
+  if (parsed !== null && parsed.path.length > 0) {
+    const sectionId = sectionIdOf(parsed);
+    const instanceId = blockIdOf(parsed);
+    const parent = parentOf(parsed);
+    const target = sectionId === null ? null : moves.sectionOf(sectionId, parsed);
 
-    return target === null || instanceId === undefined
+    return target === null || instanceId === null || parent === null
       ? []
       : [
           {
-            k: blockPathKey(parsed.sheetId, [...parsed.path.slice(0, -2), target, instanceId]),
+            k: blockKeyOf(childAddress(parent, target, instanceId)),
             patch,
           },
         ];
@@ -379,11 +388,11 @@ export function movedPatches(
 
   return Object.keys(values).length === 0
     ? []
-    : [{ k: blockKey(sheetId), patch: { kind: 'fields', values } }];
+    : [{ k: parsed === null ? key : blockKeyOf(parsed), patch: { kind: 'fields', values } }];
 }
 
-function scopePathKey(path: readonly string[]): string {
-  return path.filter((_part, index) => index % 2 === 0).join(':');
+function scopePathKey(block: BlockAddress): string {
+  return scopePathOf(block).join(':');
 }
 
 function scheduleWithTimer(run: () => void, delay: number): () => void {
