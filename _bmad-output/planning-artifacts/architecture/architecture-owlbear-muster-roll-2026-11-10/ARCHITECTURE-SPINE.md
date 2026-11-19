@@ -153,8 +153,8 @@ A message with a higher generation also starts AD-9 adoption.
 ### AD-8 — Snapshot is read, merge, write, verify [ADOPTED]
 
 - **Binds:** CAP-9, CAP-10
-- **Prevents:** A stale tab overwriting newer data, a silently dropped write counting as saved, and a near-empty replica replacing a good snapshot.
-- **Rule:** Only a GM client that is not `catching-up` writes. It writes after a pause in edits, with jitter, and when its page becomes hidden.
+- **Prevents:** A stale tab overwriting newer data, a silently dropped write counting as saved, a near-empty replica replacing a good snapshot, and edits made just before the tab closed staying out of the snapshot.
+- **Rule:** Only a GM client that is not `catching-up` writes. It writes after a pause in edits, with jitter, and when its page becomes hidden. It also writes after catch-up when the copy its catch-up read lacks a record it stores, or is absent while it stores records: a page that closed during its write left that copy behind (TASK-118).
   1. Read the snapshot under `app.muster-roll/snapshot`. If it has a higher `v` or does not decode, stop and raise a notice.
   2. Merge it into the replica. Stop if a `resume` or visibility change falls between this read and the write.
   3. Encode every record, tombstones and versions included, with the generation, sorted by key, deflated and base64-encoded, using `core/snapshot`.
