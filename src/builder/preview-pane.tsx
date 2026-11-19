@@ -241,7 +241,10 @@ export function PreviewPane({
       // SAFETY: the preview's local sender returns the same answered outcome as ReplicaClient after
       // applying only the three commands that the preview composes.
       sendCommand: ((command: Command) => {
-        const editable = template !== null && (role === 'GM' || template.players === 'edit');
+        const editable =
+          problems.length === 0 &&
+          template !== null &&
+          (role === 'GM' || template.players === 'edit');
 
         if (!editable) {
           setCreatedTabBlock(null);
@@ -275,6 +278,7 @@ export function PreviewPane({
       localValues,
       minter,
       pageHideFlushes,
+      problems,
       presetData,
       role,
       sample,
@@ -295,7 +299,8 @@ export function PreviewPane({
   const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
   const previewSelection = useRef<string | null>(null);
 
-  const canEdit = problems.length === 0 && (role === 'GM' || docTemplate?.players === 'edit');
+  const roleCanEdit = role === 'GM' || docTemplate?.players === 'edit';
+  const canEdit = problems.length === 0 && roleCanEdit;
 
   useEffect(() => {
     dispatchEditing({ type: 'selection-changed', uid: selection });
@@ -343,7 +348,7 @@ export function PreviewPane({
       }
 
       event.preventDefault();
-      dispatchEditing({ type: 'enter-pressed', uid: selection, editable: canEdit });
+      dispatchEditing({ type: 'enter-pressed', uid: selection, editable: roleCanEdit });
     }
 
     window.addEventListener('keydown', handleKeyDown);
@@ -351,7 +356,7 @@ export function PreviewPane({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [canEdit, document, editingInstanceId, editingUid, selection]);
+  }, [document, editingInstanceId, editingUid, roleCanEdit, selection]);
 
   const selectedTab = useMemo(
     () => (selection === null ? null : tabIndexOf(document, selection)),
@@ -547,7 +552,7 @@ export function PreviewPane({
             ?.cells[path.cell]
         : undefined;
 
-    const editable = !sample && cell?.kind === 'field' && canEdit;
+    const editable = !sample && cell?.kind === 'field' && roleCanEdit;
 
     if (!selected) {
       previewSelection.current = uid;
