@@ -29,6 +29,7 @@ import {
 
 const GENERATION = { n: 0, a: '' };
 const DENIED = 'Нет прав на правку';
+const TOO_LARGE = 'Правка слишком большая';
 
 // The fake player connection of the GM-side tests, and the player id its `acl:` names.
 const PLAYER_SOCKET = 'p-socket';
@@ -1370,6 +1371,32 @@ describe("a player's edit", () => {
       pending: pendingKeys(player),
       notifications: player.platform.shownNotifications(),
     }).toEqual({ shown: STR_ROW, pending: [], notifications: [DENIED] });
+  });
+  test('too large: dropped, the value returns, and "Правка слишком большая" shows', async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm({ editDeniedQuietMs: 0 });
+
+    // #when
+    const id = send(player, {
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'row', rowId: 'str' },
+      fieldId: 'note',
+      value: 'ы'.repeat(7_400),
+    });
+
+    await waitUntil(
+      () =>
+        rejection(player, id) !== undefined || player.platform.shownNotifications().length === 1,
+    );
+
+    // #then
+    expect({
+      shown: shown(player, STR_ROW.k),
+      sent: proposals(room),
+      rejection: rejection(player, id),
+      notifications: player.platform.shownNotifications(),
+    }).toEqual({ shown: STR_ROW, sent: [], rejection: undefined, notifications: [TOO_LARGE] });
   });
   test('stale: applies its patch to the current record, takes its c + 1 and proposes again', async () => {
     // #given

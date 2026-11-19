@@ -1,7 +1,12 @@
 import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 
-import type { PlayerRole, StorageOperation } from '@/platform/ports';
+import {
+  SendFailure,
+  StorageFailure,
+  type PlayerRole,
+  type StorageOperation,
+} from '@/platform/ports';
 
 import {
   broadcastPreservesOneSenderArrivalOrder,
@@ -74,7 +79,7 @@ describe('mock storage port contract', () => {
     // #then
     expect(observation).toEqual({
       status: 'returned',
-      result: Result.err({ operation: 'read', reason: STORAGE_FAILURE_REASON }),
+      result: Result.err(new StorageFailure({ operation: 'read', reason: STORAGE_FAILURE_REASON })),
     });
   });
 
@@ -88,7 +93,9 @@ describe('mock storage port contract', () => {
     // #then
     expect(observation).toEqual({
       status: 'returned',
-      result: Result.err({ operation: 'write', reason: STORAGE_FAILURE_REASON }),
+      result: Result.err(
+        new StorageFailure({ operation: 'write', reason: STORAGE_FAILURE_REASON }),
+      ),
     });
   });
 
@@ -102,7 +109,9 @@ describe('mock storage port contract', () => {
     // #then
     expect(observation).toEqual({
       status: 'returned',
-      result: Result.err({ operation: 'remove', reason: STORAGE_FAILURE_REASON }),
+      result: Result.err(
+        new StorageFailure({ operation: 'remove', reason: STORAGE_FAILURE_REASON }),
+      ),
     });
   });
 
@@ -116,7 +125,7 @@ describe('mock storage port contract', () => {
     // #then
     expect(observation).toEqual({
       status: 'returned',
-      result: Result.err({ operation: 'list', reason: STORAGE_FAILURE_REASON }),
+      result: Result.err(new StorageFailure({ operation: 'list', reason: STORAGE_FAILURE_REASON })),
     });
   });
 });
@@ -195,7 +204,12 @@ describe('mock broadcast port contract', () => {
     expect(observation).toEqual({
       send: {
         status: 'resolved',
-        result: Result.err({ kind: 'rate-limited' }),
+        result: Result.err(
+          new SendFailure({
+            kind: 'rate-limited',
+            channel: 'port-contract:rate-limit',
+          }),
+        ),
       },
       events: [],
     });
@@ -287,7 +301,12 @@ function createRateLimitedBroadcastFixture(): RateLimitedBroadcastFixture {
     observationTimeoutMs: OBSERVATION_TIMEOUT_MS,
     quietPeriodMs: QUIET_PERIOD_MS,
     injectRateLimitedSend: () => {
-      topology.backgroundA.failNextSends([{ kind: 'rate-limited' }]);
+      topology.backgroundA.failNextSends([
+        new SendFailure({
+          kind: 'rate-limited',
+          channel: 'port-contract:rate-limit',
+        }),
+      ]);
     },
     cleanup: () => undefined,
   };
