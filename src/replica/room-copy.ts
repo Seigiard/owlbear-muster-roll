@@ -2,22 +2,27 @@ import type { JsonObject } from '@/core/json';
 import { compareGenerations } from '@/core/merge';
 import type { VersionedRecord } from '@/core/records';
 import {
-  encodeSnapshot,
-  readBackHolds,
   readSnapshot,
   ROOM_METADATA_BYTE_LIMIT,
   roomCopyUsage,
-  roomMetadataBytes,
   SNAPSHOT_KEY,
   type Snapshot,
   type SnapshotFailure,
-  type SnapshotValue,
 } from '@/core/snapshot';
 import type { Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
 import type { Notice, RoomCopyOutcome, RoomCopyStatus } from '@/core/ui-messages';
 import { MetadataFailure, type MetadataPort } from '@/platform/ports';
 import { MessageRejectedFailure, type FailureReporter } from '@/replica/failures';
+import { step } from '@/replica/machine';
+import {
+  initialPhase,
+  roomCopyTable,
+  type Effect,
+  type Event,
+  type Phase,
+  type RoomCopyEnv,
+} from '@/replica/room-copy-table';
 import type { Schedule } from '@/replica/timers';
 
 export type RoomCopyOptions = {
@@ -51,85 +56,186 @@ export type RoomCopy = {
   notices: () => Notice[];
 };
 
-type WriteMode = 'ordinary' | 'import';
+type Input = {
+  [K in Event['kind']]: Omit<Extract<Event, { kind: K }>, 'env'>;
+}[Event['kind']];
 
-type WritePhase = 'reading' | 'writing' | 'verifying';
+type PortEffect = Extract<Effect, { type: 'read-metadata' | 'write-metadata' }>;
 
-type ActiveWrite = {
-  phase: WritePhase;
-  mode: WriteMode;
-  completion: Promise<void>;
-};
-
-type WriteLifecycle = { phase: 'idle' } | ActiveWrite | { phase: 'stopped'; active?: ActiveWrite };
-
-type DeferredWork = {
-  owed: boolean;
-  rerun: boolean;
-  scheduled?: { cancel: () => void };
+type ImportCompletion = {
+  superseded: () => boolean;
+  resolve: () => void;
+  reject: (failure: { error: unknown }) => void;
 };
 
 export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
   const report = options.report ?? (() => undefined);
-  // AD-8 room copy. The notice stays until the next verified write.
+  let phase: Phase = initialPhase();
+  let cancelPause: (() => void) | undefined;
+  let nextImportId = 0;
+  const imports = new Map<number, ImportCompletion>();
   let notSaved = false;
-  // A readable room copy of this client's generation was last read or written.
   let exists = false;
   let used = 0;
   let free = ROOM_METADATA_BYTE_LIMIT;
-  // What the last catch-up found in the room copy. A player with no GM answer shows data by it.
   let outcome: RoomCopyOutcome = null;
-  // AD-12: the room copy last read is of an older format. A GM sees the notice until a wipe or an
-  // import replaces the copy, and no routine write replaces it meanwhile.
   let older = false;
-  // Deferred work is independent from the saved-copy status and the active write lifecycle.
-  const deferred: DeferredWork = { owed: false, rerun: false };
-  let lifecycle: WriteLifecycle = { phase: 'idle' };
-  // Counts `resume` and visibility changes. A write stops when one falls between its read and its
-  // write.
-  let pageChanges = 0;
 
-  function cancelScheduledWrite(): void {
-    const scheduled = deferred.scheduled;
-    deferred.scheduled = undefined;
-    scheduled?.cancel();
-  }
-
-  function isActiveWrite(state: WriteLifecycle): state is ActiveWrite {
-    return state.phase === 'reading' || state.phase === 'writing' || state.phase === 'verifying';
-  }
-
-  function activeWrite(): ActiveWrite | undefined {
-    if (isActiveWrite(lifecycle)) {
-      return lifecycle;
-    }
-
-    return lifecycle.phase === 'stopped' ? lifecycle.active : undefined;
-  }
-
-  function beginWrite(mode: WriteMode): ActiveWrite {
-    const operation: ActiveWrite = {
-      phase: 'reading',
-      mode,
-      completion: Promise.resolve(),
+  function dispatch(input: Input, importId?: number): boolean {
+    const env: RoomCopyEnv = {
+      get gm() {
+        return options.gm();
+      },
+      get writable() {
+        return options.writable();
+      },
+      get generation() {
+        return options.generation();
+      },
+      get records() {
+        return options.records();
+      },
+      get pauseMs() {
+        return options.timing.snapshotPauseMs + options.random() * options.timing.snapshotJitterMs;
+      },
+      get superseded() {
+        return importId === undefined ? false : imports.get(importId)?.superseded();
+      },
     };
 
-    lifecycle = operation;
+    const before = phase;
+    const result = step(roomCopyTable, before, { ...input, env });
 
-    return operation;
+    phase = result.phase;
+
+    for (const effect of result.effects) {
+      run(effect);
+    }
+
+    return result.phase !== before || result.effects.length > 0;
   }
 
-  function finishWrite(operation: ActiveWrite): void {
-    if (lifecycle === operation) {
-      lifecycle = { phase: 'idle' };
-    } else if (lifecycle.phase === 'stopped' && lifecycle.active === operation) {
-      lifecycle = { phase: 'stopped' };
+  function run(effect: Effect): void {
+    switch (effect.type) {
+      case 'arm':
+        cancelPause = options.schedule(options.signal, effect.delayMs, () => {
+          cancelPause = undefined;
+          dispatch({ kind: 'fired', timer: { kind: 'pause' } });
+        });
+        break;
+      case 'disarm':
+        cancelPause?.();
+        cancelPause = undefined;
+        break;
+      case 'read-metadata':
+      case 'write-metadata':
+        void runPortEffect(effect).catch((error) => portThrew(effect, { error }));
+        break;
+      case 'receive':
+        options.receive(effect.records);
+        dispatch({ kind: 'read-done', source: 'merged', metadata: effect.metadata });
+        break;
+      case 'adopt':
+        options.adopt(effect.snapshot);
+
+        if (effect.resumeOrdinary) {
+          dispatch({ kind: 'verify-done', metadata: null, after: 'ordinary-adopted' });
+        }
+
+        break;
+      case 'publish-status':
+        publishStatus(effect.update);
+        break;
+      case 'observe-metadata':
+        if (effect.source === 'followed' && effect.metadata !== null) {
+          followMetadata(effect.metadata);
+        } else {
+          mergeRoomCopy(effect.metadata);
+        }
+
+        break;
+      case 'report':
+        report(effect.failure);
+        break;
+      case 'newer-version':
+        options.newerVersion();
+        break;
+      case 'recheck-import':
+        dispatch(
+          { kind: 'verify-done', metadata: null, after: 'import-rejected' },
+          effect.request.id,
+        );
+        break;
+      case 'complete-import': {
+        const completion = imports.get(effect.request.id);
+        imports.delete(effect.request.id);
+
+        if (effect.unexpected === undefined) {
+          completion?.resolve();
+        } else {
+          completion?.reject(effect.unexpected);
+        }
+
+        break;
+      }
     }
   }
 
-  // AD-7 and AD-9: a copy of this client's generation merges. A copy of a higher generation is
-  // adopted, as at start a client takes the highest one it knows. A lower one is left alone. `null`
-  // is a failed read, which proves nothing.
+  function portThrew({ owner }: PortEffect, unexpected: { error: unknown }): void {
+    if (owner.route === 'metadata') {
+      report(new MetadataFailure({ operation: 'write', reason: String(unexpected.error) }));
+    } else if (owner.route === 'message') {
+      report(new MessageRejectedFailure({ reason: String(unexpected.error) }));
+    }
+
+    dispatch({ kind: 'failed', unexpected }, owner.importId);
+  }
+
+  async function runPortEffect(effect: PortEffect): Promise<void> {
+    const { importId } = effect.owner;
+
+    if (effect.type === 'read-metadata') {
+      const metadata = await readMetadata(options.metadata, report);
+
+      dispatch(
+        metadata === null ? { kind: 'failed' } : { kind: effect.answer, metadata },
+        importId,
+      );
+
+      return;
+    }
+
+    try {
+      await options.metadata.setMetadata({ [SNAPSHOT_KEY]: effect.value });
+    } catch (error) {
+      report(new MetadataFailure({ operation: 'write', reason: String(error) }));
+      dispatch({ kind: 'failed' }, importId);
+
+      return;
+    }
+
+    dispatch({ kind: 'write-done' }, importId);
+  }
+
+  async function writeImport(generation: Generation, superseded: () => boolean): Promise<void> {
+    await Promise.resolve();
+
+    return new Promise<void>((resolve, reject) => {
+      const id = nextImportId++;
+      imports.set(id, { superseded, resolve, reject: ({ error }) => reject(error) });
+
+      const accepted = dispatch({
+        kind: 'edited',
+        reason: { kind: 'import', request: { id, generation } },
+      });
+
+      if (!accepted) {
+        imports.delete(id);
+        resolve();
+      }
+    });
+  }
+
   function mergeRoomCopy(metadata: JsonObject | null): void {
     if (metadata === null) {
       // A player alone would load forever with no outcome; a known one stays.
@@ -148,7 +254,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     const read = readSnapshot(metadata);
 
     if (!read.isOk()) {
-      report(new MessageRejectedFailure({ reason: String(read.error) }));
+      report(new MessageRejectedFailure({ reason: read.error }));
       outcome = outcomeOf(read.error);
       unreadableRoomCopy(metadata, read.error);
 
@@ -164,18 +270,14 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
       return;
     }
 
-    // AD-9: a copy of a higher generation is adopted, and as it decodes it completes that
-    // generation at once: a client that starts after an import takes the highest generation of its
-    // storage and the copy.
+    // AD-9: a readable copy completes its generation at once.
     if (compareGenerations(copy.g, options.generation()) > 0) {
       options.adopt(copy);
     }
 
     const sameGeneration = compareGenerations(copy.g, options.generation()) === 0;
 
-    // Set before the records merge, so the delta that brings them carries it: a window never sees
-    // `read` without the records read.
-    // A copy of another generation is there but cannot be read as this client's data.
+    // Set before the records merge so the delta that brings them carries the outcome.
     outcome = sameGeneration ? 'read' : 'unreadable';
 
     if (sameGeneration) {
@@ -185,388 +287,50 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     noteRoomCopy(metadata, sameGeneration);
   }
 
-  // AD-8: the edits paused. Each edit puts the write off again by the whole pause.
-  function scheduleRoomCopy(): void {
-    cancelScheduledWrite();
-
-    if (lifecycle.phase === 'stopped' || !options.gm()) {
-      return;
-    }
-
-    const delay =
-      options.timing.snapshotPauseMs + options.random() * options.timing.snapshotJitterMs;
-
-    const cancel = options.schedule(options.signal, delay, () => {
-      deferred.scheduled = undefined;
-      void writeRoomCopy().catch((error) => {
-        report(new MetadataFailure({ operation: 'write', reason: String(error) }));
-      });
-    });
-
-    deferred.scheduled = { cancel };
-  }
-
-  // AD-8: read, merge, encode, measure, write and read back. Any run that does not end in a
-  // verified write leaves the write owed, so catch-up's end or the next trigger tries again.
-  async function writeRoomCopy(): Promise<void> {
-    if (lifecycle.phase === 'stopped') {
-      return;
-    }
-
-    cancelScheduledWrite();
-    deferred.owed = true;
-
-    if (activeWrite() !== undefined) {
-      deferred.rerun = true;
-
-      return;
-    }
-
-    if (options.signal.aborted || !options.writable()) {
-      return;
-    }
-
-    const operation = beginWrite('ordinary');
-    const run = runRoomCopyWrite(operation);
-    operation.completion = run.catch(() => undefined);
-
-    try {
-      await run;
-    } finally {
-      finishWrite(operation);
-    }
-
-    if (deferred.rerun) {
-      deferred.rerun = false;
-      await writeRoomCopy();
-    }
-  }
-
-  async function waitForWrite(): Promise<void> {
-    const operation = activeWrite();
-
-    if (operation === undefined) {
-      return;
-    }
-
-    await operation.completion;
-    await waitForWrite();
-  }
-
-  async function runRoomCopyWrite(operation: ActiveWrite): Promise<void> {
-    const changesAtRead = pageChanges;
-    const metadata = await readMetadata(options.metadata, report);
-
-    // Step 2: a `resume` or a visibility change during the read stops the write.
-    if (options.signal.aborted || !options.writable() || pageChanges !== changesAtRead) {
-      return;
-    }
-
-    if (metadata === null) {
-      failRoomCopy(null);
-
-      return;
-    }
-
-    const read = readSnapshot(metadata);
-
-    // Step 1: a copy this build cannot read is never overwritten.
-    if (!read.isOk()) {
-      report(new MessageRejectedFailure({ reason: String(read.error) }));
-      unreadableRoomCopy(metadata, read.error);
-
-      return;
-    }
-
-    const copy = read.value;
-
-    if (copy !== null) {
-      const relation = compareGenerations(copy.g, options.generation());
-
-      if (relation > 0) {
-        options.adopt(copy);
-
-        return;
-      }
-
-      // A lower generation is not merged, and the write below replaces it.
-      if (relation === 0) {
-        options.receive(copy.records);
-      }
-    }
-
-    const written: Snapshot = { g: options.generation(), records: [...options.records()] };
-    const value = encodeSnapshot(written.g, written.records);
-
-    // Step 4: over the limit the previous copy stays.
-    if (!value.isOk() || roomMetadataBytes(metadata, value.value) > ROOM_METADATA_BYTE_LIMIT) {
-      failRoomCopy(metadata);
-
-      return;
-    }
-
-    await verifyRoomCopyWrite(operation, written, value.value);
-  }
-
-  // Step 5: Owlbear reports success for a write it drops, so only the read-back counts.
-  async function verifyRoomCopyWrite(
-    operation: ActiveWrite,
-    written: Snapshot,
-    value: SnapshotValue,
-  ): Promise<void> {
-    operation.phase = 'writing';
-
-    try {
-      await options.metadata.setMetadata({ [SNAPSHOT_KEY]: value });
-    } catch (error) {
-      report(new MetadataFailure({ operation: 'write', reason: String(error) }));
-
-      if (options.writable()) {
-        failRoomCopy(null);
-      }
-
-      return;
-    }
-
-    if (!options.writable()) {
-      return;
-    }
-
-    operation.phase = 'verifying';
-    const readBack = await readMetadata(options.metadata, report);
-
-    if (!options.writable()) {
-      return;
-    }
-
-    if (readBack === null) {
-      failRoomCopy(null);
-
-      return;
-    }
-
-    const check = readSnapshot(readBack);
-
-    // A copy of a higher generation holds none of this client's records, so it is not saved.
-    if (check.isOk() && check.value !== null && compareGenerations(check.value.g, written.g) > 0) {
-      options.adopt(check.value);
-
-      return;
-    }
-
-    if (!check.isOk() || !readBackHolds(written, check.value)) {
-      failRoomCopy(readBack);
-
-      return;
-    }
-
-    deferred.owed = false;
-    notSaved = false;
-    noteRoomCopy(readBack, true);
-  }
-
-  // AD-9: the importer's room copy of the new generation. One that does not fit or fails its
-  // read-back raises the not-saved notice, and a copy of a lower generation goes from the room, so
-  // a player with no GM does not read the replaced data. It waits for a write in flight, which
-  // could land an older copy after it.
-  async function writeImportCopy(generation: Generation, superseded: () => boolean): Promise<void> {
-    await waitForWrite();
-
-    if (lifecycle.phase === 'stopped') {
-      return;
-    }
-
-    const operation = beginWrite('import');
-    const run = runImportCopy(operation, generation, superseded);
-    operation.completion = run.then(() => undefined).catch(() => undefined);
-    let supersededImport = false;
-
-    try {
-      supersededImport = await run;
-    } finally {
-      finishWrite(operation);
-    }
-
-    if (!supersededImport && deferred.rerun) {
-      deferred.rerun = false;
-      void writeRoomCopy().catch((error) => {
-        report(new MessageRejectedFailure({ reason: String(error) }));
-      });
-    }
-  }
-
-  async function runImportCopy(
-    operation: ActiveWrite,
-    generation: Generation,
-    superseded: () => boolean,
-  ): Promise<boolean> {
-    const verified = await importCopyVerified(operation, generation, superseded);
-
-    if (superseded()) {
-      return true;
-    }
-
-    if (verified !== null) {
-      deferred.owed = false;
-      notSaved = false;
-      noteRoomCopy(verified, true);
-    } else {
-      notSaved = true;
-      deferred.owed = true;
-      await removeLowerCopy(operation, generation, superseded);
-    }
-
-    return false;
-  }
-
-  // The read-back metadata of a verified write, or `null`. AD-9: it writes over a copy of a lower
-  // generation, one that does not decode and one of an older format, never one of a newer build.
-  async function importCopyVerified(
-    operation: ActiveWrite,
-    generation: Generation,
-    superseded: () => boolean,
-  ): Promise<JsonObject | null> {
-    operation.phase = 'reading';
-    const metadata = await readMetadata(options.metadata, report);
-
-    if (metadata === null || superseded()) {
-      return null;
-    }
-
-    const current = readSnapshot(metadata);
-
-    if (!current.isOk() && current.error === 'newer-version') {
-      report(new MessageRejectedFailure({ reason: 'newer-version' }));
-      options.newerVersion();
-
-      return null;
-    }
-
-    // A copy of a higher generation is another import that won: it is adopted, not overwritten.
-    if (adoptedHigherCopy(metadata, generation)) {
-      return null;
-    }
-
-    const written: Snapshot = { g: generation, records: [...options.records()] };
-    const value = encodeSnapshot(written.g, written.records);
-
-    if (!value.isOk() || roomMetadataBytes(metadata, value.value) > ROOM_METADATA_BYTE_LIMIT) {
-      return null;
-    }
-
-    operation.phase = 'writing';
-
-    try {
-      await options.metadata.setMetadata({ [SNAPSHOT_KEY]: value.value });
-    } catch (error) {
-      report(new MetadataFailure({ operation: 'write', reason: String(error) }));
-
-      return null;
-    }
-
-    operation.phase = 'verifying';
-    const readBack = await readMetadata(options.metadata, report);
-
-    if (readBack === null || superseded() || adoptedHigherCopy(readBack, generation)) {
-      return null;
-    }
-
-    const check = readSnapshot(readBack);
-
-    return check.isOk() && readBackHolds(written, check.value) ? readBack : null;
-  }
-
-  // Adopts a room copy of a generation above `generation`, and says whether there was one.
-  function adoptedHigherCopy(metadata: JsonObject, generation: Generation): boolean {
-    const read = readSnapshot(metadata);
-
-    if (!read.isOk() || read.value === null || compareGenerations(read.value.g, generation) <= 0) {
-      return false;
-    }
-
-    options.adopt(read.value);
-
-    return true;
-  }
-
-  // A copy this build cannot read stays: it may be a newer build's.
-  async function removeLowerCopy(
-    operation: ActiveWrite,
-    generation: Generation,
-    superseded: () => boolean,
-  ): Promise<void> {
-    operation.phase = 'reading';
-    const metadata = await readMetadata(options.metadata, report);
-
-    if (metadata === null || superseded()) {
-      options.changed();
-
-      return;
-    }
-
-    const read = readSnapshot(metadata);
-
-    if (!read.isOk() || read.value === null || compareGenerations(read.value.g, generation) >= 0) {
-      noteRoomCopy(metadata, false);
-
-      return;
-    }
-
-    operation.phase = 'writing';
-
-    try {
-      await options.metadata.setMetadata({ [SNAPSHOT_KEY]: undefined });
-    } catch (error) {
-      report(new MetadataFailure({ operation: 'write', reason: String(error) }));
-    }
-
-    operation.phase = 'verifying';
-    const after = await readMetadata(options.metadata, report);
-
-    if (after === null || lifecycle.phase === 'stopped') {
-      options.changed();
-
-      return;
-    }
-
-    noteRoomCopy(after, false);
-  }
-
-  // A GM raises the not-saved notice for a copy it cannot read; a newer build's copy also raises
-  // the new-version notice. A copy of an older format raises the GM's older-format notice instead,
-  // as only a wipe replaces it (AD-12). A player shows the catch-up outcome instead (Story 2.6).
   function unreadableRoomCopy(metadata: JsonObject, failure: SnapshotFailure): void {
     if (failure === 'newer-version') {
       options.newerVersion();
     }
 
     if (options.gm() && failure !== 'older-version') {
-      failRoomCopy(metadata);
+      publishStatus({ kind: 'failed', metadata });
     } else {
       noteRoomCopy(metadata, false);
     }
   }
 
-  // `null` keeps the sizes last read.
-  function failRoomCopy(metadata: JsonObject | null): void {
-    notSaved = true;
-    deferred.owed = true;
+  function publishStatus(update: Extract<Effect, { type: 'publish-status' }>['update']): void {
+    switch (update.kind) {
+      case 'failed':
+        notSaved = true;
 
-    if (metadata === null) {
-      options.changed();
-    } else {
-      noteRoomCopy(metadata, exists);
+        if (update.metadata === null) {
+          options.changed();
+        } else {
+          noteRoomCopy(update.metadata, exists);
+        }
+
+        break;
+      case 'saved':
+        notSaved = false;
+        noteRoomCopy(update.metadata, true);
+        break;
+      case 'absent':
+        if (update.metadata === null) {
+          options.changed();
+        } else {
+          noteRoomCopy(update.metadata, false);
+        }
+
+        break;
+      case 'import-failed':
+        notSaved = true;
+        break;
     }
   }
 
-  // Another GM's write or another extension's data changes what Settings shows. A copy of this
-  // generation does not merge here. A copy of a higher generation is adopted (gap 12), as an
-  // importer writes it before its `reset`.
+  // Another GM's write or another extension's data changes what Settings shows.
   function followMetadata(metadata: JsonObject): void {
-    if (lifecycle.phase === 'stopped') {
-      return;
-    }
-
     const read = readSnapshot(metadata);
     const copy = read.isOk() ? read.value : null;
 
@@ -577,7 +341,6 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     noteRoomCopy(metadata, copy !== null && compareGenerations(copy.g, options.generation()) === 0);
   }
 
-  // Takes the sizes from the metadata just read. The publisher compares the resulting header.
   function noteRoomCopy(metadata: JsonObject, copyExists: boolean): void {
     const usage = roomCopyUsage(metadata);
     const read = readSnapshot(metadata);
@@ -589,52 +352,31 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     options.changed();
   }
 
-  options.signal.addEventListener(
-    'abort',
-    () => {
-      const active = activeWrite();
-      cancelScheduledWrite();
-      lifecycle = active === undefined ? { phase: 'stopped' } : { phase: 'stopped', active };
-    },
-    { once: true },
-  );
+  options.signal.addEventListener('abort', () => dispatch({ kind: 'stop' }), { once: true });
+
+  if (options.signal.aborted) {
+    dispatch({ kind: 'stop' });
+  }
 
   return {
-    edited: scheduleRoomCopy,
-    pageHidden: () => {
-      pageChanges += 1;
-      void writeRoomCopy().catch((error) => {
-        report(new MessageRejectedFailure({ reason: String(error) }));
-      });
-    },
-    pageReturned: () => {
-      pageChanges += 1;
-    },
-    caughtUp: (applied) => {
-      if (deferred.owed || applied) {
-        scheduleRoomCopy();
-      }
-    },
+    edited: () => dispatch({ kind: 'edited' }),
+    pageHidden: () => dispatch({ kind: 'page-hidden' }),
+    pageReturned: () => dispatch({ kind: 'page-returned' }),
+    caughtUp: (applied) => dispatch({ kind: 'caught-up', applied }),
     read: async () => {
       const metadata = await readMetadata(options.metadata, report);
-
-      if (lifecycle.phase === 'stopped') {
-        return;
-      }
-
-      mergeRoomCopy(metadata);
+      dispatch({ kind: 'read-done', source: 'catch-up', metadata });
     },
-    followed: followMetadata,
+    followed: (metadata) => dispatch({ kind: 'read-done', source: 'followed', metadata }),
     replaced: (fromCopy) => {
       exists = fromCopy;
       options.changed();
     },
     demoted: () => {
-      cancelScheduledWrite();
-      deferred.owed = false;
+      dispatch({ kind: 'edited', reason: { kind: 'demoted' } });
       notSaved = false;
     },
-    writeImport: writeImportCopy,
+    writeImport,
     status: () => {
       const state = notSaved ? 'failed' : exists ? 'saved' : 'none';
 
@@ -672,8 +414,6 @@ async function readMetadata(
   return null;
 }
 
-// AD-12: what a room copy that cannot be read shows a player: a newer build's, an older format's,
-// or one that does not decode.
 function outcomeOf(failure: SnapshotFailure): RoomCopyOutcome {
   if (failure === 'newer-version') {
     return 'newer';
