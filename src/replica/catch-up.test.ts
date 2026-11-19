@@ -528,10 +528,71 @@ describe('catch-up', () => {
     // #given
     const harness = createHarness();
     harness.catchUp.heard('GM', { t: 'commit' });
+    harness.setNow(50);
+    harness.catchUp.fired({ kind: 'ping' });
+    harness.setNow(80);
     // #when
     const decisions = harness.catchUp.fired({ kind: 'gm-silence' });
     // #then
     expect(decisions).toEqual([{ type: 'show', projectedOnly: true }]);
+  });
+  test('a GM that answers the ping sent after a page pause stays online, with no catch-up', () => {
+    // #given: a live player that heard the GM at 0, then its page's timers stopped for 1000 ms.
+    const harness = createHarness();
+    const r = start(harness);
+    harness.catchUp.heard('GM', { t: 'commit' });
+    harness.catchUp.stateMerged(state(r), 'gm-a', 'equal');
+    harness.setNow(1000);
+    // #when: both overdue timers fire back to back, then the GM's alive arrives.
+    const ping = harness.catchUp.fired({ kind: 'ping' });
+    const silence = harness.catchUp.fired({ kind: 'gm-silence' });
+    harness.setNow(1001);
+    const reply = harness.catchUp.heard('GM', alive(10));
+    // #then
+    expect({ ping, silence, reply, view: harness.catchUp.view() }).toEqual({
+      ping: [{ type: 'ping' }, { type: 'arm', timer: { kind: 'ping' }, delayMs: 50 }],
+      silence: [{ type: 'arm', timer: { kind: 'gm-silence' }, delayMs: 20 }, { type: 'ping' }],
+      reply: [
+        { type: 'arm', timer: { kind: 'ping' }, delayMs: 50 },
+        { type: 'arm', timer: { kind: 'gm-silence' }, delayMs: 80 },
+      ],
+      view: { state: 'live', firstCatchUpDone: true, gmAnswered: true, gmLink: 'online' },
+    });
+  });
+  test('a ping sent when the page wakes just before the silence is due waits for its reply', () => {
+    // #given: a live player that heard the GM at 0; its timers stopped from 40 until 79.
+    const harness = createHarness();
+    const r = start(harness);
+    harness.catchUp.heard('GM', { t: 'commit' });
+    harness.catchUp.stateMerged(state(r), 'gm-a', 'equal');
+    harness.setNow(79);
+    harness.catchUp.fired({ kind: 'ping' });
+    // #when: the silence fires on time, 1 ms after that ping.
+    harness.setNow(80);
+    const decisions = harness.catchUp.fired({ kind: 'gm-silence' });
+    // #then
+    expect({ decisions, gmLink: harness.catchUp.view().gmLink }).toEqual({
+      decisions: [{ type: 'arm', timer: { kind: 'gm-silence' }, delayMs: 20 }, { type: 'ping' }],
+      gmLink: 'online',
+    });
+  });
+  test('a GM that answers no ping after a page pause goes offline when the recheck fires', () => {
+    // #given: a live player whose late silence timer pinged the GM at 1000.
+    const harness = createHarness();
+    const r = start(harness);
+    harness.catchUp.heard('GM', { t: 'commit' });
+    harness.catchUp.stateMerged(state(r), 'gm-a', 'equal');
+    harness.setNow(1000);
+    harness.catchUp.fired({ kind: 'ping' });
+    harness.catchUp.fired({ kind: 'gm-silence' });
+    // #when: the recheck fires on time and nothing was heard.
+    harness.setNow(1020);
+    const decisions = harness.catchUp.fired({ kind: 'gm-silence' });
+    // #then
+    expect({ decisions, gmLink: harness.catchUp.view().gmLink }).toEqual({
+      decisions: [{ type: 'show', projectedOnly: true }],
+      gmLink: 'offline',
+    });
   });
   test('a live player starts a delayed gm-return catch-up but a GM stays live', () => {
     // #given
@@ -612,6 +673,9 @@ describe('catch-up', () => {
     }
 
     harness.catchUp.heard('GM', { t: 'commit' });
+    harness.setNow(50);
+    harness.catchUp.fired({ kind: 'ping' });
+    harness.setNow(80);
     harness.catchUp.fired({ kind: 'gm-silence' });
     // #when
     const decisions = harness.catchUp.heard('GM', { t: 'commit' });

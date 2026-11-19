@@ -162,7 +162,13 @@ export type Event =
 
 export type Effect = CatchUpDecision;
 
-export type LivenessPhase = { readonly kind: 'offline' } | { readonly kind: 'online' };
+// `silenceDue` is when the armed gm-silence timer should fire, so a late one can be told apart.
+// `pingSentAt` is the last ping since gm-silence was armed, so the silence can wait for its reply.
+export type LivenessPhase =
+  | { readonly kind: 'offline' }
+  | { readonly kind: 'online'; readonly silenceDue: number; readonly pingSentAt: number | null };
+
+type OnlinePhase = Extract<LivenessPhase, { kind: 'online' }>;
 
 export type LivenessEvent = Extract<Event, { readonly kind: 'heard' | 'fired' | 'watch' }>;
 
@@ -769,8 +775,10 @@ function livenessHeard(phase: LivenessPhase, event: EventOf<'heard'>): Step<Live
     { type: 'arm', timer: { kind: 'gm-silence' }, delayMs: event.env.timing.gmLinkTimeoutMs },
   ];
 
+  const online = watching(event.env);
+
   if (phase.kind === 'online') {
-    return { phase, effects };
+    return { phase: online, effects };
   }
 
   if (event.env.role !== 'GM') {
@@ -779,18 +787,22 @@ function livenessHeard(phase: LivenessPhase, event: EventOf<'heard'>): Step<Live
 
   effects.push({ type: 'show', projectedOnly: true });
 
-  return { phase: { kind: 'online' }, effects };
+  return { phase: online, effects };
 }
 
 function livenessFired(phase: LivenessPhase, event: EventOf<'fired'>): Step<LivenessPhase, Effect> {
   switch (event.timer.kind) {
     case 'gm-silence':
-      return phase.kind === 'online'
+      if (phase.kind === 'offline') {
+        return { phase, effects: [] };
+      }
+
+      return silenceAnswered(phase, event.env)
         ? { phase: { kind: 'offline' }, effects: [{ type: 'show', projectedOnly: true }] }
-        : { phase, effects: [] };
+        : recheckGm(event.env);
     case 'ping':
       return {
-        phase,
+        phase: phase.kind === 'online' ? { ...phase, pingSentAt: event.env.now } : phase,
         effects: [
           { type: 'ping' },
           { type: 'arm', timer: { kind: 'ping' }, delayMs: pingDelay(event.env) },
@@ -803,11 +815,41 @@ function livenessFired(phase: LivenessPhase, event: EventOf<'fired'>): Step<Live
 
 function livenessWatch(phase: LivenessPhase, event: EventOf<'watch'>): Step<LivenessPhase, Effect> {
   return {
-    phase,
+    phase: phase.kind === 'online' ? watching(event.env) : phase,
     effects: [
       { type: 'arm', timer: { kind: 'ping' }, delayMs: pingDelay(event.env) },
       { type: 'arm', timer: { kind: 'gm-silence' }, delayMs: event.env.timing.gmLinkTimeoutMs },
     ],
+  };
+}
+
+function watching(env: CatchUpEnv): OnlinePhase {
+  return { kind: 'online', silenceDue: env.now + env.timing.gmLinkTimeoutMs, pingSentAt: null };
+}
+
+// Timers only schedule work: the link goes offline on a ping the GM left unanswered (TASK-120).
+// The silence decides only when it fires on time and its last ping went out at least a quarter of
+// the timeout ago, far longer than a reply takes. In a running page `pingDelay` puts the ping a
+// quarter to a half of the timeout before the silence. A silence more than a quarter late ran
+// after the page's timers stopped (a frozen tab, a sleeping laptop), and replies that came in
+// meanwhile may still wait behind it; a ping younger than a quarter went out at that wake.
+function silenceAnswered(phase: OnlinePhase, env: CatchUpEnv): boolean {
+  const quarter = env.timing.gmLinkTimeoutMs / 4;
+
+  return (
+    env.now - phase.silenceDue <= quarter &&
+    phase.pingSentAt !== null &&
+    env.now - phase.pingSentAt >= quarter
+  );
+}
+
+// The link stays online and asks the GM now; the recheck a quarter later decides on the reply.
+function recheckGm(env: CatchUpEnv): Step<LivenessPhase, Effect> {
+  const delayMs = env.timing.gmLinkTimeoutMs / 4;
+
+  return {
+    phase: { kind: 'online', silenceDue: env.now + delayMs, pingSentAt: env.now },
+    effects: [{ type: 'arm', timer: { kind: 'gm-silence' }, delayMs }, { type: 'ping' }],
   };
 }
 
