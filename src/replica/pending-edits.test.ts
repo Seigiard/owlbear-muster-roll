@@ -11,6 +11,7 @@ import type { Command, RejectionReason } from '@/core/ui-messages';
 import { createComposers } from '@/replica/composers';
 import {
   createPendingEdits,
+  deniesEdit,
   type PendingEdits,
   type PlayerEditCommand,
 } from '@/replica/pending-edits';
@@ -482,6 +483,16 @@ describe('pending edits', () => {
       sent: [pcRecord({ str: 11 }, 3), pcRecord({ str: 11 }, 6)],
       size: 1,
     });
+  });
+  test('keeps too-large as the denial cause', () => {
+    // #given
+    const failure = 'too-large';
+
+    // #when
+    const cause = deniesEdit(failure);
+
+    // #then
+    expect(cause).toBe('too-large');
   });
   test('a stale answer below the edit rebuilds over the newest known record, not only the answer', () => {
     // #given
