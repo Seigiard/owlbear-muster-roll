@@ -80,6 +80,12 @@ export const copy = {
     roomCopy: 'Копия в комнате',
     wipe: 'Очистка',
   },
+  diagnostics: {
+    sectionName: 'Диагностика',
+    count: (count: number): string => `Сбоев: ${count}`,
+    empty: 'Сбоев нет',
+    separator: ' · ',
+  },
   status: {
     pending: 'Ожидает',
     readOnly: 'Только чтение',
