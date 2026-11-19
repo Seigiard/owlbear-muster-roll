@@ -125,6 +125,14 @@ test('a GM alone in the room never shows the no-GM banner, though its link is of
   const gm = await openGm(context, true);
   // #when
   await gm.background.clock.runFor(2 * GM_LINK_TIMEOUT_MS);
+  await expect
+    .poll(() => syncRead(gm.window))
+    .toEqual({
+      state: 'live',
+      firstCatchUpDone: true,
+      gmLink: 'offline',
+      role: 'GM',
+    });
   // #then
   expect({
     banner: await gm.window.getByRole('status').textContent(),

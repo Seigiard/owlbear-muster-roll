@@ -529,6 +529,15 @@ export async function syncRead(page: Page): Promise<{
         answered: boolean;
       }>((resolve) => {
         const nonce = `read-${Date.now()}`;
+        let timer: ReturnType<typeof setInterval>;
+
+        const send = (): void => {
+          void window.mockPlatform.broadcast.sendMessage(
+            channel,
+            { t: 'projection-request', nonce },
+            { destination: 'LOCAL' },
+          );
+        };
 
         const stop = window.mockPlatform.broadcast.onMessage(channel, (event) => {
           const message = Object(event.data);
@@ -537,6 +546,7 @@ export async function syncRead(page: Page): Promise<{
             return;
           }
 
+          clearInterval(timer);
           stop();
           resolve({
             state: String(message.sync.state),
@@ -544,11 +554,8 @@ export async function syncRead(page: Page): Promise<{
           });
         });
 
-        void window.mockPlatform.broadcast.sendMessage(
-          channel,
-          { t: 'projection-request', nonce },
-          { destination: 'LOCAL' },
-        );
+        timer = setInterval(send, 50);
+        send();
       }),
     CHANNEL,
   );

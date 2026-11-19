@@ -9,6 +9,7 @@ import {
   openBackground,
   openRoom,
   sheetRecords,
+  syncRead,
   STORAGE_PREFIX,
   storedCell,
   type SeededSheet,
@@ -488,9 +489,10 @@ async function postToWindow(page: Page, message: JsonValue): Promise<void> {
   );
 }
 
-// Long enough for a command to reach the background and its record to reach storage.
 async function savedAfterSettling(page: Page): Promise<Saved> {
+  // Fire the save pause, then fence storage reads behind earlier commands with a projection reply.
   await page.clock.runFor(300);
+  await syncRead(page);
   const types = await page.evaluate(() => window.wireTypes);
 
   return {
