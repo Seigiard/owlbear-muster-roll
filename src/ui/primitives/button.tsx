@@ -30,7 +30,7 @@ export type PressableProps = {
   disabledReason?: string;
   // Or through the id of text already on the page that says why, which names the reason instead.
   disabledReasonId?: string;
-  autoFocus?: boolean;
+  focusOnMount?: boolean;
   // Replaces the visible text as the name, for a control that repeats and must say which one it is.
   accessibleName?: string;
   // The id of a message about this control, for an enabled one. A disabled one names its reason.
@@ -55,7 +55,7 @@ export function Pressable({
   onPress,
   disabledReason,
   disabledReasonId,
-  autoFocus,
+  focusOnMount,
   accessibleName,
   describedBy,
   expanded,
@@ -72,7 +72,8 @@ export function Pressable({
       className={clsx(BASE_CLASS, 'data-disabled:opacity-50', className)}
       isDisabled={isDisabled}
       onPress={onPress}
-      autoFocus={autoFocus}
+      // oxlint-disable-next-line jsx-a11y/no-autofocus -- Move focus to the safe cancel action when a confirmation opens.
+      autoFocus={focusOnMount}
       aria-describedby={isDisabled ? (disabledReasonId ?? reasonId) : describedBy}
       aria-expanded={expanded}
       aria-controls={controls}

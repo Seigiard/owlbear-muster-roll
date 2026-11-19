@@ -93,7 +93,7 @@ test('a player sees the no-GM banner once the GM pages close, and loses it when 
   // #given
   const gm = await openGm(context);
   const player = await openClient(context, PLAYER, null);
-  const banner = player.window.getByRole('status');
+  const banner = player.window.getByRole('status').first();
   await expect(player.window.getByRole('tab', { name: 'Брок' })).toBeVisible();
   // Two timeouts with only pings and their answers from the GM.
   await player.window.waitForTimeout(2 * GM_LINK_TIMEOUT_MS);
@@ -118,7 +118,7 @@ test('a GM alone in the room never shows the no-GM banner, though its link is of
   await gm.window.waitForTimeout(2 * GM_LINK_TIMEOUT_MS);
   // #then
   expect({
-    banner: await gm.window.getByRole('status').textContent(),
+    banner: await gm.window.getByRole('status').first().textContent(),
     sync: await syncRead(gm.window),
   }).toEqual({
     banner: '',
@@ -140,7 +140,7 @@ test('a failed local save shows over the no-GM banner', async ({ context }) => {
     localStorage.setItem(key, '{not json');
   }, `${STORAGE_PREFIX}blk:bad`);
   const background = await openClientBackground(context, params);
-  await expect(gmWindow.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
+  await expect(gmWindow.getByRole('status').first()).toHaveText(LOCAL_SAVE_FAILED);
   // #when: it becomes a player with no GM in the room.
   await background.evaluate(() => {
     window.mockPlatform.setRole('PLAYER');
@@ -149,17 +149,17 @@ test('a failed local save shows over the no-GM banner', async ({ context }) => {
     .poll(() => syncRead(gmWindow))
     .toEqual({ state: 'live', firstCatchUpDone: true, gmLink: 'offline', role: 'PLAYER' });
   // #then
-  await expect(gmWindow.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
+  await expect(gmWindow.getByRole('status').first()).toHaveText(LOCAL_SAVE_FAILED);
 });
 
 test('a new version shows over the no-GM banner', async ({ context }) => {
   // #given
   const player = await openClient(context, { ...PLAYER, catchUpTimeoutMs: 300 }, null);
-  await expect(player.window.getByRole('status')).toHaveText(NO_GM);
+  await expect(player.window.getByRole('status').first()).toHaveText(NO_GM);
   // #when
   await postRemote(player.window, 'mock-connection-newer', { v: 5, t: 'ping' });
   // #then
-  await expect(player.window.getByRole('status')).toHaveText(NEW_VERSION);
+  await expect(player.window.getByRole('status').first()).toHaveText(NEW_VERSION);
 });
 
 // A live GM whose device holds the preset and the records.

@@ -259,7 +259,7 @@ test('a single sheet with no players: edit is read-only for a player, and a forg
   const player = await openClient(context, PLAYER, null);
   const panel = player.window.getByRole('tabpanel');
   await player.window.getByRole('tab', { name: 'Журнал' }).click();
-  await expect(panel.getByRole('group', { name: 'Запись' })).toHaveText('Начало');
+  await expect(panel.getByRole('status', { name: 'Запись' })).toHaveText('Начало');
 
   const readOnly = {
     status: await panel.getByText(READ_ONLY).count(),

@@ -703,7 +703,7 @@ function WindowRoot({
           editing={editing}
           rolling={rolling}
           pending={null}
-          role="GM"
+          role="GM" // oxlint-disable-line jsx-a11y/aria-role -- This is the application's viewer role, not an ARIA role.
           blockTools={blockTools}
           tabBlockEditing={editing}
           reveal={blockReveal?.sheet === tab.id ? blockReveal : null}
@@ -755,7 +755,7 @@ function WindowRoot({
           editing={mayEdit ? editing : null}
           rolling={rolling}
           pending={pendingBySheet.get(tab.sheetId) ?? null}
-          role="PLAYER"
+          role="PLAYER" // oxlint-disable-line jsx-a11y/aria-role -- This is the application's viewer role, not an ARIA role.
           reveal={blockReveal?.sheet === tab.id ? blockReveal : null}
           onRevealed={clearBlockReveal}
         />

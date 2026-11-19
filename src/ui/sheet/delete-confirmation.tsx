@@ -19,7 +19,7 @@ export function DeleteConfirmation({
 }: DeleteConfirmationProps): ReactNode {
   const textId = useId();
 
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+  function handleKeyDown(event: KeyboardEvent<HTMLFieldSetElement>): void {
     if (event.key === 'Escape') {
       event.stopPropagation();
       onCancel();
@@ -27,8 +27,8 @@ export function DeleteConfirmation({
   }
 
   return (
-    <div
-      role="group"
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Escape cancels from any focused control in this confirmation.
+    <fieldset
       aria-labelledby={textId}
       onKeyDown={handleKeyDown}
       className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-hairline bg-surface-raised p-2"
@@ -40,10 +40,10 @@ export function DeleteConfirmation({
         <Button variant="primary" onPress={onConfirm}>
           {copy.command.delete}
         </Button>
-        <Button autoFocus onPress={onCancel}>
+        <Button focusOnMount onPress={onCancel}>
           {copy.command.cancel}
         </Button>
       </div>
-    </div>
+    </fieldset>
   );
 }

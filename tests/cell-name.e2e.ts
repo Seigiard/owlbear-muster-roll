@@ -192,8 +192,8 @@ test('a named read-only value is a tab stop with one tooltip, while an unnamed v
   await openSeededGm(context, cairnRecords(), CAIRN_TEXT);
   const player = await openClient(context, PLAYER);
   const panel = player.window.getByRole('tabpanel');
-  const named = panel.getByRole('group', { name: 'STR, максимум', exact: true });
-  const unnamed = panel.getByRole('group', { name: 'Имя', exact: true });
+  const named = panel.getByRole('status', { name: 'STR, максимум', exact: true });
+  const unnamed = panel.getByRole('status', { name: 'Имя', exact: true });
   await expect(named).toBeVisible();
   // #when
   await named.focus();

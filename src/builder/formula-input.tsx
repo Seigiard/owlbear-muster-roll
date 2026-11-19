@@ -149,16 +149,16 @@ export function FormulaInput({
       />
       {shown ? (
         <ul
+          role="listbox" // oxlint-disable-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-to-interactive-role -- The input controls this custom listbox through aria-activedescendant.
           id={listId}
-          role="listbox"
           aria-label={copy.builder.form.completions}
           className="absolute top-full left-0 z-10 mt-1 max-h-[200px] min-w-[160px] overflow-auto rounded-md border border-line bg-surface-bar p-1"
         >
           {matches.map((fieldId, index) => (
             <li
+              role="option" // oxlint-disable-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-to-interactive-role -- Selection stays on the focused input.
               key={fieldId}
               id={`${optionPrefix}-${index}`}
-              role="option"
               aria-selected={index === activeIndex}
               className={clsx(
                 'flex touch-target cursor-default items-center rounded-sm px-2 font-[ui-monospace,monospace]',

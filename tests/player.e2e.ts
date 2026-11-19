@@ -197,11 +197,11 @@ test('player values are text that takes no focus, and a check shows its state wi
   const panel = player.window.getByRole('tabpanel');
   await expect(panel.getByText('14', { exact: true })).toBeVisible();
   // #then
-  await expect(panel.getByRole('group', { name: 'Сила', exact: true })).toHaveText('14');
-  await expect(panel.getByRole('group', { name: 'Заметки', exact: true })).toHaveText('Храбрый');
-  await expect(panel.getByRole('img', { name: 'Устал: отмечено', exact: true })).toBeVisible();
+  await expect(panel.getByRole('status', { name: 'Сила', exact: true })).toHaveText('14');
+  await expect(panel.getByRole('status', { name: 'Заметки', exact: true })).toHaveText('Храбрый');
+  await expect(panel.getByRole('status', { name: 'Устал: отмечено', exact: true })).toBeVisible();
   await expect(
-    panel.getByRole('img', { name: 'Отдохнул: не отмечено', exact: true }),
+    panel.getByRole('status', { name: 'Отдохнул: не отмечено', exact: true }),
   ).toBeVisible();
   await expect(panel.getByRole('checkbox')).toHaveCount(0);
   expect(await focusableInside(panel)).toEqual([]);

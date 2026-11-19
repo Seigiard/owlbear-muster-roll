@@ -1,4 +1,4 @@
-import { createContext, useContext, useId } from 'react';
+import { createContext, useContext, useEffect, useId, useRef } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import clsx from 'clsx';
 
@@ -37,7 +37,7 @@ type SheetCellProps = {
   row: DiceRow;
   cellIndex: number;
   pending: CellPending;
-  autoFocus?: boolean;
+  focusPreview?: boolean;
   onEscape?: () => void;
   tokenTarget?: LinkTarget | null;
   tokenTools?: TokenCellTools | null;
@@ -58,7 +58,7 @@ type FieldProps = {
   values: FieldValues;
   place: FieldPlace;
   pending: CellPending;
-  autoFocus?: boolean;
+  focusPreview?: boolean;
   onEscape?: () => void;
 };
 
@@ -121,7 +121,7 @@ export function SheetCell({
       row={row}
       cellIndex={cellIndex}
       pending={pending}
-      autoFocus={previewEditable}
+      focusPreview={previewEditable}
       onEscape={preview?.onEscape}
       tokenTarget={tokenTarget}
       tokenTools={tokenTools}
@@ -158,7 +158,7 @@ function CellContent({
   row,
   cellIndex,
   pending,
-  autoFocus = false,
+  focusPreview = false,
   onEscape,
   tokenTarget,
   tokenTools,
@@ -203,7 +203,7 @@ function CellContent({
           values={values}
           place={place}
           pending={pending}
-          autoFocus={autoFocus}
+          focusPreview={focusPreview}
           onEscape={onEscape}
         />
       ) : cell.type === 'select' || cell.type === 'dice-choice' ? (
@@ -213,7 +213,7 @@ function CellContent({
           values={values}
           place={place}
           pending={pending}
-          autoFocus={autoFocus}
+          focusPreview={focusPreview}
           onEscape={onEscape}
         />
       ) : (
@@ -223,7 +223,7 @@ function CellContent({
           values={values}
           place={place}
           pending={pending}
-          autoFocus={autoFocus}
+          focusPreview={focusPreview}
           onEscape={onEscape}
         />
       );
@@ -245,30 +245,28 @@ function ReadOnlyValue({ field, label, values }: Omit<FieldProps, 'place' | 'pen
     const checked = isChecked(value);
 
     return (
-      <span
-        role="img"
+      <output
         aria-label={checked ? copy.label.checked(label) : copy.label.unchecked(label)}
         tabIndex={field.name === undefined ? undefined : 0}
         className={READ_ONLY_CHECK_CLASS}
         data-read-only-value
       >
         {checked ? CHECK_MARK : ''}
-      </span>
+      </output>
     );
   }
 
   const text = valueText(value);
 
   return (
-    <span
-      role="group"
+    <output
       aria-label={label}
       tabIndex={field.name === undefined ? undefined : 0}
       className={READ_ONLY_VALUE_CLASS}
       data-read-only-value
     >
       {text === '' && preview !== null ? <span className="text-text-muted">{field.id}</span> : text}
-    </span>
+    </output>
   );
 }
 
@@ -279,11 +277,18 @@ function CheckField({
   values,
   place,
   pending,
-  autoFocus = false,
+  focusPreview = false,
   onEscape,
 }: FieldProps): ReactNode {
   const markId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
   const edit = useCheckFieldEdit({ place, fieldId: field.id, recordValue: values.get(field.id) });
+
+  useEffect(() => {
+    if (focusPreview) {
+      inputRef.current?.focus();
+    }
+  }, [focusPreview]);
 
   return (
     <span className="inline-flex items-center gap-1 justify-self-start">
@@ -294,7 +299,7 @@ function CheckField({
         aria-describedby={describedBy([pending.marked ? markId : null, pending.rowMarkId])}
         checked={edit.checked}
         disabled={pending.disabled}
-        autoFocus={autoFocus}
+        ref={inputRef}
         onChange={edit.onToggle}
         onKeyDown={(event) => {
           if (event.key === 'Escape' && onEscape !== undefined) {
@@ -314,13 +319,20 @@ function SelectField({
   values,
   place,
   pending,
-  autoFocus = false,
+  focusPreview = false,
   onEscape,
 }: Omit<FieldProps, 'field'> & {
   field: Extract<PresetFieldCell, { type: 'select' | 'dice-choice' }>;
 }): ReactNode {
   const markId = useId();
+  const selectRef = useRef<HTMLSelectElement>(null);
   const edit = useSelectFieldEdit({ place, fieldId: field.id, recordValue: values.get(field.id) });
+
+  useEffect(() => {
+    if (focusPreview) {
+      selectRef.current?.focus();
+    }
+  }, [focusPreview]);
 
   const stale =
     edit.value !== '' && !field.options.includes(edit.value) ? (
@@ -336,7 +348,7 @@ function SelectField({
         aria-label={label}
         aria-describedby={describedBy([pending.marked ? markId : null, pending.rowMarkId])}
         disabled={pending.disabled}
-        autoFocus={autoFocus}
+        ref={selectRef}
         value={edit.value}
         onKeyDown={(event) => {
           if (event.key === 'Escape' && onEscape !== undefined) {
@@ -396,11 +408,13 @@ function TextValueField({
   values,
   place,
   pending,
-  autoFocus = false,
+  focusPreview = false,
   onEscape,
 }: FieldProps): ReactNode {
   const errorId = useId();
   const markId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const edit = useTextFieldEdit(field.type === 'number' ? 'number' : 'text', {
     place,
@@ -408,6 +422,18 @@ function TextValueField({
     recordValue: values.get(field.id),
     disabled: pending.disabled,
   });
+
+  useEffect(() => {
+    if (!focusPreview) {
+      return;
+    }
+
+    if (field.type === 'number') {
+      inputRef.current?.focus();
+    } else {
+      textareaRef.current?.focus();
+    }
+  }, [focusPreview, field.type]);
 
   const common = {
     'aria-label': label,
@@ -419,7 +445,6 @@ function TextValueField({
     ]),
     className: VALUE_CLASS,
     disabled: pending.disabled,
-    autoFocus,
     value: edit.text,
     onFocus: edit.onFocus,
     onBlur: () => {
@@ -444,6 +469,7 @@ function TextValueField({
       {field.type === 'number' ? (
         <input
           {...common}
+          ref={inputRef}
           type="text"
           inputMode="text"
           onChange={(event) => {
@@ -453,6 +479,7 @@ function TextValueField({
       ) : (
         <textarea
           {...common}
+          ref={textareaRef}
           // A browser without `field-sizing` sizes the textarea by its rows.
           rows={edit.text.split('\n').length}
           onChange={(event) => {

@@ -1367,7 +1367,7 @@ function conflictActions() {
 
 function previewValue(name: string): string | null {
   return (
-    [...document.querySelectorAll<HTMLElement>('[role="group"]')].find(
+    [...document.querySelectorAll<HTMLOutputElement>('output')].find(
       (element) => element.getAttribute('aria-label') === name,
     )?.textContent ?? null
   );

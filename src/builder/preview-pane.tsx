@@ -705,11 +705,7 @@ function PreviewRoleSwitch({
   onRole: (role: PlayerRole) => void;
 }): ReactNode {
   return (
-    <div
-      role="group"
-      aria-label={copy.builder.previewRole}
-      className="flex flex-wrap items-center gap-1"
-    >
+    <fieldset aria-label={copy.builder.previewRole} className="flex flex-wrap items-center gap-1">
       <AriaButton
         className={clsx(SECONDARY_BUTTON_CLASS, role === 'GM' && 'bg-fill-strong')}
         aria-pressed={role === 'GM'}
@@ -728,7 +724,7 @@ function PreviewRoleSwitch({
       >
         {copy.builder.previewPlayer}
       </AriaButton>
-    </div>
+    </fieldset>
   );
 }
 
