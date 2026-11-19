@@ -92,11 +92,12 @@ test('a player sees the no-GM banner once the GM pages close, and loses it when 
 }) => {
   // #given
   const gm = await openGm(context);
-  const player = await openClient(context, PLAYER, null, true);
+  const player = await openClient(context, PLAYER, null);
   const banner = player.window.getByRole('status');
   await expect(player.window.getByRole('tab', { name: 'Брок' })).toBeVisible();
-  // The controlled replica clock crosses two timeouts while the GM answers its pings.
-  await player.background.clock.runFor(2 * GM_LINK_TIMEOUT_MS);
+  // Two timeouts with only pings and their answers from the GM.
+  // oxlint-disable-next-line playwright/no-wait-for-timeout -- verifies two GM-link timeouts while GM heartbeats keep the link online
+  await player.window.waitForTimeout(2 * GM_LINK_TIMEOUT_MS);
   await expect
     .poll(() => syncRead(player.window))
     .toEqual({
@@ -109,10 +110,7 @@ test('a player sees the no-GM banner once the GM pages close, and loses it when 
   // #when
   await gm.background.close({ runBeforeUnload: true });
   await gm.window.close();
-  await player.background.close();
-  player.background = await openClientBackground(context, PLAYER, true);
   // #then
-  await player.background.clock.runFor(2 * GM_LINK_TIMEOUT_MS);
   await expect(banner).toHaveText(NO_GM);
   // #when
   await openGm(context);
