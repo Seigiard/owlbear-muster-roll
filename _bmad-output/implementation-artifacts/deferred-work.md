@@ -610,3 +610,9 @@ Deviations from DESIGN.md that TASK-115.11 reconciles:
 - AC #1's grep `rg "\bstopped\b" src/replica` still finds, besides the room-copy phase name, the dice result literal `'stopped'` (`dice-extension.ts`, `roll-flow.ts`) and prose comments. The literal is a dice outcome, not a lifecycle flag, and stays; no option, port, variable or getter named `stopped` remains.
 - Eight baseline test names changed with the lock ("stopped" → "its signal aborts" / "aborted"); each renamed test passes.
 - `createPartyRoster` takes one options object `{ ...party, report, signal, onReplace? }`; `report` is required and the `reportOverride` parameter from TASK-115.6 is gone.
+
+## Deferred from: TASK-115.5 (2026-11-19)
+
+- The clock is wall time (`Date.now()`) for durations too: the replica used `performance.now()` for the dice readiness window, the probe age and the pending-edit timing. A system clock change during one of those waits now moves it. The dice protocol and the diagnostics need wall time, and one source was the step's goal.
+- The five `schedule` tests moved with the implementation from `src/replica/timers.test.ts` to `src/platform/schedule.test.ts`; same names and literals.
+- The ticket's "one `setTimeout` call site outside UI" was too broad: `send-queue` and the mock adapter keep their own timers. Under `src/replica` there is no `setTimeout` left.
