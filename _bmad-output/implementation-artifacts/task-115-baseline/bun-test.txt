@@ -2057,6 +2057,7 @@ pass	src/replica/catch-up.test.ts › catch-up › two different alive values fr
 pass	src/replica/command-routing.test.ts › a complete preset batch applies every group in order
 pass	src/replica/command-routing.test.ts › a denied player edit shows its notice once
 pass	src/replica/command-routing.test.ts › a fully refused queued patch batch is never applied
+pass	src/replica/command-routing.test.ts › a player edit denied for size passes its cause to the notice
 pass	src/replica/command-routing.test.ts › a preset batch stops before its later group when an earlier group applies only partly
 pass	src/replica/command-routing.test.ts › a preset diff is GM-only and needs a live GM, but is not blocked by an import
 pass	src/replica/command-routing.test.ts › a queued intent that becomes invalid is rejected on catch-up exit
@@ -2244,6 +2245,7 @@ pass	src/replica/engine-client.test.ts › field-patch › stores a text value a
 pass	src/replica/engine-client.test.ts › open window › ignores a projection for another window
 pass	src/replica/engine-client.test.ts › open window › keeps waiting while an incomplete set still makes progress
 pass	src/replica/engine-client.test.ts › open window › receives a full projection echoing its nonce, then deltas
+pass	src/replica/engine-client.test.ts › open window › records a failed window delta without publishing another delta
 pass	src/replica/engine-client.test.ts › open window › repeats its request until the first part arrives, for a window before the background
 pass	src/replica/engine-client.test.ts › open window › restarts with a new nonce after the timeout when some parts never arrive
 pass	src/replica/engine-client.test.ts › open window › uses one nonce for all repeats of a request
@@ -3113,6 +3115,7 @@ pass	src/replica/room-copy.test.ts › watch updates sizes without merging own g
 pass	src/replica/room-copy.test.ts › write receives its generation copy and verifies the literal sorted records before saved
 pass	src/replica/room-copy.test.ts › write replaces a lower room copy without receiving it
 pass	src/replica/room-protocol.test.ts › createRoomProtocol › a higher state outside the current adoption target is not staged
+pass	src/replica/room-protocol.test.ts › createRoomProtocol › a stale rejection that denies an edit passes its cause to the notice
 pass	src/replica/room-protocol.test.ts › createRoomProtocol › a stale rejection without denial does not show a denied notice
 pass	src/replica/room-protocol.test.ts › createRoomProtocol › alive from %s with a equal generation has no handler effect after parsing
 pass	src/replica/room-protocol.test.ts › createRoomProtocol › alive from %s with a higher generation has no handler effect after parsing

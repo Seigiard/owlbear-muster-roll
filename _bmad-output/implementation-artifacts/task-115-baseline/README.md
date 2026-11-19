@@ -4,7 +4,7 @@ The junit lists of `bun test` and `bun run test:browser` that each TASK-115 step
 
 | File | Source | Count |
 | --- | --- | --- |
-| `bun-test.txt` | `bun test --reporter=junit --reporter-outfile=<xml>` | 3600 pass, 1 skip |
+| `bun-test.txt` | `bun test --reporter=junit --reporter-outfile=<xml>` | 3603 pass, 1 skip |
 | `test-browser.txt` | `PLAYWRIGHT_JUNIT_OUTPUT_NAME=<xml> bunx playwright test --reporter=junit` | 587 pass |
 
 Compare a run with the baseline:
@@ -25,3 +25,4 @@ comm -23 _bmad-output/implementation-artifacts/task-115-baseline/bun-test.txt no
 - 4c05bdc (`epic/task-115` after TASK-115.8): 36 tests added. 3586 pass and 1 skip; 587 browser pass. Lists are in C (code-point) order, as `junit-list.ts` prints them; compare with `LC_ALL=C comm`.
 - 576a522 (`epic/task-115` after TASK-116): 1 rig test added. 3587 pass and 1 skip; 587 browser pass.
 - d465f78 (`epic/task-115` after TASK-115.10 and TASK-115.9): 13 tests added. 3600 pass and 1 skip; 587 browser pass.
+- 74c7d2e (`epic/task-115` after the review fixes): 3 tests added. 3603 pass and 1 skip; 587 browser pass.
