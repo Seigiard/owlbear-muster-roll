@@ -710,3 +710,12 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-101-nested-runtime-cleanup.md`
   summary: Finish clearing fields when a preset change is retried (TASK-146).
   evidence: After the preset write succeeded and the block write failed, `composePresetUpload` reported zero values to clear on retry. `runPresetBatch` completed with the original text still stored in the field that changed to select.
+
+## Deferred from: TASK-132 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-132-unacked-player-cell.md`
+  summary: Keep a lost-ACK player edit from replaying on GM promotion (TASK-147).
+  evidence: `pendingEdits.drain` returns unacknowledged commands for local GM replay. A lost ACK can leave an already committed command in that batch after a later GM correction.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-132-unacked-player-cell.md`
+  summary: Check staged player edits across refusal and GM return (TASK-148).
+  evidence: `TwoFields.cfg` exercises staging and loss with a live GM and no revoke. The refusal and liveness gates keep the older one-field bounds and cannot stage a second field.
