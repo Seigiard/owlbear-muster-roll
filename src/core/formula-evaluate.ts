@@ -457,9 +457,11 @@ function blockValuesFor(
   ownBlock: FieldValues,
   blockAt: BlockValues,
 ): FieldValues {
+  const ownScopePath = repeatScopePathAt(layout, from);
+
   if (
-    JSON.stringify(repeatScopeIdsAt(layout, from).slice(0, scopePath.length).reverse()) ===
-    JSON.stringify(scopePath)
+    scopePath.length === ownScopePath.length &&
+    scopePath.every((id, index) => id === ownScopePath[index])
   ) {
     return ownBlock;
   }
