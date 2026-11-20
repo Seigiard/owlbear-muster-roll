@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-18T08:42:00Z'
+updated_date: '2026-11-20T03:18:00Z'
 labels:
   - format-v4
 dependencies:
@@ -15,7 +15,8 @@ references:
   - _bmad-output/specs/spec-muster-roll/storage-and-sync.md
   - _bmad-output/specs/spec-muster-roll/stories.yaml
   - TASK-109
-  - TASK-86
+  - TASK-32 (live-room check
+  - was TASK-86)
 type: feature
 ordinal: 106000
 ---

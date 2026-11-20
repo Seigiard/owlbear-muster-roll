@@ -4,7 +4,7 @@ title: Verify nested-repeat v4 in a live Owlbear room
 status: To Do
 assignee: []
 created_date: '2026-11-16T22:18:00Z'
-updated_date: '2026-11-17T10:38:00Z'
+updated_date: '2026-11-20T03:18:00Z'
 labels:
   - format-v4
   - owner-check
@@ -41,4 +41,6 @@ OWNER-ONLY GATE, NOT RUN. Needs a verified TASK-79 nested-repeat candidate and a
 Earlier progress below is historical; the current status above supersedes it.
 
 CURRENT: External owner gate, not run by the agent. Requires a verified nested-repeat candidate from TASK-79 and an owner-run live Owlbear GM/player check. Mock/browser results do not close this task. No production deployment or live-room acceptance was performed.
+
+2026-11-20: merged into TASK-32 (ACs 4-7 there). This task is archived as a duplicate; track the live-room check in TASK-32.
 <!-- SECTION:NOTES:END -->
