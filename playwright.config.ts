@@ -20,7 +20,7 @@ export default defineConfig({
   webServer: {
     // Node 26.13.1 and earlier abort the server mid-run in Buffer.byteLength:
     // https://github.com/nodejs/node/issues/66870. Drop the flag once the Node
-    // in .tool-versions has the fix. NODE_OPTIONS does not accept V8 flags.
+    // in .node-version has the fix. NODE_OPTIONS does not accept V8 flags.
     command: `node --no-turbo-fast-api-calls node_modules/vite/bin/vite.js --mode mock --host 127.0.0.1 --port ${port} --strictPort`,
     url: `${baseURL}/index.html`,
     reuseExistingServer: false,
