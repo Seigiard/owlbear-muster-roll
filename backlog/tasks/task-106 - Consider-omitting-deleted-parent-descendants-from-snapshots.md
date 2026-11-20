@@ -5,9 +5,12 @@ status: In Progress
 assignee:
   - '@seigiard'
 created_date: '2026-11-18T07:27:00Z'
-updated_date: '2026-11-20T13:28:00Z'
+updated_date: '2026-11-20T13:33:00Z'
 labels: []
 dependencies: []
+documentation:
+  - >-
+    _bmad-output/implementation-artifacts/spec-task-106-delete-parent-descendants.md
 priority: low
 type: bug
 ordinal: 133000
@@ -24,6 +27,14 @@ Optional follow-up from preset-v4 review 02-after-fix, bugs+impl-2. At 428d1f8, 
 - [ ] #1 One GM deletion of a repeated parent block marks the parent and all descendant block records deleted in the same commit, retaining deletion versions for sync and leaving unrelated blocks unchanged.
 - [ ] #2 Exporting and re-importing after that deletion does not report the deleted descendants’ values as a new loss.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Reproduce the false loss through a GM deletion and snapshot round trip. Lock regression tests for the deletion batch and import notice.
+2. Extend the shared repeat-block deletion composer to mark every non-deleted descendant at its own version. Keep the target first for the existing proposal consumer.
+3. Run the local checks and the edit-delivery model, advance the model sync commit, and open an automerge PR.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
