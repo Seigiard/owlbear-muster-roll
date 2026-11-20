@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@seigiard'
 created_date: '2026-11-20T06:52:00Z'
-updated_date: '2026-11-20T14:10:00Z'
+updated_date: '2026-11-20T15:11:00Z'
 labels:
   - flaky-test
 dependencies: []
@@ -30,10 +30,10 @@ On 2026-11-20 four task lanes ran their full local checks in parallel worktrees.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The cause of the load failures is named in the task notes with evidence: which waits time out, and whether the cause is test timing, the app, or machine saturation
+- [x] #1 The cause of the load failures is named in the task notes with evidence: which waits time out, and whether the cause is test timing, the app, or machine saturation
 - [ ] #2 With at least three checkouts running `bun run test:browser` at the same time, the suite passes in repeated runs, or the documented way to run it under load does
-- [ ] #3 A browser test that fails only under load can be told apart from a real failure without re-running the whole suite by hand
-- [ ] #4 TASK-139 is closed by this work or still names a cause this task does not cover
+- [x] #3 A browser test that fails only under load can be told apart from a real failure without re-running the whole suite by hand
+- [x] #4 TASK-139 is closed by this work or still names a cause this task does not cover
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -49,9 +49,15 @@ On 2026-11-20 four task lanes ran their full local checks in parallel worktrees.
 <!-- SECTION:NOTES:BEGIN -->
 Further cases of the same pattern, 2026-11-20, from the TASK-108 lane (one timeout per full run, each in a different test, each green when its file ran alone): tests/player.e2e.ts:145 hit the 30 s test timeout (alone 15/15); tests/builder.e2e.ts:415 timed out in page.waitForEvent for the download (alone 31/31). These were filed as TASK-143, which is archived as a duplicate of this task.
 
-Controlled baseline at 9f53a4917a78e0484be631b958afd0326d5638a0: 38 tests passed with five workers while one sibling checkout ran. Three simultaneous checkouts, each with five workers and the same 38-test selection, finished 37 pass and 1 fail each. Two runs reproduced TASK-139: the 5-second map poll retained only t-s1 after Enter. One run reproduced the player 30-second test timeout: the tab and its data had already loaded; the tooltip for Брок intercepted every attempt to click Лиза. Access first-load and Builder download did not fail in this sample. Host top reported 0.4–1.11% idle in the four timed samples on 10 logical cores. This establishes saturation in the reproducer, not a common app defect for the four reported waits. Logs and traces: task142-lanes/default-*.log and task142-lanes/traces-{a,b,c}.
+Controlled baseline at 9f53a4917a78e0484be631b958afd0326d5638a0: 38 tests passed with five workers while one sibling checkout ran. Three simultaneous checkouts, each with five workers and the same 38-test selection, finished 37 pass and 1 fail each. Two runs reproduced TASK-139: the 5-second map poll retained only t-s1 after Enter. One run reproduced the player 30-second test timeout: the tab and its data had already loaded; the tooltip for Брок intercepted every attempt to click Лиза. Access first-load and Builder download did not fail in this sample. Host top reported at most 1.9% idle across the sampled intervals on 10 logical cores. This establishes saturation in the reproducer, not a common app defect for the four reported waits. Logs and traces: task142-lanes/default-*.log and task142-lanes/traces-{a,b,c}.
 
 Keyboard event probe in a three-checkout run reproduced five selection failures out of 60 repetitions. In the instrumented failing repeat, focus entered the map toggle, then moved back to the NPC tab as the click arrived. Both Enter events targeted the NPC tab, and the map poll retained only t-s1. This is input timing, not a slow selection write. The player timeout was click actionability, not catch-up. First-load navigation and the download event are separate historical waits; a specific cause for either was not reproduced.
 
-Keyboard-only A/B on the same three checkout paths, five workers each: the two unmodified checkouts failed 6/24 and 5/24 runs of the selection and player interactions. The checkout using locator.press("Enter") on the tab and the map toggle passed 24/24. The same token, sheet, and permissions assertions ran. Host idle was under 2% in every sample. The preceding baseline likewise had at most 1.9% idle, not 1.11%.
+Keyboard-only A/B on the same three checkout paths, five workers each: the two unmodified checkouts failed 6/24 and 5/24 runs of the selection and player interactions. The checkout using locator.press("Enter") on the tab and the map toggle passed 24/24. The same token, sheet, and permissions assertions ran. Host idle was under 2% in every sample.
+
+The documented --last-failed command selected exactly one red player test, passed it with one worker, and produced a trace. A later retry selected exactly the Builder clear-preset test from the mixed-load run and passed it. Neither focused result changes the original red. Copy the original log and test-results/ before that command because Playwright replaces its output directory. The focused review and its confirmation both had two reporting reviewers.
+
+Full runs with one worker per checkout: a mixed-load run at 7711fd3c942fd9c2374cd9c7350ca014aae2b0cd overlapped up to ten more sibling workers. Two checkouts passed 588/588; one passed 587/588, timing out on the Builder clear-preset menu at tests/builder.e2e.ts:542. The exact test passed on the focused retry. At 08f15404296c961273967f5900962a60baec0a46 two controlled rounds each had two green checkouts (589/589) and one red (588/589). The red cases were tests/snapshot.e2e.ts:458 (confirmation did not reopen after another GM window changed the preset) and tests/room-copy.e2e.ts:73 (the next GM device loaded value 14 instead of 17). Those files passed 13/13 and 4/4 when run separately at the same revision. The corrected TASK-139 test passed all its focused comparison repeats and all nine capped full runs. The two newly observed red cases are outside the approved one-GM, one-window scope. Leave AC #2 open; do not turn either red run green with a focused retry.
+
+Non-browser local checks at 08f15404296c961273967f5900962a60baec0a46 passed: full format, lint (354 warnings and no errors), typecheck, Bun unit tests (3672 pass, one skip, no failures), mutation tests (55 killed), and build. No retry, timeout, Vite flag, app code, or formal-model changes are included in the TASK-142 diff.
 <!-- SECTION:NOTES:END -->

@@ -28,3 +28,8 @@ Leave app behavior, Playwright timeouts, retries, and the Node 26 Vite flag unch
 - `tests/player.e2e.ts`, first player test: the selected sheet tooltip for `Брок` intercepted clicks on `Лиза`. Use keyboard activation to visit each tab. Keep all assertions for sheet names, values, permissions, and storage.
 - `CLAUDE.md`, local browser checks: use one Playwright worker per checkout when browser suites overlap. Use `--last-failed --workers=1 --trace=on` to diagnose a test failure after the other suites finish. A passing rerun alone does not prove load caused the failure.
 - Verify the existing tests rather than add a duplicate. Run the full local checks for the test paths. For the load check, run the full suite with one worker in each of three checkouts twice. Record the aggregate results and the focused retry result in TASK-142.
+- The corrected interactions passed 24 of 24 repeats under load. The unchanged controls failed 11 of 48. The modified tests passed in all six full runs with one worker per checkout, but two of the six runs failed in other scenarios. One run did not reopen snapshot confirmation after a second GM window changed the preset. The other loaded a stale room copy on a new GM device. The concurrent full-suite criterion remains open.
+
+## Review Triage Log
+
+- The focused review found that Playwright replaces the original `test-results/` directory and may record no failed tests for a startup error. The check rules now preserve original artifacts and reserve `--last-failed` for completed runs that list failed tests. Both confirming reviewers reported no remaining finding.
