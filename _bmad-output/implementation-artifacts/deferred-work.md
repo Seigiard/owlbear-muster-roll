@@ -737,3 +737,9 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-140-compile-repeat-content.md`
   summary: Focus a leading select field when adding a repeat block (TASK-151).
   evidence: In the mock browser, a new block with a `SELECT` before its name field focused the following `TEXTAREA`. The existing `input, textarea` selector skips the first field. TASK-140 preserves that behavior.
+
+## Deferred from: TASK-150 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-150-keep-formula-references.md`
+  summary: Keep a formula's reference after a free rename when its repeat tab and nested repeat section share the same repeat id (TASK-152).
+  evidence: A valid preset with a repeat tab and nested section both named `npc` leaves `1d6+bonus` in the nested section after a free rename of the tab field to `damage_bonus`. The preset still validates, but the formula cannot resolve `bonus`. TASK-150 leaves formula lookup unchanged.
