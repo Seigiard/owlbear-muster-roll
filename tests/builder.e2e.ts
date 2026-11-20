@@ -704,6 +704,75 @@ test('builds a preset with the tree and the forms, and the window loads the down
   await expect(window.getByRole('button', { name: copy.label.addToSet('Экипаж') })).toBeVisible();
 });
 
+test('keeps the downloaded formula when the GM corrects a conflicting field id', async ({
+  page,
+}) => {
+  // #given
+  const preset = JSON.stringify({
+    v: 4,
+    templates: [
+      {
+        id: 'character',
+        title: 'Персонаж',
+        tabs: [
+          {
+            sections: [
+              { rows: [{ cells: [{ kind: 'field', type: 'number', id: 'bonus' }] }] },
+              {
+                title: 'Атаки',
+                columns: 3,
+                repeat: { id: 'attacks', nameField: 'attack' },
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'attack' },
+                      { kind: 'field', type: 'number', id: 'attack_bonus' },
+                      { kind: 'dice', formula: '1d6+bonus' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  await page.goto(PAGE);
+  await openFile(page, 'attack-bonus.json', preset);
+  await pick(item(page, `bonus · ${builder.form.typeNumber}`));
+  await expect(page.getByText(builder.noProblems)).toBeVisible();
+  const fieldId = form(page).getByRole('textbox', { name: builder.form.fieldId });
+
+  // #when
+  await fieldId.fill('attack_bonus');
+  await fieldId.press('Enter');
+  // #then
+  await expect(problemCounter(page, 1)).toBeVisible();
+  await expect(await presetDownloadButton(page)).toBeDisabled();
+
+  // #when
+  await page.keyboard.press('Escape');
+  await fieldId.fill('bonus');
+  await fieldId.press('Enter');
+  await expect(page.getByText(builder.noProblems)).toBeVisible();
+  const downloading = page.waitForEvent('download');
+  await (await presetDownloadButton(page)).click();
+  const path = await (await downloading).path();
+
+  // #then
+  const downloaded = parsePresetFile(readFileSync(path, 'utf8')).unwrap(
+    'Expected the downloaded preset to be valid',
+  );
+
+  const dice = downloaded.templates[0]?.tabs[0]?.sections[1]?.rows[0]?.cells.find(
+    (cell) => cell.kind === 'dice',
+  );
+
+  expect(dice?.formula).toBe('1d6+bonus');
+});
+
 test('builds, previews and downloads a select field, then drops its options on a type switch', async ({
   page,
 }) => {
