@@ -1,12 +1,5 @@
 import { acceptedFieldValue } from '@/core/field-patch';
-import {
-  blockIdOf,
-  parentOf,
-  parseBlockKey,
-  scopePathOf,
-  sectionIdOf,
-  type BlockAddress,
-} from '@/core/block-address';
+import { parseBlockKey, scopePathOf, sectionIdOf, type BlockAddress } from '@/core/block-address';
 import { sameJson } from '@/core/json';
 import { linkTargetOf, liveLinkTarget } from '@/core/link-target';
 import {
@@ -50,13 +43,6 @@ export type TemplateScopes = {
 export type PresetMoves = {
   rowOf: (fieldId: string) => string | null;
   sectionOf: (sectionId: string, block?: BlockAddress) => string | null;
-};
-
-type RepeatPathParts = {
-  address: BlockAddress;
-  sectionId: string;
-  instanceId: string;
-  parentPath: string[];
 };
 
 export const NOTHING_ERASED = erasedDigest([]);
@@ -104,12 +90,17 @@ export function presetDiff(
           const firstPart = parseRepeatPath(a.k);
           const secondPart = parseRepeatPath(b.k);
 
-          const rank = (part: typeof firstPart): number =>
-            part === null || after === null
-              ? -1
-              : repeatScopeTarget(part, after) === part.sectionId
-                ? 0
-                : sectionIds.indexOf(part.sectionId) + 1;
+          const rank = (part: typeof firstPart): number => {
+            if (part === null || after === null) return -1;
+
+            const sectionId = sectionIdOf(part);
+
+            if (sectionId === null) return -1;
+
+            return repeatScopeTarget(part, after) === sectionId
+              ? 0
+              : sectionIds.indexOf(sectionId) + 1;
+          };
 
           const target = (part: typeof firstPart): string =>
             part === null || after === null ? '' : (repeatScopeTarget(part, after) ?? '');
@@ -145,10 +136,7 @@ export function presetDiff(
           continue;
         }
 
-        const newFields = fieldsForRepeatPath(
-          parts === null ? null : { ...parts, sectionId: scope ?? parts.sectionId },
-          after,
-        );
+        const newFields = fieldsForRepeatPath(parts, after);
 
         const compatible = newFields.filter((field) =>
           oldFields.some((old) => old.id === field.id && old.type === field.type),
@@ -286,17 +274,13 @@ export function presetMoves(_before: TemplateLayout, after: TemplateLayout): Pre
     rowOf: (id) => next.rowFields.get(id)?.rowId ?? null,
     sectionOf: (id, block) =>
       block === undefined
-        ? sectionTarget(id, next)
+        ? next.sections.has(id)
+          ? id
+          : null
         : next.sectionsByPath.has(scopePathOf(block).join(':'))
           ? id
           : null,
   };
-}
-
-export function sectionTarget(sectionId: string, after: TemplateScopes): string | null {
-  // v4 repeat ids are stable scope identities. Matching fields is not a relocation
-  // rule: changing the scope id erases its blocks.
-  return after.sections.has(sectionId) ? sectionId : null;
 }
 
 export function templateScopes(layout: TemplateLayout): TemplateScopes {
@@ -376,42 +360,25 @@ export function holdsValue(field: PresetFieldCell | undefined, value: FieldValue
   return field !== undefined && acceptedFieldValue(field, value).isOk();
 }
 
-function parseRepeatPath(key: string): RepeatPathParts | null {
-  const parsed = parseBlockKey(key);
-
-  if (parsed === null || parsed.path.length === 0) {
-    return null;
-  }
-
-  const sectionId = sectionIdOf(parsed);
-  const instanceId = blockIdOf(parsed);
-  const parent = parentOf(parsed);
-
-  return sectionId === null || instanceId === null || parent === null
-    ? null
-    : {
-        address: parsed,
-        sectionId,
-        instanceId,
-        parentPath: [...parent.path],
-      };
-}
-
-function repeatScopePath(parts: RepeatPathParts): string[] {
-  return scopePathOf(parts.address);
-}
-
 function fieldsForRepeatPath(
-  parts: RepeatPathParts | null,
+  parts: BlockAddress | null,
   scopes: TemplateScopes,
 ): PresetFieldCell[] {
-  return parts === null
+  return parts === null || parts.path.length === 0
     ? [...scopes.rowFields.values()].map((entry) => entry.field)
-    : (scopes.sectionsByPath.get(repeatScopePath(parts).join(':')) ?? []);
+    : (scopes.sectionsByPath.get(scopePathOf(parts).join(':')) ?? []);
 }
 
-function repeatScopeTarget(parts: RepeatPathParts, after: TemplateScopes): string | null {
-  return after.sectionsByPath.has(repeatScopePath(parts).join(':')) ? parts.sectionId : null;
+function parseRepeatPath(key: string): BlockAddress | null {
+  const address = parseBlockKey(key);
+
+  return address === null || address.path.length === 0 ? null : address;
+}
+
+function repeatScopeTarget(address: BlockAddress, after: TemplateScopes): string | null {
+  const scopePath = scopePathOf(address);
+
+  return after.sectionsByPath.has(scopePath.join(':')) ? sectionIdOf(address) : null;
 }
 
 export function erasedDigest(erased: readonly string[]): string {
