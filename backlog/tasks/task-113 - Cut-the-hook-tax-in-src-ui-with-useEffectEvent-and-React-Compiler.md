@@ -1,9 +1,11 @@
 ---
 id: TASK-113
 title: Cut the hook tax in src/ui with useEffectEvent and React Compiler
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-18T17:19:00Z'
+updated_date: '2026-11-20T03:20:00Z'
 labels: []
 dependencies: []
 references:
