@@ -4,6 +4,7 @@ title: Keep window updates within the limit after large pending withdrawals
 status: To Do
 assignee: []
 created_date: '2026-11-20T13:56:00Z'
+updated_date: '2026-11-20T15:58:00Z'
 labels: []
 dependencies: []
 references:
@@ -26,3 +27,9 @@ TASK-106 review found an existing projection limit. After the GM queues a deleti
 <!-- AC:BEGIN -->
 - [ ] #1 After catch-up completes, a GM window that holds pending keys whose withdrawals exceed one message receives the current room state and leaves catch-up without a reload.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Archived 2026-11-20 by the owner's decision ("149 архивировать"). The path needs a GM to queue deletions of so many blocks during catch-up that the withdrawn keys alone exceed one window message. It is a source-level finding with no browser occurrence, the same class of minimal-probability case the owner does not spend code on.
+<!-- SECTION:NOTES:END -->
