@@ -217,6 +217,18 @@ export function BuilderPage({
   const presetFile = files.preset.file;
   const snapshotFile = files.snapshot.file;
 
+  function attachedFile(kind: FileBlockKind): AttachedFile | null {
+    return filesRef.current[kind].file;
+  }
+
+  function documentText(kind: FileBlockKind): string {
+    const step = store.$state.get().step;
+
+    return kind === 'preset'
+      ? formatPresetFile(toPreset(step.document))
+      : snapshotTextFor(step.records, step.document);
+  }
+
   function open(next: OpenRequest): void {
     const currentPresetText = formatPresetFile(toPreset(store.$state.get().step.document));
     const nextPresetText = formatPresetFile(next.preset);
@@ -317,6 +329,53 @@ export function BuilderPage({
       label: file.name,
       fileName: file.name,
     });
+  }
+
+  function parseAttachedText(kind: FileBlockKind, text: string): AttachedTextResult {
+    if (kind === 'preset') {
+      const parsed = parsePresetFile(text);
+
+      return parsed.isOk()
+        ? {
+            ok: true,
+            kind: 'preset',
+            preset: parsed.value,
+            canonicalText: formatPresetFile(parsed.value),
+          }
+        : { ok: false, message: presetFailureMessage(parsed.error) };
+    }
+
+    const parsed = parseSnapshotFile(text);
+
+    if (!parsed.isOk()) {
+      return { ok: false, message: fileFailureText(parsed.error) };
+    }
+
+    const step = store.$state.get().step;
+
+    const imported = importSnapshot(
+      parsed.value,
+      { preset: toPreset(step.document), data: encodePreset(toPreset(step.document)) },
+      'builder',
+    );
+
+    return imported.isOk()
+      ? {
+          ok: true,
+          kind: 'snapshot',
+          records: imported.value.records,
+          file: parsed.value,
+          canonicalText: formatSnapshotFile(parsed.value),
+        }
+      : { ok: false, message: snapshotImportFailureText(imported.error) };
+  }
+
+  function applyAttachedText(parsed: AttachedText): void {
+    if (parsed.kind === 'preset') {
+      store.replacePreset(parsed.preset, parsed.preset, store.$state.get().step.name);
+    } else {
+      store.setSnapshot(parsed.records);
+    }
   }
 
   async function openAttachedFile(kind: FileBlockKind): Promise<boolean> {
@@ -452,45 +511,6 @@ export function BuilderPage({
     });
   }
 
-  function parseAttachedText(kind: FileBlockKind, text: string): AttachedTextResult {
-    if (kind === 'preset') {
-      const parsed = parsePresetFile(text);
-
-      return parsed.isOk()
-        ? {
-            ok: true,
-            kind: 'preset',
-            preset: parsed.value,
-            canonicalText: formatPresetFile(parsed.value),
-          }
-        : { ok: false, message: presetFailureMessage(parsed.error) };
-    }
-
-    const parsed = parseSnapshotFile(text);
-
-    if (!parsed.isOk()) {
-      return { ok: false, message: fileFailureText(parsed.error) };
-    }
-
-    const step = store.$state.get().step;
-
-    const imported = importSnapshot(
-      parsed.value,
-      { preset: toPreset(step.document), data: encodePreset(toPreset(step.document)) },
-      'builder',
-    );
-
-    return imported.isOk()
-      ? {
-          ok: true,
-          kind: 'snapshot',
-          records: imported.value.records,
-          file: parsed.value,
-          canonicalText: formatSnapshotFile(parsed.value),
-        }
-      : { ok: false, message: snapshotImportFailureText(imported.error) };
-  }
-
   useEffect(() => {
     const file = files.preset.file;
 
@@ -606,23 +626,6 @@ export function BuilderPage({
     generatedSnapshot,
   ]);
 
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- Keep one subscription effect per attached-file reference; the callback reads current state from filesRef.
-  useEffect(() => followAttachedFile('preset'), [fileAccess, files.preset.file?.reference?.id]);
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- Keep one subscription effect per attached-file reference; the callback reads current state from filesRef.
-  useEffect(() => followAttachedFile('snapshot'), [fileAccess, files.snapshot.file?.reference?.id]);
-
-  function followAttachedFile(kind: FileBlockKind): () => void {
-    const file = filesRef.current[kind].file;
-
-    if (file?.reference === null || file === null || fileAccess.capability !== 'write-and-follow') {
-      return () => undefined;
-    }
-
-    return fileAccess.follow(file.reference, (result) => {
-      void handleExternalResult(kind, result);
-    });
-  }
-
   async function handleExternalResult(
     kind: FileBlockKind,
     result: FileAccessResult<FileContents>,
@@ -716,13 +719,22 @@ export function BuilderPage({
     });
   }
 
-  function applyAttachedText(parsed: AttachedText): void {
-    if (parsed.kind === 'preset') {
-      store.replacePreset(parsed.preset, parsed.preset, store.$state.get().step.name);
-    } else {
-      store.setSnapshot(parsed.records);
+  function followAttachedFile(kind: FileBlockKind): () => void {
+    const file = filesRef.current[kind].file;
+
+    if (file?.reference === null || file === null || fileAccess.capability !== 'write-and-follow') {
+      return () => undefined;
     }
+
+    return fileAccess.follow(file.reference, (result) => {
+      void handleExternalResult(kind, result);
+    });
   }
+
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- Keep one subscription effect per attached-file reference; the callback reads current state from filesRef.
+  useEffect(() => followAttachedFile('preset'), [fileAccess, files.preset.file?.reference?.id]);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- Keep one subscription effect per attached-file reference; the callback reads current state from filesRef.
+  useEffect(() => followAttachedFile('snapshot'), [fileAccess, files.snapshot.file?.reference?.id]);
 
   function resolveConflict(kind: FileBlockKind, takeFile: boolean): void {
     const conflict = filesRef.current[kind].conflict;
@@ -753,55 +765,6 @@ export function BuilderPage({
     applyAttachedText(parsed);
     dispatchFiles({ type: 'take-file', kind });
   }
-
-  async function drainWriteQueue(kind: FileBlockKind): Promise<void> {
-    const queue = writeQueues.current[kind];
-
-    if (queue.active !== null || queue.queued === null) {
-      return;
-    }
-
-    let knownContents: FileContents | null = null;
-
-    while (queue.queued !== null) {
-      const next = queue.queued;
-      queue.queued = null;
-      queue.active = next;
-
-      try {
-        knownContents = await writeFile(
-          kind,
-          next.file,
-          next.text,
-          next.canonicalDocumentText,
-          knownContents,
-        );
-      } catch {
-        const current = filesRef.current[kind].file;
-
-        if (current?.reference?.id === next.file.reference?.id) {
-          dispatchFiles({
-            type: 'fail',
-            kind,
-            message: copy.fileOperationFailed,
-            documentText: documentText(kind),
-          });
-        }
-
-        knownContents = null;
-      }
-
-      queue.active = null;
-
-      if (knownContents === null) {
-        break;
-      }
-    }
-  }
-
-  useLayoutEffect(() => {
-    drainWriteQueueRef.current = drainWriteQueue;
-  });
 
   async function writeFile(
     kind: FileBlockKind,
@@ -913,6 +876,55 @@ export function BuilderPage({
     return result.value;
   }
 
+  async function drainWriteQueue(kind: FileBlockKind): Promise<void> {
+    const queue = writeQueues.current[kind];
+
+    if (queue.active !== null || queue.queued === null) {
+      return;
+    }
+
+    let knownContents: FileContents | null = null;
+
+    while (queue.queued !== null) {
+      const next = queue.queued;
+      queue.queued = null;
+      queue.active = next;
+
+      try {
+        knownContents = await writeFile(
+          kind,
+          next.file,
+          next.text,
+          next.canonicalDocumentText,
+          knownContents,
+        );
+      } catch {
+        const current = filesRef.current[kind].file;
+
+        if (current?.reference?.id === next.file.reference?.id) {
+          dispatchFiles({
+            type: 'fail',
+            kind,
+            message: copy.fileOperationFailed,
+            documentText: documentText(kind),
+          });
+        }
+
+        knownContents = null;
+      }
+
+      queue.active = null;
+
+      if (knownContents === null) {
+        break;
+      }
+    }
+  }
+
+  useLayoutEffect(() => {
+    drainWriteQueueRef.current = drainWriteQueue;
+  });
+
   async function saveAs(kind: FileBlockKind): Promise<void> {
     const text = kind === 'preset' ? download : generatedSnapshot;
 
@@ -961,18 +973,6 @@ export function BuilderPage({
       documentText: text,
     });
     setFileMessage(undefined);
-  }
-
-  function attachedFile(kind: FileBlockKind): AttachedFile | null {
-    return filesRef.current[kind].file;
-  }
-
-  function documentText(kind: FileBlockKind): string {
-    const step = store.$state.get().step;
-
-    return kind === 'preset'
-      ? formatPresetFile(toPreset(step.document))
-      : snapshotTextFor(step.records, step.document);
   }
 
   const first = problems[0];

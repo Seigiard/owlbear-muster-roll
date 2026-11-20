@@ -670,6 +670,32 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
   summary: Two browser tests time out under full-suite load (TASK-143).
   evidence: `tests/player.e2e.ts:145` failed once in a full `bun run test:browser` run and passed 15/15 alone; `tests/builder.e2e.ts:415` timed out in `page.waitForEvent` for the download once and passed 31/31 alone. Each full run had one timeout, in a different test.
 
+## Deferred from: TASK-134 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-134-compiler-structure-tree.md`
+  summary: Add a repository check that fails when the React Compiler bails out on a component, so a fixed bailout (TASK-133, TASK-134, TASK-135) cannot come back unnoticed.
+  evidence: The build does not report bailouts; the compiler probe (`@babel/core` 7 with `babel-plugin-react-compiler` and a `logger` that prints `CompileError` events) is a scratch script outside git. Blind Hunter on TASK-134 found that `StructureTree` returns to a silent bailout if a call comes back as a computed key, and no check would fail.
+
+## Deferred from: TASK-135 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-135-compiler-builder-page.md`
+  summary: `enqueueWrite` in `src/builder/builder-page.tsx` can leave a stale queued write behind, so an attached file ends with an older text than the builder shows.
+  evidence: Verified by reading. With write A active and B queued, a request for A again returns early on the active-match check and leaves B in `queue.queued`; the drain then writes B. Found by Blind Hunter on TASK-135, whose change only moved the surrounding functions.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-135-compiler-builder-page.md`
+  summary: `writeFile` may write to, or report a conflict for, a file the GM replaced while `fileAccess.read` was pending.
+  evidence: Unverified (`medium` if true). It checks the attached file before `await fileAccess.read` and not after. A test that attaches another file while the read is pending would settle it.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-135-compiler-builder-page.md`
+  summary: An external edit between opening an attached preset and the first follow poll may go unnoticed.
+  evidence: Unverified (`medium` if true). `src/builder/file-access.ts:151-160` takes the first poll as the base version, and the window includes the time the GM spends confirming the draft replacement. A test that edits the file inside that window would settle it.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-135-compiler-builder-page.md`
+  summary: Taking the file's version in an attached-file conflict allows a forced write that may overwrite a newer external change.
+  evidence: Unverified (`medium` if true). `src/builder/attached-files.ts:230-240` allows the forced write after `resolveConflict(kind, true)`. A test with a second external change after the conflict shows would settle it.
+
+## Deferred from: compiler bailouts TASK-133 to TASK-137 (2026-11-20)
+
+- `tests/room-copy.e2e.ts:73` ("a GM writes the room copy after an edit, and a GM on a new device with no other GM loads from it") failed once in a full `bun run test:browser` run on the `compiler-bailouts` branch: the new-device GM showed "Сила" 14 instead of 17. It passed 15/15 under `--repeat-each` and in the next full run (587/587); `origin/master` passed its one full run. The branch does not touch the room copy or the sheet window. Cause not established; a load-only race is likely.
+- One full `bun run test:browser` run was void: the Vite dev server died with the V8 message `abort: Lazy deopt after a fast API call with return value is unsupported` while serving `react-aria-components.js`, and every later test failed within about 200 ms. A Node or V8 defect on this machine, not a test failure; watch for a repeat.
+
 ## Deferred from: TASK-111 (2026-11-20)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-111-legacy-repeat-warning.md`
