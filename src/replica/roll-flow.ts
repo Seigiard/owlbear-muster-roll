@@ -1,11 +1,9 @@
-import { dicePlusDice, dicePlusTarget, type DicePlusTarget } from '@/core/dice-plus';
+import { dicePlusDice, dicePlusTarget } from '@/core/dice-plus';
 import { createBoundedIdSet } from '@/core/bounded-id-set';
 import { fitsOneMessage } from '@/core/message-size';
 import {
   listedFaces,
   randomFaces,
-  type DiceTerm,
-  type DieFace,
   type FaceSource,
   type RandomSource,
 } from '@/core/formula-evaluate';
@@ -25,6 +23,7 @@ import type { Generation } from '@/core/storage-key';
 import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
 import { rollShownTo, rollTargetShownTo, type PlayerRole } from '@/core/visibility';
 import { DiceExtensionFailure } from '@/platform/ports';
+import type { DiceExtension } from '@/replica/dice-extension';
 import {
   MessageRejectedFailure,
   RecordTooLargeFailure,
@@ -46,23 +45,6 @@ export type RollSender = {
   name: string;
 };
 
-export type RollDiceReadiness = 'absent' | 'permitted' | 'pending' | 'unknown' | 'refused';
-
-export type RollDiceFailure = { code: 'failed'; reason: string } | { code: 'stopped' };
-
-export type RollDiceRequest = {
-  terms: readonly DiceTerm[];
-  notation: string;
-  playerId: string;
-  playerName: string;
-  rollTarget: DicePlusTarget;
-};
-
-export type RollDicePort = {
-  ready: () => Promise<RollDiceReadiness>;
-  roll: (request: RollDiceRequest) => Promise<Result<DieFace[], RollDiceFailure>>;
-};
-
 export type RollFlowPorts = {
   report?: FailureReporter;
   pendingView: () => ReadonlyMap<string, VersionedRecord>;
@@ -71,7 +53,7 @@ export type RollFlowPorts = {
   signal: AbortSignal;
   generation: () => Generation;
   importing: () => boolean;
-  dice: RollDicePort;
+  dice: Pick<DiceExtension, 'ready' | 'roll'>;
   gmInParty: () => boolean;
   playerId: string;
   playerName: () => Promise<string>;
