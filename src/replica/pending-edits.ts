@@ -196,9 +196,9 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   }
 
   // AD-4: only a rejection of this client's newest version of a key counts. `denied` drops the
-  // entry, so the value returns. `stale` applies the patch to the GM's record, takes a `c` above it
-  // and proposes again with the backoff started over; an edit of a row the GM holds removed is
-  // dropped as denied, and a patch the record already holds ends there. A stale answer over a
+  // entry, so the value returns. `stale` replays the commands over the GM's record, takes a `c` above
+  // it and proposes again with the backoff started over; an edit of a row the GM holds removed is
+  // dropped as denied, and commands the record already satisfies end there. A stale answer over a
   // record below the rejected version is about a field the GM's template lacks, not the version:
   // the GM would answer the same at once, so the new version waits for the running backoff, and the
   // preset that reaches one side in the meantime ends it.
@@ -457,8 +457,8 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       return Result.err('unchanged');
     }
 
-    const made = proposalComposers.composePending(
-      {
+    const made = proposalComposers.composePending({
+      context: {
         records: records(),
         mint: mintVersion
           ? mint
@@ -466,19 +466,17 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
               c: highestKnownCounter + 1,
               a: options.connectionId,
             }),
-        newRecordId: (_kind, role) => role,
-        isGmPlayer: () => false,
         mode: 'pending',
       },
-      entry.k,
+      key: entry.k,
       commands,
-      entry.record,
+      prior: entry.record,
       force,
       fixedVersion,
-      entry.l,
+      lifecycle: entry.l,
       base,
-      entry.order,
-    );
+      order: entry.order,
+    });
 
     if (!made.isOk()) {
       return Result.err(proposalFailure(made.error));
@@ -512,9 +510,8 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   }
 
   // AD-14: the entry loses the fields its sheet's template no longer has in its row or repeat
-  // block, in silence. An entry with nothing left drops in silence too, and one that lost fields or
-  // moved goes out again, so the GM never answers its older version. True when a drop needs the
-  // denied notification.
+  // block, in silence. An entry with nothing left drops in silence. A row-only retarget keeps the
+  // fixed wire version; a move to another key or a stripped command requires a new version.
   function recheckProposal(
     found: ProposalEntry,
     context: ProposalContext,
@@ -709,11 +706,6 @@ function proposalFailure(reason: RejectionReason): ProposalFailure {
       return 'too-large';
     case 'unchanged':
       return 'unchanged';
-    case 'unknown-instance':
-    case 'deleted-sheet':
-    case 'unknown-sheet':
-    case 'unknown-section':
-      return 'gone';
     default:
       return 'gone';
   }

@@ -9,7 +9,7 @@ import {
   sectionIdOf,
   type BlockAddress,
 } from '@/core/block-address';
-import type { Command } from '@/core/ui-messages';
+import type { PendingCommand } from '@/core/compose';
 import type { Template } from '@/core/preset';
 import { templateScopes, type PresetMoves } from '@/core/preset-migrate';
 import type { Lifecycle, VersionedRecord } from '@/core/records';
@@ -18,14 +18,11 @@ import type { Timing } from '@/core/timing';
 import { ProposeDroppedFailure, type FailureReporter } from '@/replica/failures';
 import type { Schedule } from '@/platform/ports';
 
-export type ProposalCommand = Extract<
-  Command,
-  { type: 'field-patch' | 'repeat-block-add' | 'repeat-block-delete' }
->;
+export type ProposalCommand = PendingCommand;
 
-// AD-4: one entry per key. `record` is the newest version, the only one sent, or `null` while the
-// entry waits for a `c` because it was made during catch-up (AD-7). `sent` says a version went out,
-// so an older one can still land in the room.
+// AD-4: one entry per key. `record` is the fixed newest wire version, or `null` during catch-up
+// (AD-7). `order` reserves an accepted repeat add's order across replay; `l` preserves its life.
+// `sent` says an older version can still land in the room.
 export type ProposalEntry = {
   k: string;
   l?: Lifecycle;
@@ -35,9 +32,8 @@ export type ProposalEntry = {
   sent: boolean;
 };
 
-// `gone`: an edit of a repeat block that is removed or unknown. `unchanged`: the record already
-// holds what the commands set. `too-large`: the record would not fit one message, so no GM could
-// answer it.
+// `gone`: replay was refused for a reason other than unchanged or too-large. `unchanged`: the
+// record already holds what the commands set. `too-large`: the record cannot fit one message.
 export type ProposalFailure = 'gone' | 'unchanged' | 'too-large';
 
 export type ProposalQueueOptions = {

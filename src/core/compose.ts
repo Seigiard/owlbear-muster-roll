@@ -93,6 +93,24 @@ export type ComposeContext = {
   mode: ComposeMode;
 };
 
+export type PendingComposeContext = Pick<ComposeContext, 'records' | 'mint'> & {
+  mode: 'pending';
+};
+
+// Replay one admitted key with its reserved order and life. A fixed version is reused for the
+// overlay; otherwise mint only after the commands change the base or `force` requires a resend.
+export type PendingReplay = {
+  context: PendingComposeContext;
+  key: string;
+  commands: readonly PendingCommand[];
+  prior: VersionedRecord | null;
+  force: boolean;
+  fixedVersion?: Version;
+  lifecycle?: Lifecycle;
+  base?: VersionedRecord;
+  order?: number;
+};
+
 // TASK-37: new ids are short, so a drawn id can collide. A command that draws its own ids draws a
 // colliding one again this many times before it refuses.
 const MAX_ID_REDRAWS = 5;
@@ -126,17 +144,7 @@ export type Composers = {
     context: ComposeContext,
     command: Command,
   ) => Result<VersionedRecord[], RejectionReason>;
-  composePending: (
-    context: ComposeContext,
-    key: string,
-    commands: readonly PendingCommand[],
-    prior: VersionedRecord | null,
-    force: boolean,
-    fixedVersion?: Version,
-    lifecycle?: Lifecycle,
-    base?: VersionedRecord,
-    order?: number,
-  ) => Result<VersionedRecord, RejectionReason>;
+  composePending: (replay: PendingReplay) => Result<VersionedRecord, RejectionReason>;
   // Several field patches of one record key, applied in order and minted once.
   composePatches: (context: ComposeContext, patches: readonly IdentifiedPatch[]) => ComposedPatches;
   composePresetUpload: (
@@ -260,7 +268,7 @@ export function createComposers(connectionId: string): Composers {
   // sheet needs a live root block. `noPreset` names the rejection for a sheet whose template cannot
   // be known yet.
   function sheetPolicyOf(
-    context: ComposeContext,
+    context: Pick<ComposeContext, 'records'>,
     sheetId: string,
     noPreset: RejectionReason,
   ): Result<SheetPolicy, RejectionReason> {
@@ -846,17 +854,17 @@ export function createComposers(connectionId: string): Composers {
     return batch.every(recordFitsOneMessage) ? Result.ok(batch) : Result.err('too-large');
   }
 
-  function composePending(
-    context: ComposeContext,
-    key: string,
-    commands: readonly PendingCommand[],
-    prior: VersionedRecord | null,
-    force: boolean,
-    fixedVersion?: Version,
-    lifecycle?: Lifecycle,
-    base?: VersionedRecord,
-    order?: number,
-  ): Result<VersionedRecord, RejectionReason> {
+  function composePending({
+    context,
+    key,
+    commands,
+    prior,
+    force,
+    fixedVersion,
+    lifecycle,
+    base,
+    order,
+  }: PendingReplay): Result<VersionedRecord, RejectionReason> {
     if (commands.length === 0) return Result.err('unchanged');
 
     const add = commands.some((command) => command.type === 'repeat-block-add');
@@ -938,7 +946,7 @@ export function createComposers(connectionId: string): Composers {
     );
   }
 
-  function currentPreset(context: ComposeContext): Preset | null {
+  function currentPreset(context: Pick<ComposeContext, 'records'>): Preset | null {
     const data = presetDataSchema.safeParse(context.records.get('preset')?.d);
 
     if (!data.success) {
@@ -1142,7 +1150,7 @@ function liveDependentSheetIds(context: ComposeContext): Set<string> {
 }
 
 function liveSheetRecord(
-  context: ComposeContext,
+  context: Pick<ComposeContext, 'records'>,
   sheetId: string,
 ): Result<VersionedRecord, RejectionReason> {
   if (!sheetIdSchema.safeParse(sheetId).success) {
