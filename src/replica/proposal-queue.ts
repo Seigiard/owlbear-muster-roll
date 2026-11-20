@@ -32,6 +32,7 @@ export type ProposalEntry = {
   // until this exact version is answered.
   commands: ProposalCommand[];
   laterCommands?: ProposalCommand[];
+  // View-only identity for a staged composition under an unchanged wire version.
   viewVersion?: Version;
   record: VersionedRecord | null;
   sent: boolean;

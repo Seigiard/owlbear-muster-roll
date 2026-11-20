@@ -164,8 +164,8 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   }
 
   function overlay(view: Map<string, VersionedRecord>): void {
-    // Built over the newest record of its key, so a GM edit of other fields that came after the
-    // entry's version still shows. A sent version keeps its own `(c, a)`.
+    // Build over the newest record so later GM edits of other fields remain visible.
+    // Staged commands use a projection version to distinguish them from the sent record.
     for (const entry of proposals.entries()) {
       const visible = entry.laterCommands?.length
         ? { ...entry, commands: combineCommandList(entry.commands, entry.laterCommands) }
@@ -191,8 +191,8 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     }
   }
 
-  // AD-4: a player's entry clears on an ack or a record that names its own `(k, c, a)`. A commit of
-  // an older version of the key leaves it. Returns whether any entry cleared.
+  // AD-4: an exact ack drops the entry or promotes its staged commands. An older version leaves it
+  // alone. Returns whether any entry matched.
   function answered(edits: readonly EditId[]): boolean {
     let cleared = false;
 
@@ -247,8 +247,8 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   }
 
   // AD-4: only a rejection of this client's newest version of a key counts. `denied` drops the
-  // entry, so the value returns. `stale` replays the commands over the GM's record, takes a `c` above
-  // it and proposes again with the backoff started over; an edit of a row the GM holds removed is
+  // entry, so the value returns. `stale` combines active and staged commands over the GM's record,
+  // takes a `c` above it and proposes again with the backoff started over; an edit of a row the GM holds removed is
   // dropped as denied, and commands the record already satisfies end there. A stale answer over a
   // record below the rejected version is about a field the GM's template lacks, not the version:
   // the GM would answer the same at once, so the new version waits for the running backoff, and the
@@ -372,6 +372,29 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       }
 
       proposals.drop(found.k);
+
+      for (const part of laterParts ?? []) {
+        if (activeParts.some((active) => active.k === part.k)) {
+          continue;
+        }
+
+        const existing = proposals.get(part.k);
+
+        const entry: ProposalEntry = {
+          k: part.k,
+          l: existing?.l ?? found.l,
+          order: existing?.order ?? found.order,
+          commands: combineCommandList(
+            combineCommandList(existing?.commands ?? [], existing?.laterCommands ?? []),
+            part.commands,
+          ),
+          record: null,
+          sent: existing?.sent ?? false,
+        };
+
+        const nextCause = recheckProposal(entry, context, true);
+        cause ??= nextCause;
+      }
 
       for (const part of activeParts) {
         const existing = proposals.get(part.k);
@@ -729,7 +752,7 @@ function addCommand(
     return {
       entry: {
         ...entry,
-        commands: combineCommandList(entry.commands, [command]),
+        commands: combineCommandList(entry.commands, [...(entry.laterCommands ?? []), command]),
         laterCommands: undefined,
         viewVersion: undefined,
       },

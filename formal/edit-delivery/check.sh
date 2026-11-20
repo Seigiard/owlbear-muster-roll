@@ -47,6 +47,7 @@ broken/DeniedSilent.cfg NoSilentLoss
 broken/ResendOnce.cfg NeverStranded
 broken/ResendOnceLive.cfg deadlock
 broken/FoldsUnackedCells.cfg NoOldCellReplayAfterLostAck
+broken/StaleLosesActive.cfg NoSilentLoss
 EOF
 
 echo "TLC output: $OUT"

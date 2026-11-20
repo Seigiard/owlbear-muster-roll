@@ -371,7 +371,9 @@ PlayerReceives ==
          base == MergeCells(pCell, m.cells)
          cleared == HasEntry(entry) /\ entry.rc # 0 /\
                     (entry.rc = m.c \/ (Mutation = "ack-any" /\ m.c # 0))
-         retry == CombineCommands(entry.active, entry.later)
+         retry == IF Mutation = "stale-loses-active" /\ HasCommands(entry.later)
+                    THEN entry.later
+                    ELSE CombineCommands(entry.active, entry.later)
          retryNoops == NoopSeqs(retry, base)
          nextC == Mint(Max(CounterOf(base), entry.rc))
          hold == entry.rc > CounterOf(m.cells)
@@ -645,12 +647,11 @@ TypeOK ==
 \* record the player knows already held its value.
 NoSilentLoss ==
   \A s \in 1..edits :
-    \/ \E f \in Fields :
-         \/ entry.active[f].has /\ entry.active[f].seq >= s
-         \/ entry.later[f].has /\ entry.later[f].seq >= s
-    \/ \E m \in toGM :
-         \E f \in Fields : m.cells[f] # NoCell /\ m.cells[f].s >= s
-    \/ \E t \in Applied \cup reported \cup noop : t >= s
+    LET f == editField[s] IN
+      \/ entry.active[f].has /\ entry.active[f].seq >= s
+      \/ entry.later[f].has /\ entry.later[f].seq >= s
+      \/ \E m \in toGM : m.cells[f] # NoCell /\ m.cells[f].s >= s
+      \/ \E t \in Applied \cup reported \cup noop : t >= s /\ editField[t] = f
 
 \* The GM merges each player field edit into the room at most once.
 NoDoubleApply == \A s \in 1..MaxEdits : applyCount[s] <= 1

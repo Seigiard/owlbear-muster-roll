@@ -62,7 +62,7 @@ TASK-132 code map: `ProposalEntry.commands` is the current batch and `laterComma
 
 | Model action | Code |
 | --- | --- |
-| `PlayerEdits` | `command-routing.ts` `handlePlayerCommand` → `pending-edits.ts` `edit` → `proposeEntry` → `rebuiltRecord` → `core/compose.ts` `composePending` in pending mode. The entry keeps the active batch and later commands separate after a sent version. It stores no record during catch-up. `proposal-queue.ts` `put` stores it. |
+| `PlayerEdits` | `command-routing.ts` `handlePlayerCommand` → `pending-edits.ts` `edit` → `proposeEntry` → `rebuiltRecord` → `core/compose.ts` `composePending` in pending mode. The entry keeps the active batch and later commands separate after a sent version. During catch-up, staging keeps the active record; a non-stage edit clears it. `proposal-queue.ts` `put` stores it. |
 | `QueueTakesPropose` | `proposal-queue.ts` `sendNow` marks the entry sent and returns its stored record when the `enqueue` callback runs. It does not recompose the commands. |
 | `ResendFires` | `proposal-queue.ts` `armResend` timer, through `platform/schedule.ts` `schedule` |
 | `GmLinkLost` | `catch-up-table.ts` `livenessFired` on `gm-silence` when `silenceAnswered` |
@@ -81,11 +81,11 @@ One atomic step is one synchronous run of one handler: one room message through 
 
 ## Bounds and what is left out
 
-Gate bounds: one-field configs use player values `{0, 1}` and GM value `{1}`. `TwoFields.cfg` uses fields `str` and `note`, player values `{0, 1}`, and GM value `{2}`. The gates allow 2 player edits, 1 GM edit, 2 GM flips (away, back), 1 catch-up, 1 lost message, and 1 revoke. Too-large edits are allowed only in `Refusals.cfg`.
+Gate bounds: one-field configs use player values `{0, 1}` and GM value `{1}`. `TwoFields.cfg` uses fields `str` and `note`, player values `{0, 1}`, and GM value `{2}`. `EditDelivery.cfg` allows 2 player edits, 1 GM edit, 2 GM flips, 1 catch-up and 1 loss. `Refusals.cfg` allows 2 player edits, 1 GM edit, 1 revoke, 1 catch-up and 1 loss, and permits too-large edits. `Liveness.cfg` allows 1 player edit, 1 GM edit, 2 GM flips and 1 loss. `TwoFields.cfg` allows 2 player edits, 1 GM edit, 1 catch-up and 1 loss; it has no flips, revokes or too-large edits and does not check liveness.
 
 Assumptions and simplifications:
 
-- One player, one GM client, one key. Each config has one field, except `TwoFields.cfg` and `broken/FoldsUnackedCells.cfg`, which use `str` and `note`. `entry.active` and `entry.later` are per-field command maps. `entry.rc` versions the active batch. Two GM clients answering one proposal are not modeled.
+- One player, one GM client, one key. Each config has one field, except `TwoFields.cfg`, `broken/FoldsUnackedCells.cfg` and `broken/StaleLosesActive.cfg`, which use `str` and `note`. `entry.active` and `entry.later` are per-field command maps. `entry.rc` versions the active batch. Two GM clients answering one proposal are not modeled.
 - `committed` is unbounded; the code keeps the newest 1000 committed proposals, and a resend comes within the 30-second backoff cap.
 - The player's `propose` messages are a set: any order, a copy folds into one. Messages to the player are FIFO, as the GM's send queue and one sender's arrival order are.
 - An identical message queued twice is queued once; its second copy would find the entry already past it.
