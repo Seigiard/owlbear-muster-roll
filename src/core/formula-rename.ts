@@ -41,7 +41,7 @@ export function renameFieldId(
     return { template, formulas: 0 };
   }
 
-  const rewrites = isFieldId(newId) && !scopeHolds(template, newId, place);
+  const rewrites = isFieldId(newId) && !relatedScopeFieldIds(template, place).has(newId);
   let formulas = 0;
 
   const ownerScope = repeatScopePathAt(template, place);
@@ -198,19 +198,42 @@ function resolvesToField(
   return scopeOfField(layout, field) === '@root' && isFirstHolder(layout, id, field);
 }
 
-// Whether the scope of `field` already holds `id`.
-function scopeHolds(layout: TemplateLayout, id: string, field: TemplateCellPlace): boolean {
-  const scope = scopeOfField(layout, field);
+// Field ids that TASK-145 treats as taken: fields in the same, enclosing, or nested repeat scope.
+// Scope identity uses positions, so user-editable repeat ids do not affect the relationship.
+export function relatedScopeFieldIds(layout: TemplateLayout, field: TemplateRowPlace): Set<string> {
+  const path = physicalRepeatPath(layout, field);
+  const related = new Set<string>();
 
-  return placedSections(layout).some(({ place, section }) =>
-    section.rows.some((row, rowIndex) => {
-      const rowScope = scopeOfField(layout, { ...place, rowIndex, cellIndex: 0 });
+  placedSections(layout).forEach(({ place, section }) => {
+    section.rows.forEach((row, rowIndex) => {
+      const rowPlace = { ...place, rowIndex };
+      const candidatePath = physicalRepeatPath(layout, rowPlace);
 
-      return (
-        rowScope === scope && row.cells.some((cell) => cell.kind === 'field' && cell.id === id)
-      );
-    }),
-  );
+      const overlaps =
+        candidatePath.every((part, index) => path[index] === part) ||
+        path.every((part, index) => candidatePath[index] === part);
+
+      if (!overlaps) return;
+
+      row.cells.forEach((cell) => {
+        if (cell.kind === 'field') related.add(cell.id);
+      });
+    });
+  });
+
+  return related;
+}
+
+function physicalRepeatPath(layout: TemplateLayout, place: TemplateRowPlace): number[] {
+  const tab = layout.tabs[place.tabIndex];
+  const section = sectionAt(layout, place);
+  const row = section?.rows[place.rowIndex];
+
+  return [
+    ...(tab?.repeat === undefined ? [] : [place.tabIndex]),
+    ...(section?.repeat === undefined ? [] : [place.tabIndex, place.sectionIndex]),
+    ...(row?.repeat === undefined ? [] : [place.tabIndex, place.sectionIndex, place.rowIndex]),
+  ];
 }
 
 // Whether `field` is the first field `id` in its lexical scope.
