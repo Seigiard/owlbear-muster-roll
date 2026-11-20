@@ -3,9 +3,9 @@
 #
 #   formal/edit-delivery/check.sh            from the repo root
 #
-# A baseline config must pass. Each broken/ config models a broken variant of
-# the code and must break its rule, or the rule cannot fail. Exit 0 when every result
-# matches; TLC's full output for each config is in $OUT (default: a temporary folder).
+# Baseline configs must pass. Each broken/ config must fail its named rule. The
+# broken/ configs include deliberate mutations and known current-code limits.
+# Exit 0 when each result matches; TLC's full output for each config is in $OUT.
 set -u
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -39,6 +39,9 @@ EditDelivery.cfg pass
 Refusals.cfg pass
 Liveness.cfg pass
 TwoFields.cfg pass
+StagedRefusals.cfg pass
+StagedReturn.cfg pass
+broken/ReloadReplayAfterLostAck.cfg NoOldCellReplayAfterLostAck
 broken/MintForgets.cfg OneVersionOneEdit
 broken/GmOverwrites.cfg OwnOrderKept
 broken/ForgetsCommitted.cfg NoDoubleApply
