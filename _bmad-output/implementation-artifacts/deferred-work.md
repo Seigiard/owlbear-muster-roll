@@ -719,3 +719,9 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-132-unacked-player-cell.md`
   summary: Check staged player edits across refusal and GM return (TASK-148).
   evidence: `TwoFields.cfg` exercises staging and loss with a live GM and no revoke. The refusal and liveness gates keep the older one-field bounds and cannot stage a second field.
+
+## Deferred from: TASK-140 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-140-compile-repeat-content.md`
+  summary: Focus a leading select field when adding a repeat block (TASK-151).
+  evidence: In the mock browser, a new block with a `SELECT` before its name field focused the following `TEXTAREA`. The existing `input, textarea` selector skips the first field. TASK-140 preserves that behavior.
