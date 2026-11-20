@@ -45,6 +45,7 @@ VARIABLES
   gAllowed,   \* the GM's replica gives the player write access
   outbox,     \* commit-outbox: held field record, the player's ack, a held revoke, `scheduled`
   gQueue,     \* the GM's send queue: "slot" (the outbox's composed commit) and rejects, FIFO
+  committed,  \* room-protocol.ts committedEdits: the player counters the GM committed (TASK-119)
   \* room messages in flight
   toGM,       \* `propose` messages, a set: any order, a copy collapses into one
   toP,        \* messages to the player, FIFO: `commit` and `reject`
@@ -57,12 +58,12 @@ VARIABLES
   gmEdits, gmFlips, revokes, catchUps, losses
 
 vars == <<entry, armed, queued, pCell, pAllowed, catching, pLink, lastMinted, edits,
-          gLive, gCell, gAllowed, outbox, gQueue, toGM, toP,
+          gLive, gCell, gAllowed, outbox, gQueue, committed, toGM, toP,
           applyCount, reported, noop, proposed,
           gmEdits, gmFlips, revokes, catchUps, losses>>
 
 playerVars == <<entry, armed, queued, pCell, pAllowed, catching, pLink, lastMinted, edits>>
-gmVars == <<gLive, gCell, gAllowed, outbox, gQueue>>
+gmVars == <<gLive, gCell, gAllowed, outbox, gQueue, committed>>
 ghostVars == <<applyCount, reported, noop, proposed>>
 budgetVars == <<gmEdits, gmFlips, revokes, catchUps, losses>>
 
@@ -117,6 +118,7 @@ Init ==
   /\ gAllowed = TRUE
   /\ outbox = NoOutbox
   /\ gQueue = <<>>
+  /\ committed = {}
   /\ toGM = {}
   /\ toP = <<>>
   /\ applyCount = [s \in 1..MaxEdits |-> 0]
@@ -303,28 +305,36 @@ PlayerReceives ==
 -----------------------------------------------------------------------------
 \* GM actions.
 
-\* room-protocol.ts receiveProposal with core/access.ts checkProposal.
+\* room-protocol.ts receiveProposal with core/access.ts checkProposal. A proposal whose
+\* counter the GM committed before is answered with the held record and its echo, ahead of
+\* checkProposal (committedEdits, TASK-119); Mutation "forgets-committed" removes that.
 GmReceives(m) ==
   /\ m \in toGM
   /\ toGM' = toGM \ {m}
   /\ LET pc == [v |-> m.v, c |-> m.c, a |-> "P", s |-> m.s] IN
      IF ~gLive                                                   \* dropped, no answer
-       THEN UNCHANGED <<gCell, outbox, gQueue, applyCount>>
+       THEN UNCHANGED <<gCell, outbox, gQueue, applyCount, committed>>
+     ELSE IF m.c \in committed /\ Mutation # "forgets-committed"  \* committed before
+       THEN OutboxAdd(gCell, m.c, FALSE) /\ UNCHANGED <<gCell, applyCount, committed>>
      ELSE IF ~gAllowed                                           \* denied
        THEN gQueue' = AppendNew(gQueue, Msg("reject", NoCell, m.c, "denied", FALSE))
-            /\ UNCHANGED <<gCell, outbox, applyCount>>
+            /\ UNCHANGED <<gCell, outbox, applyCount, committed>>
      ELSE IF Mutation = "gm-overwrites"     \* broken variant: no counter check, no merge
        THEN /\ gCell' = pc
             /\ applyCount' = [applyCount EXCEPT ![m.s] = @ + 1]
             /\ OutboxAdd(pc, m.c, FALSE)
+            /\ UNCHANGED committed
      ELSE IF pc = gCell                                          \* commit-existing
-       THEN OutboxAdd(gCell, m.c, FALSE) /\ UNCHANGED <<gCell, applyCount>>
+       THEN /\ OutboxAdd(gCell, m.c, FALSE)
+            /\ committed' = committed \cup {m.c}
+            /\ UNCHANGED <<gCell, applyCount>>
      ELSE IF m.c <= gCell.c                                      \* stale
        THEN gQueue' = AppendNew(gQueue, Msg("reject", gCell, m.c, "stale", FALSE))
-            /\ UNCHANGED <<gCell, outbox, applyCount>>
+            /\ UNCHANGED <<gCell, outbox, applyCount, committed>>
      ELSE /\ gCell' = MergeCell(gCell, pc)                       \* commit
           /\ applyCount' = [applyCount EXCEPT ![m.s] = @ + 1]
           /\ OutboxAdd(MergeCell(gCell, pc), m.c, FALSE)
+          /\ committed' = committed \cup {m.c}
   /\ UNCHANGED <<playerVars, gLive, gAllowed, toP, reported, noop, proposed, budgetVars>>
 
 \* A GM's own edit: engine command -> apply -> sendCommits.
@@ -334,7 +344,7 @@ GmEdits(v) ==
   /\ gmEdits' = gmEdits + 1
   /\ gCell' = [v |-> v, c |-> gCell.c + 1, a |-> "G", s |-> 0]
   /\ OutboxAdd([v |-> v, c |-> gCell.c + 1, a |-> "G", s |-> 0], 0, FALSE)
-  /\ UNCHANGED <<playerVars, gLive, gAllowed, toGM, toP, ghostVars>>
+  /\ UNCHANGED <<playerVars, gLive, gAllowed, committed, toGM, toP, ghostVars>>
   /\ UNCHANGED <<gmFlips, revokes, catchUps, losses>>
 
 \* The GM revokes write access; its access record goes out in the outbox's next commit.
@@ -345,15 +355,16 @@ GmRevokes ==
   /\ revokes' = revokes + 1
   /\ gAllowed' = FALSE
   /\ OutboxAdd(NoCell, 0, TRUE)
-  /\ UNCHANGED <<playerVars, gLive, gCell, toGM, toP, ghostVars>>
+  /\ UNCHANGED <<playerVars, gLive, gCell, committed, toGM, toP, ghostVars>>
   /\ UNCHANGED <<gmEdits, gmFlips, catchUps, losses>>
 
-\* The GM client leaves `live` (catch-up, closed tab) or comes back.
+\* The GM client leaves `live` (catch-up) or comes back. It keeps its memory, as
+\* room-protocol.ts does; a closed tab (`stop`) and a reload are left out.
 GmFlips ==
   /\ gmFlips < MaxGmFlips
   /\ gmFlips' = gmFlips + 1
   /\ gLive' = ~gLive
-  /\ UNCHANGED <<playerVars, gCell, gAllowed, outbox, gQueue, toGM, toP, ghostVars>>
+  /\ UNCHANGED <<playerVars, gCell, gAllowed, outbox, gQueue, committed, toGM, toP, ghostVars>>
   /\ UNCHANGED <<gmEdits, revokes, catchUps, losses>>
 
 \* send-queue.ts drain takes the oldest item. The outbox's slot composes its commit now
@@ -369,7 +380,7 @@ GmQueueSends ==
                         ELSE AppendNew(toP, Msg("commit", outbox.cell, outbox.ack, "none",
                                                 outbox.revoke))
        ELSE toP' = AppendNew(toP, item) /\ UNCHANGED outbox
-  /\ UNCHANGED <<playerVars, gLive, gCell, gAllowed, toGM, ghostVars, budgetVars>>
+  /\ UNCHANGED <<playerVars, gLive, gCell, gAllowed, committed, toGM, ghostVars, budgetVars>>
 
 -----------------------------------------------------------------------------
 \* The send queue gives up on a message (send-queue.ts: a non-rate-limit error).
@@ -436,6 +447,7 @@ TypeOK ==
   /\ entry.has \in BOOLEAN /\ entry.rc \in Nat /\ entry.seq \in 0..MaxEdits
   /\ armed \in BOOLEAN /\ queued \in BOOLEAN
   /\ catching \in BOOLEAN /\ gLive \in BOOLEAN
+  /\ committed \subseteq Nat
   /\ pLink \in {"online", "offline"}
   /\ edits \in 0..MaxEdits
 
