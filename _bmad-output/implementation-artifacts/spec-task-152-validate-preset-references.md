@@ -2,7 +2,7 @@
 title: 'TASK-152: Validate repeat ids and formula references'
 type: 'bugfix'
 created: '2026-11-20'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 context: ['{project-root}/CLAUDE.md', '{project-root}/GLOSSARY.md']
@@ -67,10 +67,11 @@ Given a valid preset already applied in the room, when a GM uploads either inval
 
 ## Review Triage Log
 
-- Confirmed, fix: treat both new Builder problems as warnings with the same visual severity as the TASK-145 problem.
+- Confirmed, fixed: both new Builder problems use the TASK-145 warning style. A Chromium capture verified the warning on the editable dice cell.
 - Confirmed, fixed: CAP-7 now distinguishes a roll with an empty or non-numeric value from a preset with an invalid field reference.
 - Confirmed, deferred to TASK-153: formula suggestions can contain fields from repeat rows or tabs that the dice cell cannot read. The validator correctly marks the result.
 - Coverage limit: the tab and section forms prove both directions of the shared rename check. Row-specific form binding has no separate browser assertion. The parser tests cover a repeat row reusing an ancestor id.
+- The confirming review had no findings from two independent reviewers.
 
 ## Verification
 
@@ -78,3 +79,4 @@ Given a valid preset already applied in the room, when a GM uploads either inval
 - `bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, and `bun run build`: about 2 minutes total.
 - `bun run mutants` on the committed code: about 2 minutes. `formal/drift.sh`: under 1 minute.
 - `bun run test:browser --workers=1` outside the sandbox: expected 12 minutes. Run again only as needed for diagnosis or a code change.
+- On merged test head `78dfb1d7007c68bf683651bbfa5c1e2bfa01471c`: 3,693 Bun tests passed, 1 environment skip; 596 Chromium tests passed; 55 mutants killed. Format, lint, typecheck, build, and formal drift passed.
