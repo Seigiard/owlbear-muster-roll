@@ -204,8 +204,10 @@ test('the extension expands one tab per block in source position and keeps selec
 
 test('a remote preceding delete keeps the edited block selected and its delayed save bound to it', async ({
   context,
+  page,
 }) => {
   // #given
+  await page.clock.install();
   const editing = await openSeededClient(context, GM, IDENTITY_RECORDS);
   const remote = await openSeededClient(context, { ...GM, client: 'gm-2' }, IDENTITY_RECORDS);
   await watchFieldPatchTargets(editing.window);
@@ -217,7 +219,7 @@ test('a remote preceding delete keeps the edited block selected and its delayed 
   await remote.window.getByRole('button', { name: copy.command.delete }).click();
   await remote.window.getByRole('button', { name: copy.command.delete, exact: true }).click();
   await expect(sheetTab(editing.window, 'Alpha')).toHaveCount(0);
-  await editing.window.waitForTimeout(PAST_SAVE_PAUSE_MS);
+  await editing.window.clock.runFor(PAST_SAVE_PAUSE_MS);
 
   // #then
   await expect
@@ -243,8 +245,10 @@ test('a remote preceding delete keeps the edited block selected and its delayed 
 
 test('a remote delete of the edited block cannot redirect its delayed save to the successor', async ({
   context,
+  page,
 }) => {
   // #given
+  await page.clock.install();
   const editing = await openSeededClient(context, GM, IDENTITY_RECORDS);
   const remote = await openSeededClient(context, { ...GM, client: 'gm-2' }, IDENTITY_RECORDS);
   await watchFieldPatchTargets(editing.window);
@@ -256,7 +260,7 @@ test('a remote delete of the edited block cannot redirect its delayed save to th
   await remote.window.getByRole('button', { name: copy.command.delete }).click();
   await remote.window.getByRole('button', { name: copy.command.delete, exact: true }).click();
   await expect(sheetTab(editing.window, 'Beta')).toHaveCount(0);
-  await editing.window.waitForTimeout(PAST_SAVE_PAUSE_MS);
+  await editing.window.clock.runFor(PAST_SAVE_PAUSE_MS);
 
   // #then
   expect({
@@ -407,8 +411,12 @@ test('a refused add leaves the GM tab list and selection unchanged', async ({ co
   await expect(sheetTab(gm.window, 'Overview')).toHaveAttribute('aria-selected', 'true');
 });
 
-test('a timed-out add leaves the GM tab list and selection unchanged', async ({ context }) => {
+test('a timed-out add leaves the GM tab list and selection unchanged', async ({
+  context,
+  page,
+}) => {
   // #given
+  await page.clock.install();
   const gm = await openSeededClient(context, GM);
   await watchCommands(gm.window);
   await gm.background.close();
@@ -416,7 +424,7 @@ test('a timed-out add leaves the GM tab list and selection unchanged', async ({ 
   // #when
   await sheetTab(gm.window, '+').click();
   await sentCommandId(gm.window, 'repeat-block-add');
-  await gm.window.waitForTimeout(COMMAND_TIMEOUT_MS);
+  await gm.window.clock.runFor(COMMAND_TIMEOUT_MS);
 
   // #then
   expect(await tabNames(gm.window)).toEqual(GM_TAB_NAMES);

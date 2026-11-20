@@ -443,7 +443,7 @@
         "playwright/no-useless-not": "warn",
         "playwright/no-wait-for-navigation": "error",
         "playwright/no-wait-for-selector": "warn",
-        "playwright/no-wait-for-timeout": "error",
+        "playwright/no-wait-for-timeout": "off",
         "playwright/prefer-hooks-in-order": "warn",
         "playwright/prefer-hooks-on-top": "warn",
         "playwright/prefer-locator": "warn",
@@ -455,6 +455,18 @@
         "playwright/valid-expect-in-promise": "error",
         "playwright/valid-test-tags": "error",
         "playwright/valid-title": "error"
+      }
+    },
+    {
+      "files": ["tests/**"],
+      "rules": {
+        "no-restricted-properties": [
+          "error",
+          {
+            "property": "waitForTimeout",
+            "message": "Wait for a condition, use a command barrier, or advance the Playwright clock."
+          }
+        ]
       }
     }
   ]

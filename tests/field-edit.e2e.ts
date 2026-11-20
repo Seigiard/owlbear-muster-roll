@@ -353,7 +353,7 @@ test('an invalid value is not saved when the window closes', async ({ page, cont
   // #when
   await page.close();
   await page.clock.runFor(PAST_PAUSE_MS);
-  // oxlint-disable-next-line playwright/no-wait-for-timeout -- after close, the window cannot send a later same-channel barrier; allow its pagehide message to reach background storage
+  // oxlint-disable-next-line no-restricted-properties -- after close, the window cannot send a later same-channel barrier; allow its pagehide message to reach background storage
   await background.waitForTimeout(700);
   // #then
   expect(await storedCell(background, 'blk:brok', 'dex')).toBe(ABSENT);
