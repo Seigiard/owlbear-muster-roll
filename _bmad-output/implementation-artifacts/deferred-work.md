@@ -749,3 +749,6 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-152-validate-preset-references.md`
   summary: Keep the full block-path comparison from TASK-100 until a formula lookup change can simplify it.
   evidence: Strict validation now rejects an id shared by an ancestor and a descendant. The comparison still distinguishes a nested block from each enclosing block in valid presets. The roll tests still exercise those paths.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-152-validate-preset-references.md`
+  summary: Suggest only readable fields in the Builder formula input (TASK-153).
+  evidence: A plain dice row gets a `row_bonus` suggestion when that field exists only in a repeat row. The same formula then fails preset validation because it cannot read the field.

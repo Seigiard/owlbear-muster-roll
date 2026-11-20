@@ -48,7 +48,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **success:** `1d20 <= str - 2*str_tired` with filled fields rolls once, and all connected clients show the same result with the roller's name. A roll from a hidden sheet, tab, section or row shows only on GM clients.
 - **CAP-7**
   - **intent:** A formula with bad input refuses to roll.
-  - **success:** A formula with an empty, non-numeric or removed field shows an error. No roll and no broadcast occur.
+  - **success:** A formula with an empty or non-numeric field shows an error. No roll and no broadcast occur. The preset check rejects a field reference that cannot resolve from the dice cell.
 - **CAP-8**
   - **intent:** The GM can change the preset by uploading a JSON file after sheets exist, and the change applies to all sheets.
   - **success:** A new field is empty on all sheets. A rename keeps the values. When an upload removes fields that hold values, removes a template that holds sheets or values, or removes a repeat scope that holds blocks, one confirmation for the whole upload names how many values will be erased and how many sheets will be deleted. Both then go on all clients. Any other upload shows a short notice that the format changed.

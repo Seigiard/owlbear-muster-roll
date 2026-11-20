@@ -2,7 +2,7 @@
 title: 'TASK-152: Validate repeat ids and formula references'
 type: 'bugfix'
 created: '2026-11-20'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 context: ['{project-root}/CLAUDE.md', '{project-root}/GLOSSARY.md']
@@ -50,18 +50,27 @@ baseline_commit: 'e1739fdbb45e0132f9b422bd27968ed59e171ba1'
 
 ## Tasks & Acceptance
 
-- [ ] `src/core/preset.ts`, `src/ui/preset-errors.ts`, `src/copy.ts`: add located repeat and formula failures. Preserve syntax errors and existing formula type checks.
-- [ ] `src/builder/document.ts`, `src/builder/item-form.tsx`: apply repeat id rules to the manual rename, and avoid generating ids that break the rule.
-- [ ] `src/core/preset.test.ts`, `src/core/dice-roll.test.ts`, and applicable Builder and upload tests: replace superseded acceptance cases, protect the matrix behavior, and keep the valid runtime roll checks.
-- [ ] `docs/preset-format.md`, `_bmad-output/specs/spec-muster-roll/preset-format.md`, `GLOSSARY.md`, and `docs/example-preset.json`: publish both rules and keep the example representative and valid.
+- [x] `src/core/preset.ts`, `src/ui/preset-errors.ts`, `src/copy.ts`: add located repeat and formula failures. Preserve syntax errors and existing formula type checks.
+- [x] `src/builder/document.ts`, `src/builder/item-form.tsx`: apply repeat id rules to the manual rename, and avoid generating ids that break the rule.
+- [x] `src/core/preset.test.ts`, `src/core/dice-roll.test.ts`, and applicable Builder and upload tests: replace superseded acceptance cases, protect the matrix behavior, and keep the valid runtime roll checks.
+- [x] `docs/preset-format.md`, `_bmad-output/specs/spec-muster-roll/preset-format.md`, `GLOSSARY.md`, and `docs/example-preset.json`: publish both rules and keep the example representative and valid.
 
 Given a valid preset already applied in the room, when a GM uploads either invalid preset, the upload reports the problem without replacing the room preset. Given a Builder preset import, when either rule fails, the import refuses it without replacing the draft.
 
 ## Implementation Notes
 
+- The renderer, the replica, and Builder file import already share the strict parser. Builder draft restoration still accepts the shape first so the GM can edit a draft with problems.
+- The TASK-100 full path comparison remains in the roll runtime. The fixture uses legal distinct repeat ids and still checks local and enclosing values.
+- The preset change browser fixture removes two fields and now uses a new, defined but empty field to preserve the roll-time error test.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+- Confirmed, fix: treat both new Builder problems as warnings with the same visual severity as the TASK-145 problem.
+- Confirmed, fixed: CAP-7 now distinguishes a roll with an empty or non-numeric value from a preset with an invalid field reference.
+- Confirmed, deferred to TASK-153: formula suggestions can contain fields from repeat rows or tabs that the dice cell cannot read. The validator correctly marks the result.
+- Coverage limit: the tab and section forms prove both directions of the shared rename check. Row-specific form binding has no separate browser assertion. The parser tests cover a repeat row reusing an ancestor id.
 
 ## Verification
 
