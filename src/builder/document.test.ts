@@ -841,8 +841,10 @@ describe('field ids across tabs', () => {
     expect(ids).toEqual(new Set(['name', 'str', 'nick']));
   });
   test('a formula in a repeat section on tab 2 reads its own fields, then the fields of every tab', () => {
+    // #given
+    const spot = { tab: 1, section: 1, row: 0 };
     // #when
-    const ids = template === undefined ? null : formulaFieldIds(template, { tab: 1, section: 1 });
+    const ids = template === undefined ? null : formulaFieldIds(template, spot);
     // #then
     expect(ids).toEqual(['item', 'name', 'str', 'nick']);
   });

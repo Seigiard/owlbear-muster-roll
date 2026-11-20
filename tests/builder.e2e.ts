@@ -1223,6 +1223,116 @@ test('the formula input completes a field id', async ({ page }) => {
   await expect(formula).toHaveValue('1d20+dex_save');
 });
 
+const FORMULA_SCOPE_FILE = encounterFile([
+  {
+    title: 'Stats',
+    sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'mod_sheet' }] }] }],
+  },
+  {
+    title: 'Combat',
+    sections: [
+      {
+        rows: [
+          {
+            cells: [
+              { kind: 'field', type: 'number', id: 'mod_plain' },
+              { kind: 'dice', formula: '1d4' },
+            ],
+          },
+          {
+            repeat: { id: 'gear', nameField: 'gear_name' },
+            cells: [
+              { kind: 'field', type: 'text', id: 'gear_name' },
+              { kind: 'field', type: 'number', id: 'mod_gear' },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    ...ENCOUNTER_TAB,
+    sections: [
+      {
+        rows: [
+          {
+            cells: [
+              { kind: 'field', type: 'text', id: 'npc_name' },
+              { kind: 'field', type: 'number', id: 'mod_npc' },
+            ],
+          },
+        ],
+      },
+      {
+        title: 'Attacks',
+        repeat: { id: 'attack', nameField: 'attack_name' },
+        rows: [
+          {
+            cells: [
+              { kind: 'field', type: 'text', id: 'attack_name' },
+              { kind: 'field', type: 'number', id: 'mod_attack' },
+            ],
+          },
+          {
+            repeat: { id: 'strike', nameField: 'strike_name' },
+            cells: [
+              { kind: 'field', type: 'text', id: 'strike_name' },
+              { kind: 'field', type: 'number', id: 'mod_strike' },
+              { kind: 'dice', formula: '1d8' },
+            ],
+          },
+          {
+            repeat: { id: 'spell', nameField: 'spell_name' },
+            cells: [
+              { kind: 'field', type: 'text', id: 'spell_name' },
+              { kind: 'field', type: 'number', id: 'mod_spell' },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+]);
+
+for (const { row, dice, ids, completed } of [
+  {
+    row: 'a plain row beside a repeat row',
+    dice: '1d4',
+    ids: ['mod_sheet', 'mod_plain'],
+    completed: '1d20+mod_sheet',
+  },
+  {
+    row: 'a nested repeat row with a sibling repeat',
+    dice: '1d8',
+    ids: ['mod_strike', 'mod_attack', 'mod_npc', 'mod_sheet', 'mod_plain'],
+    completed: '1d20+mod_strike',
+  },
+]) {
+  test(`Builder suggests readable field ids for ${row}`, async ({ page }) => {
+    // #given
+    await page.goto(PAGE);
+    await openFile(page, 'formula-scopes.json', FORMULA_SCOPE_FILE);
+    await pick(item(page, dice));
+    const formula = form(page).getByRole('combobox', { name: builder.form.formula });
+
+    // #when
+    await formula.fill('');
+    await formula.pressSequentially('1d20+mod_');
+
+    // #then
+    await expect(
+      page.getByRole('listbox', { name: builder.form.completions }).getByRole('option'),
+    ).toHaveText(ids);
+
+    // #when
+    await formula.press('Enter');
+
+    // #then
+    await expect(formula).toHaveValue(completed);
+    await expect(await presetDownloadButton(page)).toBeEnabled();
+  });
+}
+
 test('a click on a preview cell selects its tree item', async ({ page }) => {
   // #given
   await page.goto(PAGE);
