@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@seigiard'
 created_date: '2026-11-20T14:17:00Z'
-updated_date: '2026-11-20T14:46:00Z'
+updated_date: '2026-11-20T14:51:00Z'
 labels:
   - review-follow-up
 dependencies:
@@ -29,6 +29,14 @@ A single GM edits a valid Builder draft with a sheet field `bonus`, a repeat fie
 - [ ] #1 When a GM corrects a conflicting manual field id, formulas that referred to the original field still refer to it after the draft becomes valid.
 - [ ] #2 Renaming a field to an available id still rewrites its references, not references to unrelated fields.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Reproduce the conflicting rename in Builder and lock a regression.
+2. Use the TASK-145 conflict rule before rewriting formula references; keep free renames scope-aware.
+3. Run the focused and changed-path checks, record acceptance evidence, and open the PR with automerge.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
