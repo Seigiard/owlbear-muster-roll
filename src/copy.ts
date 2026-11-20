@@ -296,6 +296,8 @@ export const copy = {
     addToken: 'Добавить токен',
     emptyPreset: 'Добавьте набор или одиночный лист.',
     formulasChanged: (n: number): string => `Формулы изменены: ${n}.`,
+    fieldIdTaken: (id: string, scope: string): string =>
+      `Id «${id}» уже используется в области «${scope}».`,
     repeatBlocksErased: (id: string): string =>
       `Блоки «${id}» в комнате будут стёрты при загрузке пресета.`,
     repeatWarningsUnavailable:

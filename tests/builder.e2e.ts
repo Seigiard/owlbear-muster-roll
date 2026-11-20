@@ -704,6 +704,96 @@ test('builds a preset with the tree and the forms, and the window loads the down
   await expect(window.getByRole('button', { name: copy.label.addToSet('Экипаж') })).toBeVisible();
 });
 
+for (const { outcome, correction, formulas } of [
+  {
+    outcome: 'keeps the original formula when the GM',
+    correction: 'bonus',
+    formulas: ['1d6+bonus', '1d8+attack_bonus'],
+  },
+  {
+    outcome: 'updates only the original field reference when the GM',
+    correction: 'damage_bonus',
+    formulas: ['1d6+damage_bonus', '1d8+attack_bonus'],
+  },
+]) {
+  test(`${outcome} corrects a conflicting field id to ${correction}`, async ({ page }) => {
+    // #given
+    const preset = JSON.stringify({
+      v: 4,
+      templates: [
+        {
+          id: 'character',
+          title: 'Персонаж',
+          tabs: [
+            {
+              sections: [
+                { rows: [{ cells: [{ kind: 'field', type: 'number', id: 'bonus' }] }] },
+                {
+                  title: 'Атаки',
+                  columns: 4,
+                  repeat: { id: 'attacks', nameField: 'attack' },
+                  rows: [
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'attack' },
+                        { kind: 'field', type: 'number', id: 'attack_bonus' },
+                        { kind: 'dice', formula: '1d6+bonus' },
+                        { kind: 'dice', formula: '1d8+attack_bonus' },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    await page.goto(PAGE);
+    await openFile(page, 'attack-bonus.json', preset);
+    const originalField = item(page, `bonus · ${builder.form.typeNumber}`);
+    await pick(originalField);
+    await expect(page.getByText(builder.noProblems)).toBeVisible();
+    const fieldId = form(page).getByRole('textbox', { name: builder.form.fieldId });
+    const conflictText = /(?=.*\battack_bonus\b)(?=.*Атаки)/;
+    const conflict = form(page).getByText(conflictText);
+
+    // #when
+    await fieldId.fill('attack_bonus');
+    await fieldId.press('Enter');
+    // #then
+    await expect(conflict).toBeVisible();
+    await expect(fieldId).toHaveAccessibleDescription(conflictText);
+    await expect(originalField).toBeVisible();
+    await expect(page.getByText(builder.noProblems)).toBeVisible();
+    await expect(item(page, '1d6+bonus')).toBeVisible();
+    await expect(item(page, '1d8+attack_bonus')).toBeVisible();
+
+    // #when
+    await fieldId.fill(correction);
+    await fieldId.press('Enter');
+    // #then
+    await expect(conflict).toBeHidden();
+    await expect(fieldId).not.toHaveAccessibleDescription(conflictText);
+    await expect(item(page, `${correction} · ${builder.form.typeNumber}`)).toBeVisible();
+
+    const downloading = page.waitForEvent('download');
+    await (await presetDownloadButton(page)).click();
+    const path = await (await downloading).path();
+
+    const downloaded = parsePresetFile(readFileSync(path, 'utf8')).unwrap(
+      'Expected the downloaded preset to be valid',
+    );
+
+    const dice = downloaded.templates[0]?.tabs[0]?.sections[1]?.rows[0]?.cells.filter(
+      (cell) => cell.kind === 'dice',
+    );
+
+    expect(dice?.map((cell) => cell.formula)).toEqual(formulas);
+  });
+}
+
 test('builds, previews and downloads a select field, then drops its options on a type switch', async ({
   page,
 }) => {
