@@ -653,3 +653,9 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 ## Deferred from: TASK-131 (2026-11-20)
 
 - `tests/pending.e2e.ts:168-177` ("a player's edit shows at once, and "Ожидает" only after the delay"): `clock.runFor` advances every page of the context; if the edit command reaches the background only after the background's `runFor` finished, the spaced second send waits on a fake 50 ms timer that nothing advances, and the poll times out. Load-only race found in review, not observed (25 green runs, full suite green). Fix shape: advance the clock inside the polls (`runFor(TIMING.sendSpacingMs)` per poll), then advance only the rest of the inside-delay time before the zero-mark check.
+
+## Deferred from: TASK-123 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-123-roll-flow-dice-extension-types.md`
+  summary: Rename the `DiceExtensionFailure` union in `src/replica/dice-extension.ts:53` so it no longer shares a name with the `DiceExtensionFailure` class in `src/platform/ports.ts:133` (TASK-138).
+  evidence: `roll-flow.ts` uses both (the union through `Pick<DiceExtension, 'roll'>`, the class at line 231), and `roll-flow.test.ts` now imports the union under the class's name; the collision predates TASK-123.
