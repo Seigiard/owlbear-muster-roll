@@ -2,7 +2,7 @@
 title: 'TASK-113 Cut the hook tax in src/ui with useEffectEvent and React Compiler'
 type: 'chore'
 created: '2026-11-20'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: 'b34686e9c0d5157b176b274e941576f78180b599'
@@ -76,6 +76,21 @@ context:
 
 ## Implementation Notes
 
+- Built through `implement`/`tdd` (run dir `~/.claude/artifacts/tdd-20261120-042349/task-113-react-compiler-use-effect-event/`). Babel 7, not 8: with Babel 8 the compiler bails out on every destructuring default.
+- `stateRef` stays (spec Decision). `latest` is gone. The pause timer is armed by an effect on the draft, only for drafts typed in `onChange` (`Draft.typed`), so a too-large refusal is not re-sent.
+- The reveal effect in `sheet-body.tsx` keeps `onRevealed` as a dependency: moving it to an effect event lost the token-cell focus (`tests/open.e2e.ts:253`).
+- Remaining compiler bailouts and the `tests/open.e2e.ts:253` load flake are in `deferred-work.md`.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+| Finding | Verdict | Evidence | Route |
+|---|---|---|---|
+| Too-large refusal re-arms the pause timer and re-sends (revmux 01 adversarial-claude-1) | high | Reproduced by the locked test in `tests/field-edit.e2e.ts` (red on 694b8b0) | fixed in 67ca7c6, 2108c65 |
+| `readLocalValue` effect event called from a press handler (arch+quality-claude-3) | medium | `DiceButton.roll` calls `LocalFieldValues.read` synchronously | fixed in 67ca7c6 |
+| Orphan `askedBlock` comment (adversarial-claude-3) | low | Comment named a deleted ref | fixed in aec4203 |
+| deferred-work names a probe not in the repo (docs+tests-claude-4) | low | No probe script is committed | fixed in 793a36f |
+| Enter/Escape between a pause save and its render freezes the old value (arch+quality-claude-4) | low | Needs a keystroke inside one render; fix adds state | rejected (low, rare) |
+| Catch-up close in a layout effect commits the confirmation once (adversarial-claude-2) | maybe-false | The confirmation is already mounted when catch-up starts, so no new autofocus; `tests/snapshot.e2e.ts` and `tests/catch-up.e2e.ts` pass | rejected |
+| Confirming round 02 (profile final) | none | 0 findings, sources 2/2 | done |
