@@ -940,6 +940,29 @@ describe('pending edits', () => {
       data: null,
     });
   });
+  test('an unrelated commit keeps a pending creation cancellation for GM return', () => {
+    // #given
+    const harness = createHarness();
+    harness.pending.edit(add('new'), harness.records);
+    harness.pending.edit(remove('new'), pendingView(harness));
+    harness.records.set('blk:camp', {
+      k: 'blk:camp',
+      d: { order: 0, cells: { food: [3, 2, 'gm'] } },
+      c: 2,
+      a: 'gm',
+      l: [1, 'seed'],
+    });
+    const before = harness.sent.length;
+
+    // #when
+    harness.pending.recordsChanged(undefined);
+    harness.pending.gmBack();
+
+    // #then
+    expect(harness.sent.slice(before)).toEqual([
+      { k: 'blk:brok:item:new', d: null, c: 2, a: CONNECTION, l: [1, CONNECTION] },
+    ]);
+  });
   test.each<
     [
       string,
