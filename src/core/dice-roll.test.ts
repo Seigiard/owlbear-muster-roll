@@ -608,7 +608,7 @@ describe('rollDiceCell', () => {
   });
   test.each([
     ['the enclosing number field', 2, '1d6+bonus', 7],
-    ['the nearest field with the same field id', 3, '1d6+power', 9],
+    ['the local field', 3, '1d6+attack_power', 9],
     ['the enclosing dice-choice field', 4, '1d8', 4],
   ])('reads %s when the tab and section repeat ids match', (_name, cellIndex, cell, total) => {
     // #given
@@ -630,7 +630,7 @@ describe('rollDiceCell', () => {
                         cells: [
                           { kind: 'field', type: 'text', id: 'npc_name' },
                           { kind: 'field', type: 'number', id: 'bonus' },
-                          { kind: 'field', type: 'number', id: 'power' },
+                          { kind: 'field', type: 'number', id: 'npc_power' },
                           { kind: 'field', type: 'dice-choice', id: 'weapon_die', options: ['d8'] },
                         ],
                       },
@@ -642,9 +642,9 @@ describe('rollDiceCell', () => {
                       {
                         cells: [
                           { kind: 'field', type: 'text', id: 'attack_name' },
-                          { kind: 'field', type: 'number', id: 'power' },
+                          { kind: 'field', type: 'number', id: 'attack_power' },
                           { kind: 'dice', formula: '1d6+bonus' },
-                          { kind: 'dice', formula: '1d6+power' },
+                          { kind: 'dice', formula: '1d6+attack_power' },
                           { kind: 'dice', formula: '1d(weapon_die)' },
                         ],
                       },
@@ -665,14 +665,14 @@ describe('rollDiceCell', () => {
 
     const records = assembleRecords([
       fixtureRecord('blk:encounter:npc:n0', { npc_name: 'Orc', bonus: 8, weapon_die: 'd6' }),
-      fixtureRecord('blk:encounter:npc:n0:npc:a1', { attack_name: 'Bash', power: 1 }),
+      fixtureRecord('blk:encounter:npc:n0:npc:a1', { attack_name: 'Bash', attack_power: 1 }),
       fixtureRecord('blk:encounter:npc:n1', {
         npc_name: 'Goblin',
         bonus: 3,
-        power: 1,
+        npc_power: 1,
         weapon_die: 'd8',
       }),
-      fixtureRecord('blk:encounter:npc:n1:npc:a1', { attack_name: 'Slash', power: 5 }),
+      fixtureRecord('blk:encounter:npc:n1:npc:a1', { attack_name: 'Slash', attack_power: 5 }),
     ]);
 
     const place: DicePlace = {

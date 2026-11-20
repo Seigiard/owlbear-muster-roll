@@ -345,7 +345,8 @@
                     {
                       "kind": "field",
                       "type": "number",
-                      "id": "bonus"
+                      "id": "bonus",
+                      "name": "Бонус атаки"
                     },
                     {
                       "kind": "dice",

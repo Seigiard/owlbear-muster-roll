@@ -34,7 +34,7 @@ const PRESET: Preset = {
                 {
                   cells: [
                     { kind: 'field', type: 'text', id: 'condition_name' },
-                    { kind: 'field', type: 'text', id: 'hp' },
+                    { kind: 'field', type: 'text', id: 'condition_text' },
                   ],
                 },
               ],
@@ -75,7 +75,7 @@ const NESTED_PRESET: Preset = {
 };
 
 describe('createComposers', () => {
-  test('keeps a GM root number edit when a repeat tab has a same-id text field', () => {
+  test('keeps a GM root number edit when a repeat tab has a distinct text field', () => {
     // #given
     const records = assembleRecords([
       { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },

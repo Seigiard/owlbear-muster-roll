@@ -145,6 +145,8 @@ visible button text so speech input can activate it.
 - Fields inside a repeat scope share that scope. Nested scopes resolve an id
   inside the nearest block first, then through enclosing blocks, then in the
   sheet scope.
+- A field inside a repeat scope cannot reuse an id from an enclosing repeat
+  scope or the sheet scope.
 - `repeat.id` is unique among repeat scopes in its parent scope.
 - `repeat.nameField` names a text field inside its own scope.
 
