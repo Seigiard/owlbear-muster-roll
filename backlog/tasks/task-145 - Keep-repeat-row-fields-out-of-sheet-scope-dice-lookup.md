@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-20T07:42:00Z'
-updated_date: '2026-11-20T13:31:00Z'
+updated_date: '2026-11-20T14:05:00Z'
 labels:
   - review-follow-up
 dependencies: []
@@ -29,6 +29,7 @@ A valid v4 preset can reuse a field id in a repeat row and the sheet scope. When
 - [ ] #1 Preset parsing rejects a field id reused by a repeat scope and any enclosing scope, regardless of row order, with a Russian diagnostic naming the id and both locations. Upload, import, and Builder use this validation.
 - [ ] #2 Unrelated scopes may still reuse field ids, and repeat-id rules stay unchanged, including TASK-100 and TASK-108 cases.
 - [ ] #3 The published format, product format spec, and Scope glossary entry document the rule; the example and bundled presets parse successfully.
+- [ ] #4 Builder Add field suggests an id that avoids enclosing field IDs and IDs of descendant fields. Adding a field to a valid draft does not introduce a scope conflict.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -37,6 +38,8 @@ A valid v4 preset can reuse a field id in a repeat row and the sheet scope. When
 1. Add order-independent enclosing-field validation to the rules shared by file parsing and Builder. Keep repeat ids and dice lookup unchanged.
 2. Show the Russian diagnostic with both cell locations. Update the format reference, product spec, glossary, and example.
 3. Verify the regression, valid repeat-id reuse, bundled presets, and the changed-path checks; open a PR with automerge.
+
+4. Reserve field IDs in related scopes for Builder Add field, with a regression proving export remains possible.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -45,4 +48,8 @@ A valid v4 preset can reuse a field id in a repeat row and the sheet scope. When
 Owner decision (2026-11-20): «145 валидация, ошибки не нужны т.к. я один ГМ, у меня ща нет таких проблем. а позднее и не будет». Replace the dice lookup fix with preset validation, with no compatibility mode or warning. Scope: one GM in one window; no race, multiple-GM, or role-change work.
 
 TASK-100 and TASK-108 primarily cover repeat-id reuse. TASK-100 also includes a field-shadowing subcase that the new contract rejects; keep valid ancestor and local lookup controls using distinct field ids. Room snapshots contain values, not a preset; Builder preset import, window upload, and encoded-preset decoding go through parsePresetFile, and Builder draft problems use presetProblems.
+
+Implementation 269fafbe1010110677ccddd2e96baf4aca70898d: 414 focused tests pass; 3677 unit tests pass with 1 environment skip; 55/55 mutants killed; build, lint, typecheck, format, formal drift pass. Chromium submitted the same invalid file through window upload and Builder; both show the id and both JSON cell locations. Focused review (2/2) found that Add field can generate a newly forbidden id from a valid Builder draft. Reproduced with sheet bonus and repeat label Bonus: addCell generates bonus, then builderProblems reports shadowed-field-id. CAP-24 expects generated ids to follow the preset rules; awaiting scope decision before publishing.
+
+Orchestrator decision (2026-11-20): include the CAP-24 Add field suggestion fix and regression so validation does not break the normal Builder flow. Keep manual formula rename out. Full Chromium suite passed on the initial validation implementation: 588/588, with four workers.
 <!-- SECTION:NOTES:END -->
