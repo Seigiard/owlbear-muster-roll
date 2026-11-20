@@ -1,9 +1,11 @@
 ---
 id: TASK-140
 title: Let the React Compiler transform RepeatContent
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@seigiard'
 created_date: '2026-11-20T06:44:00Z'
+updated_date: '2026-11-20T14:01:00Z'
 labels: []
 dependencies: []
 priority: low
@@ -24,3 +26,11 @@ React Compiler 1.0 skips `RepeatContent` (`src/ui/sheet/preset-section.tsx`), th
 - [ ] #3 No profiling code ships
 - [ ] #4 The full check from CLAUDE.md passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Reproduce the two React Compiler diagnostics with the TASK-136 Babel probe.
+2. Pass the existing add-button ref by local binding only.
+3. Confirm CompileSuccess, run the repeat and duplicate browser suites, and run the full check from CLAUDE.md.
+<!-- SECTION:PLAN:END -->
