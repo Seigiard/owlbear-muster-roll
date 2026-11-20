@@ -42,6 +42,7 @@ export type DocTemplate = DocSheetSet | DocSingleSheet;
 export type BuilderDocument = {
   window?: WindowSize;
   templates: readonly DocTemplate[];
+  // With an origin, absence means the draft never recorded correspondence.
   originRepeatIds?: ReadonlyMap<string, string>;
 };
 
@@ -1028,6 +1029,26 @@ function withoutNestedRepeat(item: DocTab | DocSection | DocRow): DocTab | DocSe
   return rest;
 }
 
+export function hasUntrackedOriginRepeats(
+  document: BuilderDocument,
+  origin: Preset | null,
+): boolean {
+  if (origin === null || document.originRepeatIds !== undefined) return false;
+
+  return origin.templates.some(
+    (template) =>
+      template.repeat !== undefined ||
+      template.tabs.some(
+        (tab) =>
+          tab.repeat !== undefined ||
+          tab.sections.some(
+            (section) =>
+              section.repeat !== undefined || section.rows.some((row) => row.repeat !== undefined),
+          ),
+      ),
+  );
+}
+
 export function collectOriginRepeatIds(
   templates: readonly DocTemplate[],
   origins: readonly Template[],
@@ -1063,8 +1084,12 @@ export function collectOriginRepeatIds(
 
 export function serializeOriginRepeatIds(
   document: BuilderDocument,
-): readonly SerializedOriginRepeatId[] {
-  return [...(document.originRepeatIds ?? [])].flatMap(([uid, id]) => {
+): readonly SerializedOriginRepeatId[] | undefined {
+  const ids = document.originRepeatIds;
+
+  if (ids === undefined) return undefined;
+
+  return [...ids].flatMap(([uid, id]) => {
     const path = locate(document, uid);
 
     return path === null || path.kind === 'window' || path.kind === 'cell'
@@ -1075,8 +1100,10 @@ export function serializeOriginRepeatIds(
 
 export function restoreOriginRepeatIds(
   document: BuilderDocument,
-  entries: readonly SerializedOriginRepeatId[],
+  entries: readonly SerializedOriginRepeatId[] | undefined,
 ): BuilderDocument {
+  if (entries === undefined) return document;
+
   const ids = new Map<string, string>();
 
   for (const { path, id } of entries) {
@@ -1087,7 +1114,7 @@ export function restoreOriginRepeatIds(
     }
   }
 
-  return ids.size === 0 ? document : { ...document, originRepeatIds: ids };
+  return { ...document, originRepeatIds: ids };
 }
 
 type MovedItem =

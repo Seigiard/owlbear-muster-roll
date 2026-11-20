@@ -53,7 +53,12 @@ import {
   type AttachedFile,
   type AttachedFilesState,
 } from './attached-files';
-import { isEmptyDocument, toPreset, type BuilderDocument } from './document';
+import {
+  hasUntrackedOriginRepeats,
+  isEmptyDocument,
+  toPreset,
+  type BuilderDocument,
+} from './document';
 import { BUILDER_EXAMPLES } from './examples';
 import { FileBlock, type FileBlockKind } from './file-block';
 import { downloadFileName, nameFromFile } from './file-name';
@@ -1073,6 +1078,13 @@ export function BuilderPage({
         />
       )}
       <Banner message={fileMessage} />
+      <Banner
+        message={
+          hasUntrackedOriginRepeats(document, state.step.origin)
+            ? { variant: 'warning', text: copy.builder.repeatWarningsUnavailable }
+            : undefined
+        }
+      />
       <div className="grid flex-1 grid-cols-[minmax(300px,380px)_minmax(0,1fr)] items-start gap-4 p-4">
         <div className="flex min-w-0 flex-col gap-4">
           <section

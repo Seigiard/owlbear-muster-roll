@@ -296,6 +296,8 @@ export const copy = {
     formulasChanged: (n: number): string => `Формулы изменены: ${n}.`,
     repeatBlocksErased: (id: string): string =>
       `Блоки «${id}» в комнате будут стёрты при загрузке пресета.`,
+    repeatWarningsUnavailable:
+      'Для этого черновика недоступны точные предупреждения о том, какие блоки могут быть стёрты при загрузке пресета в комнату.',
     fieldValuesErased: (id: string): string =>
       `Значения поля «${id}» в комнате будут стёрты при загрузке пресета.`,
     templateSheetsDeleted: (id: string): string =>
