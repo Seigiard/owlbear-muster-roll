@@ -1,9 +1,11 @@
 ---
 id: TASK-131
 title: Replace the fixed sleeps that playwright/no-wait-for-timeout does not detect
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-19T19:14:00Z'
+updated_date: '2026-11-20T04:37:00Z'
 labels: []
 dependencies:
   - TASK-128
