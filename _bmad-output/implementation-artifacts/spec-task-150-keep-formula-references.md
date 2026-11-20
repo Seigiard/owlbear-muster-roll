@@ -2,7 +2,7 @@
 title: 'TASK-150: Keep Builder formula references when a conflicting field id is corrected'
 type: 'bugfix'
 created: '2026-11-20'
-status: 'in-progress'
+status: 'done'
 route: 'oneshot'
 review_loop_iteration: 0
 context: []
@@ -24,3 +24,15 @@ If a GM tries `bonus` to `attack_bonus`, then enters `bonus` again, clear the in
 ## Implementation Notes
 
 - The owner replaced the original formula guard with refusal at the manual edit boundary. A formula never has to follow a field through a conflicting draft state.
+- Manual field id edits and field id suggestions share the TASK-145 scope check. The core formula renamer and existing draft warnings are unchanged.
+
+## Review
+
+- Two independent reviewers found no issues in option B. The earlier correction regression no longer applies because the Builder never stores the conflicting id.
+- TASK-152 tracks a pre-existing free-rename issue when a repeat tab and a nested repeat section share the same repeat id.
+
+## Verification
+
+- The two Chromium regression cases fail without refusal. With refusal, each downloads a valid preset with the expected formula. The unrelated `1d8+attack_bonus` stays unchanged.
+- All 591 Chromium tests pass with `--workers=1`. Bun reports 3,680 passes and one environment skip. All 55 mutants are killed.
+- Format, lint, typecheck, build, and formal drift checks pass.
