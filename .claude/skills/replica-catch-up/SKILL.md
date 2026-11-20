@@ -113,7 +113,7 @@ Ghost variables (`owed`, `dropped`, `lastHeard`, `badOffline`, `ownDropped`) rec
 
 ## Coverage record
 
-Sync commit: `a20f769` (also in `formal/catch-up/coverage.txt`). At that commit the model describes:
+Sync commit: `3b74bff` (also in `formal/catch-up/coverage.txt`). At that commit the model describes:
 
 - `src/replica/catch-up.ts`: `createCatchUp` (`feed`, `answersOwn`, `adopting`, `live`).
 - `src/replica/catch-up-table.ts`: `catchUpTable` and `livenessTable`, apart from the drift part of `catchUpAlive`, `rememberAlive`, `catchUpPartyChanged`, `catchUpReplicaReplaced` and multi-part answers.

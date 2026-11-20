@@ -35,8 +35,8 @@
     "id": "R5",
     "rule": "A failed room-copy operation leaves a write owed.",
     "file": "src/replica/room-copy-table.ts",
-    "find": "    phase.owed ||\n    (env.gm && snapshot !== null && !snapshot.isOk() && snapshot.error !== 'older-version');",
-    "replace": "    phase.owed;",
+    "find": "    phase.owed ||\n    (env.gm && snapshot !== null && !snapshot.isOk() && snapshot.error !== 'older-version') ||",
+    "replace": "    phase.owed ||",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
@@ -149,6 +149,22 @@
     "file": "src/replica/room-copy-table.ts",
     "find": "    const update = status({ kind: 'absent', metadata: stopped ? null : metadata });",
     "replace": "    const update = status({ kind: 'absent', metadata: null });",
+    "test": ["src/replica/room-copy.test.ts"]
+  },
+  {
+    "id": "R21",
+    "rule": "A GM's catch-up read of a copy that lacks its records leaves a write owed (TASK-118).",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "    (env.gm && behind);",
+    "replace": "    false;",
+    "test": ["src/replica/room-copy.test.ts"]
+  },
+  {
+    "id": "R22",
+    "rule": "A catch-up read that answers after catch-up ended arms the write it owes.",
+    "file": "src/replica/room-copy-table.ts",
+    "find": "  return owed && !phase.owed && env.writable",
+    "replace": "  return false",
     "test": ["src/replica/room-copy.test.ts"]
   }
 ]

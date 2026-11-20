@@ -188,10 +188,14 @@ TimerFires(g) ==
 \* catch-up-effects.ts `run` calls engine.ts performCaughtUp in the same
 \* synchronous run, which calls room-copy `caughtUp(applied)`. It merged the
 \* room copy and the state of the online GMs. No command waited, so `applied`
-\* is false.
+\* is false. The catch-up's own read of the room copy (`observeRead`) owes a
+\* write when the copy lacks a record the GM stores (TASK-118); the model
+\* compares the copy with the GM's records before the merge. Break
+\* "catch-up-ignores-copy" removes that.
 CatchUpEnds(g) ==
   LET s == gm[g]
-      t == [s EXCEPT !.live = TRUE]
+      behind == Break # "catch-up-ignores-copy" /\ ~(replica[g] \subseteq room)
+      t == [s EXCEPT !.live = TRUE, !.owed = @ \/ behind]
   IN
   /\ ~s.stopped /\ ~s.live
   /\ replica' = [replica EXCEPT ![g] =
@@ -315,9 +319,11 @@ NoSilentLossAtRest ==
               \/ e \in room
               \/ \E g \in Open : gm[g].notSaved /\ gm[g].owed /\ e \in replica[g]
 
-\* At rest, every edit made is in the room copy, or an open GM that holds it owes a write.
+\* At rest, every edit an open GM holds is in the room copy, or an open GM that
+\* holds it owes a write. An edit that only closed pages hold waits for one of
+\* them to open again: no code writes from a closed page.
 NoLossForGood ==
-  AtRest => \A e \in Made :
+  AtRest => \A e \in UNION {replica[g] : g \in Open} :
               \/ e \in room
               \/ \E g \in Open : gm[g].owed /\ e \in replica[g]
 
