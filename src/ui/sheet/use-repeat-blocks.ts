@@ -10,7 +10,7 @@ import { useFieldEditing } from './use-field-edit';
 
 // The value control of a field. A repeat block's controls are buttons, so the first match is the
 // repeat block's first field.
-const FIELD_SELECTOR = 'input, textarea';
+const FIELD_SELECTOR = 'input, select, textarea';
 
 export type RepeatBlockControls = {
   addButton: RefObject<HTMLButtonElement | null>;
