@@ -51,6 +51,18 @@ const PRESET = {
                 },
               ],
             },
+            {
+              repeat: { id: 'attack', nameField: 'attack' },
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'text', text: 'Удар' },
+                    { kind: 'dice', formula: '1d1 + hp' },
+                  ],
+                },
+              ],
+            },
           ],
         },
       ],
@@ -62,6 +74,7 @@ const ROOM_RECORDS = [
   record('blk:npc', { hp: 41 }),
   record('blk:npc:npc:a', { order: 0, cells: { name: 'Alpha', hp: 7 } }),
   record('blk:npc:npc:b', { order: 1, cells: { name: 'Beta' } }),
+  record('blk:npc:npc:a:attack:bite', { order: 0, cells: { attack: 'Укус' } }),
 ];
 
 const PREVIEW_SNAPSHOT = {
@@ -123,6 +136,23 @@ test('a remote repeat-tab edit clears the stale dice field error', async ({ cont
       message: await messageUnder(dice).textContent(),
     }))
     .toEqual({ field: '10', message: '' });
+});
+
+test('an input error in the NPC field stops a roll in its nested block', async ({ context }) => {
+  // #given: Alpha stores hp 7, so the bite would roll 8 from the record.
+  const gm = await openRoom(context);
+  await sheetTab(gm.window, 'Alpha').click();
+  const hp = gm.window.getByRole('textbox', { name: 'Хиты', exact: true });
+  await hp.fill('abc');
+  await hp.press('Enter');
+  const bite = gm.window.getByRole('button', { name: 'Удар', exact: true });
+
+  // #when
+  await bite.click();
+
+  // #then
+  await expect(messageUnder(bite)).toHaveText('Нельзя бросить: поле «Хиты» пустое или не число');
+  expect(await shownNotifications(gm)).toEqual([]);
 });
 
 test('Builder Preview rolls from the selected repeat-tab block', async ({ page }) => {

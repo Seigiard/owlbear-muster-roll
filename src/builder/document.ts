@@ -1028,7 +1028,7 @@ function withoutNestedRepeat(item: DocTab | DocSection | DocRow): DocTab | DocSe
   return rest;
 }
 
-function collectOriginRepeatIds(
+export function collectOriginRepeatIds(
   templates: readonly DocTemplate[],
   origins: readonly Template[],
 ): ReadonlyMap<string, string> {

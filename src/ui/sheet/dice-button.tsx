@@ -3,14 +3,13 @@ import { createContext, useContext, useId, useLayoutEffect, useRef, useState } f
 import type { ReactNode } from 'react';
 
 import { dicePlaceOf, type DicePlace } from '@/core/dice-roll';
-import type { BlockAddress } from '@/core/block-address';
-import type { FieldPatchTarget } from '@/core/field-patch';
+import type { TemplateLayout } from '@/core/preset';
 import type { RollOutcome } from '@/core/ui-messages';
 import { copy } from '@/copy';
 import { Pressable } from '@/ui/primitives/button';
 import type { ReplicaClient } from '@/ui/replica-client';
 
-import { shownForRoll, type LocalFieldValues } from './local-field-values';
+import { shownForRoll, type LocalFieldValues, type RolledRow } from './local-field-values';
 
 // `dice-button`: accent text and border, `sm` radius, `label-sm`.
 // A roll is the one action in the accent: tonal at rest, solid under the pointer.
@@ -24,19 +23,11 @@ export type DiceRolling = {
 };
 
 // `valuesSignature` changes whenever a value of the sheet changes, in a record or in a field.
-export type DiceSheet = DiceRolling & { valuesSignature: string };
+// `layout` is the sheet's template, which resolves the fields a formula reads.
+export type DiceSheet = DiceRolling & { valuesSignature: string; layout: TemplateLayout };
 
 // The rolled row, as a roll request names it and as its local values are told apart.
-export type DiceRow = {
-  sheetId: string;
-  tabIndex: number;
-  sectionIndex: number;
-  rowIndex: number;
-  block: BlockAddress | null;
-  // The row's record, `null` for a row with no field.
-  target: FieldPatchTarget | null;
-  fieldIds: ReadonlySet<string>;
-};
+export type DiceRow = RolledRow & { sheetId: string };
 
 // `disabledReasonId` names the text that says why the button is off, as a removed row's mark.
 type DiceButtonProps = {
@@ -93,7 +84,7 @@ export function DiceButton({
       cellIndex,
     };
 
-    const shown = shownForRoll(sheet.localValues.read(row.sheetId), row.target, row.fieldIds);
+    const shown = shownForRoll(sheet.localValues.read(row.sheetId), sheet.layout, row);
 
     setRolling(true);
     setWaitingForGm(false);

@@ -17,6 +17,7 @@ import {
   moveItem,
   removeItem,
   renameField,
+  serializeOriginRepeatIds,
   setWindow,
   toPreset,
   uidAt,
@@ -368,5 +369,99 @@ describe('the draft', () => {
     // #then
     expect(store.$state.get().draft).toBe('failed');
     expect(presetOf(store)).toEqual({ v: 4, templates: [] });
+  });
+});
+
+describe('adopting an origin', () => {
+  test('gives an origin-less draft the loaded repeat ids and keeps its uids, records and undo steps', () => {
+    // #given
+    const storage = new MemoryStorage();
+    const store = createBuilderStore(storage);
+    store.open(D20, null, 'd20');
+    store.addSheet('pc');
+    const before = store.$state.get();
+    const loaded = createBuilderStore(new MemoryStorage());
+    loaded.open(D20, D20, 'd20');
+    // #when
+    store.adoptOrigin(D20);
+    // #then
+    const after = store.$state.get();
+    const restored = createBuilderStore(storage).$state.get();
+    expect({
+      origin: after.step.origin,
+      templateUids: after.step.document.templates.map((template) => template.uid),
+      records: after.step.records,
+      selection: after.selection,
+      undoSteps: after.undo.length,
+      repeatIds: serializeOriginRepeatIds(after.step.document),
+      restoredOrigin: restored.step.origin,
+      restoredRepeatIds: serializeOriginRepeatIds(restored.step.document),
+    }).toEqual({
+      origin: D20,
+      templateUids: before.step.document.templates.map((template) => template.uid),
+      records: before.step.records,
+      selection: before.selection,
+      undoSteps: before.undo.length,
+      repeatIds: serializeOriginRepeatIds(loaded.$state.get().step.document),
+      restoredOrigin: D20,
+      restoredRepeatIds: serializeOriginRepeatIds(loaded.$state.get().step.document),
+    });
+  });
+  test('keeps the adopted origin through undo, redo and a new edit after an undo', () => {
+    // #given
+    const store = createBuilderStore(new MemoryStorage());
+    store.open(D20, null, 'd20');
+    store.edit((document) =>
+      updateTemplate(document, uid(store, 0), (template) => ({ ...template, title: 'Герои' })),
+    );
+    const edited = toPreset(store.$state.get().step.document);
+    store.adoptOrigin(edited);
+    const adoptedIds = serializeOriginRepeatIds(store.$state.get().step.document);
+    // #when
+    store.undo();
+    const undone = store.$state.get().step;
+    store.redo();
+    const redone = store.$state.get().step;
+    store.undo();
+    store.edit((document) => setWindow(document, { width: 800, height: 700 }));
+    const branched = store.$state.get().step;
+    // #then
+    expect({
+      undone: { origin: undone.origin, ids: serializeOriginRepeatIds(undone.document) },
+      redone: { origin: redone.origin, ids: serializeOriginRepeatIds(redone.document) },
+      branched: { origin: branched.origin, ids: serializeOriginRepeatIds(branched.document) },
+    }).toEqual({
+      undone: { origin: edited, ids: adoptedIds },
+      redone: { origin: edited, ids: adoptedIds },
+      branched: { origin: edited, ids: adoptedIds },
+    });
+  });
+  test('ignores a preset that differs from the draft', () => {
+    // #given
+    const store = createBuilderStore(new MemoryStorage());
+    store.open(D20, null, 'd20');
+    const before = store.$state.get();
+    // #when
+    store.adoptOrigin({ ...D20, templates: D20.templates.slice(1) });
+    // #then
+    expect(store.$state.get()).toBe(before);
+  });
+  test('keeps the origin of a draft that has one', () => {
+    // #given
+    const store = createBuilderStore(new MemoryStorage());
+    store.open(D20, D20, 'd20');
+    const attack = uid(store, 0, 0, 3);
+    store.edit((document) =>
+      updateSection(document, attack, (section) =>
+        section.repeat === undefined
+          ? section
+          : { ...section, repeat: { ...section.repeat, id: 'moves' } },
+      ),
+    );
+    const before = store.$state.get();
+    // #when
+    store.adoptOrigin(toPreset(before.step.document));
+    // #then
+    expect(store.$state.get()).toBe(before);
   });
 });

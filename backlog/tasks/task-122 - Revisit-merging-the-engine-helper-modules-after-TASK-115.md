@@ -1,10 +1,11 @@
 ---
 id: TASK-122
 title: Revisit merging the engine helper modules after TASK-115
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-19T08:22:00Z'
-updated_date: '2026-11-20T06:15:00Z'
+updated_date: '2026-11-20T06:28:00Z'
 labels:
   - architecture
   - replica
@@ -22,12 +23,22 @@ Architecture review 2026-11-18, candidate 2: `command-routing`, `room-protocol`,
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every `*Ports` type in `src/replica` is measured at the TASK-115 epic tip and the numbers are in this task
-- [ ] #2 For each module with a fan wider than about 10 fields and one adapter, the owner has decided merge or keep, and ADR-0004 carries the decision
+- [x] #1 Every `*Ports` type in `src/replica` is measured at the TASK-115 epic tip and the numbers are in this task
+- [x] #2 For each module with a fan wider than about 10 fields and one adapter, the owner has decided merge or keep, and ADR-0004 carries the decision
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Measured 2026-11-20 at 34131dc, after TASK-115 closed (all dependencies done). Fields per *Ports type in src/replica: RoomProtocolPorts 25, CommandRoutingPorts 24, GenerationFlowPorts 23, RollFlowPorts 17, CatchUpEffectsPorts 0 (type is not an object literal of fields). All four fans stay wider than the ~10-field threshold with one adapter each (startReplicaEngine), so all four are merge candidates for the AC#2 grilling. Task is unblocked.
+
+Re-measured 2026-11-20 at 84b1218 (master after TASK-115): RoomProtocolPorts 25, CommandRoutingPorts 24, GenerationFlowPorts 23, RollFlowPorts 17, CatchUpEffectsPorts 15. Correction to the note above: CatchUpEffectsPorts is an object type of 15 readonly fields, not 0; the first count missed readonly fields. Each type has one adapter, startReplicaEngine in src/replica/engine.ts (lines 406, 472, 525, 576, 1286). CatchUpEffectsPorts is not a candidate: ADR-0004 step 0b moved the catch-up interpreter out of the engine on purpose.
+
+Owner decision 2026-11-20, through a decision brief to the orchestrator, quoted: "Оставить все (Recommended)". Keep room-protocol, command-routing, generation-flow and roll-flow as separate modules with their ports; do not merge them into engine.ts. Reason: TASK-125, TASK-132, TASK-103, TASK-102, TASK-106 and TASK-99 edit room-protocol and the edit-delivery model; a merge now would make them wait and rewrite the model's code mappings. Revisit after those six tasks have landed. Recorded as an amendment in the Consequences of docs/adr/0004-replica-machines-are-complete-transition-tables-with-tagged-results.md.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Measured every *Ports type in src/replica after TASK-115 (room-protocol 25, command-routing 24, generation-flow 23, roll-flow 17, catch-up-effects 15; one adapter each) and recorded the owner's 2026-11-20 decision to keep the four candidate modules separate. ADR-0004 now carries the numbers, the keep decision and the revisit condition: after the six edit-delivery tasks (TASK-125, 132, 103, 102, 106, 99) land. No code changed. Checks: backlog view/doctor, oxfmt touched-path check (Markdown skipped by .oxfmtrc.json), git diff --check.
+<!-- SECTION:FINAL_SUMMARY:END -->
