@@ -664,6 +664,12 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 
 - `tests/selection.e2e.ts:135` ("a GM selects the token of one repeat block from the keyboard") failed once in a full `bun run test:browser` run on the TASK-112 branch: the map selection poll timed out after 5 s with one of `t-s1`, `t-s2` missing. It passed 3/3 under `--repeat-each 3`. TASK-112 changes only the Builder, which this test does not load.
 
+## Deferred from: TASK-108 root and nested repeat scopes (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-108-root-nested-repeat-scope-ids.md`
+  summary: Two browser tests time out under full-suite load (TASK-143).
+  evidence: `tests/player.e2e.ts:145` failed once in a full `bun run test:browser` run and passed 15/15 alone; `tests/builder.e2e.ts:415` timed out in `page.waitForEvent` for the download once and passed 31/31 alone. Each full run had one timeout, in a different test.
+
 ## Deferred from: TASK-111 (2026-11-20)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-111-legacy-repeat-warning.md`
