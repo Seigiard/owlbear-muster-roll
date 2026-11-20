@@ -1,9 +1,11 @@
 ---
 id: TASK-150
 title: Keep Builder formula references when a conflicting field id is corrected
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@seigiard'
 created_date: '2026-11-20T14:17:00Z'
+updated_date: '2026-11-20T14:46:00Z'
 labels:
   - review-follow-up
 dependencies:
@@ -27,3 +29,9 @@ A single GM edits a valid Builder draft with a sheet field `bonus`, a repeat fie
 - [ ] #1 When a GM corrects a conflicting manual field id, formulas that referred to the original field still refer to it after the draft becomes valid.
 - [ ] #2 Renaming a field to an available id still rewrites its references, not references to unrelated fields.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-20 owner decision: «да» to option A. Treat a new field id as taken when TASK-145 rejects it in the same scope, an enclosing scope, or a nested scope of the field. Reuse the predicate from PR #112 and do not rewrite formulas on a conflict. Correcting attack_bonus back to bonus leaves 1d6+bonus referring to the sheet field. A free id still rewrites only references resolved to the renamed field. Scope: one GM, one window.
+<!-- SECTION:NOTES:END -->
