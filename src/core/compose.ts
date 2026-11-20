@@ -468,7 +468,7 @@ export function createComposers(connectionId: string): Composers {
     return recordFitsOneMessage(record) ? Result.ok(record) : Result.err('too-large');
   }
 
-  // AD-19: the repeat block's tombstone, then the tombstones of the links to it.
+  // Keep the target first because `pending-edits` reads the first record as its proposal.
   function composeRepeatBlockDelete(
     context: ComposeContext,
     command: Extract<Command, { type: 'repeat-block-delete' }>,
