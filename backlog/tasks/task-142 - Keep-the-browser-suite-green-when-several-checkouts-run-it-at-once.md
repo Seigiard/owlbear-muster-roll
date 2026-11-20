@@ -1,11 +1,11 @@
 ---
 id: TASK-142
 title: Keep the browser suite green when several checkouts run it at once
-status: In Progress
+status: Done
 assignee:
   - '@seigiard'
 created_date: '2026-11-20T06:52:00Z'
-updated_date: '2026-11-20T15:12:00Z'
+updated_date: '2026-11-20T16:37:00Z'
 labels:
   - flaky-test
 dependencies: []
@@ -31,7 +31,7 @@ On 2026-11-20 four task lanes ran their full local checks in parallel worktrees.
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 The cause of the load failures is named in the task notes with evidence: which waits time out, and whether the cause is test timing, the app, or machine saturation
-- [ ] #2 With at least three checkouts running `bun run test:browser` at the same time, the suite passes in repeated runs, or the documented way to run it under load does
+- [x] #2 With at least three checkouts running `bun run test:browser` at the same time, the suite passes in repeated runs, or the documented way to run it under load does
 - [x] #3 A browser test that fails only under load can be told apart from a real failure without re-running the whole suite by hand
 - [x] #4 TASK-139 is closed by this work or still names a cause this task does not cover
 <!-- AC:END -->
@@ -42,6 +42,8 @@ On 2026-11-20 four task lanes ran their full local checks in parallel worktrees.
 1. Reproduce the reported waits with the existing command and compare default and capped workers under concurrent checkout load.
 2. Record which waits fail and why. Use the smallest fix the evidence supports, without extending timeouts.
 3. Prove repeated concurrent runs and document a focused failure diagnosis command.
+
+4. Retire the out-of-scope two-window snapshot test. Reproduce the stale room-copy wait, then make it wait for the edited value before switching devices. Run the full checks and verify repeated capped three-checkout runs before closing.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -62,4 +64,14 @@ Full runs with one worker per checkout: a mixed-load run at 7711fd3c942fd9c2374c
 Non-browser local checks at 08f15404296c961273967f5900962a60baec0a46 passed: full format, lint (354 warnings and no errors), typecheck, Bun unit tests (3672 pass, one skip, no failures), mutation tests (55 killed), and build. No retry, timeout, Vite flag, app code, or formal-model changes are included in the TASK-142 diff.
 
 Open hypotheses, not fixes: snapshot.e2e.ts:458 waits for the second window’s preset confirmation to close, but does not wait for the updated preset to reach the first window before confirming the import. That can let the old confirmation proceed instead of reopening with the new count. room-copy.e2e.ts:73 waits for blk:brok to exist in the room copy. The key exists with the original value 14, so the wait does not prove that 17 was copied before the first device closes. Neither mechanism was confirmed with a failing trace. The orchestrator approved shipping the two proven fixes separately. Keep TASK-142 in progress and AC #2 unchecked.
+
+Owner decision, 2026-11-20: "142 закрыть, тесты убрать". Removed the failing browser test that required a second GM window to change the preset while snapshot confirmation was open in the first. The suite no longer checks that exact sequence in Chromium: recalculating the dropped-field count, reopening the confirmation with focus on Отменить, and leaving the room unchanged until a second confirmation. The owner accepted this coverage loss because the scenario is outside the one-GM, one-window scope. No app behavior was changed. The one-GM device switch remains in scope under TASK-32 AC #3. In a Chromium probe that first observed the initial room copy, the old key wait succeeded with str still 14 in all four runs. The test now waits for 17 in the room copy before closing the first device and still checks 17 through the second device UI. No timeouts changed.
+
+Final verification, 2026-11-20: at 8210fa8, three checkouts ran bun run test:browser --workers=1 simultaneously in each of two rounds. The rounds ran at 16:05–16:21 UTC and 16:21–16:36 UTC. All six runs completed with exit 0 and 591 passing tests each, with no retries, skips, or failures. The two affected browser files also passed 16/16. The engine import test still checks stale-count rejection without room changes. The snapshot actions reducer test still checks that the updated count reopens confirmation. Neither unit test covers two-window delivery or browser focus.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+PR #114 fixed the keyboard timing in the player and repeat-block selection tests and documented how to run the browser suite under load. The follow-up removes one out-of-scope two-window test and preserves the GM device-switch test with a wait for the new room-copy value. Two complete three-checkout rounds passed, 591 tests in each of six runs. No app behavior, retries, or timeouts changed.
+<!-- SECTION:FINAL_SUMMARY:END -->

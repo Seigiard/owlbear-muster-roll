@@ -455,40 +455,6 @@ test('"Отменить" and Escape close the block and write nothing', async ({
   }).toEqual({ commands: [], keys: keysBefore, onlyFirstGeneration: true });
 });
 
-test('a confirm after the preset changed asks again with the new count, focused on "Отменить"', async ({
-  page,
-  context,
-}) => {
-  // #given
-  await openRoom(page, context, RECORDS);
-  await page.getByRole('tab', { name: SETTINGS }).click();
-  await chooseSnapshot(page, JSON.stringify(MIRA_FILE));
-  await expect(confirmation(page)).toHaveAccessibleName(ASK_DROPS_ONE);
-  // #when: another window of the GM renames "level", so the file's level has no field either.
-  const other = await openClientWindow(context, {});
-  await other.getByRole('tab', { name: SETTINGS }).click();
-  await uploadPreset(other, EXAMPLE_PRESET_TEXT.replaceAll('level', 'rank'));
-  await other
-    .getByRole('group', { name: /Загрузить пресет\?$/ })
-    .getByRole('button', { name: LOAD_PRESET })
-    .click();
-  await expect(other.getByRole('group', { name: /Загрузить пресет\?$/ })).toHaveCount(0);
-  await confirmation(page).getByRole('button', { name: UPLOAD }).click();
-  // #then
-  await expect(confirmation(page)).toHaveAccessibleName(
-    `${ASK} Не войдут значения удалённых полей: 2.`,
-  );
-  await expect(confirmation(page).getByRole('button', { name: CANCEL })).toBeFocused();
-  expect(
-    (await roomKeys(page)).every((key) => isStorageKeyInGeneration(key, { n: 0, a: '' })),
-  ).toBe(true);
-  // #when
-  await confirmation(page).getByRole('button', { name: UPLOAD }).click();
-  // #then
-  await expect(confirmation(page)).toHaveCount(0);
-  await expect(page.getByRole('tab', { name: 'Мира' })).toBeVisible();
-});
-
 test('a catch-up closes an open confirmation, writes nothing, and the focus comes back to the button', async ({
   page,
   context,
@@ -590,20 +556,6 @@ async function openPlayer(context: BrowserContext): Promise<RoomClient> {
   const background = await openClientBackground(context, PLAYER);
 
   return { window, background, connectionId: connectionIdOf(PLAYER) };
-}
-
-async function uploadPreset(page: Page, text: string): Promise<void> {
-  const choosing = page.waitForEvent('filechooser');
-  await page
-    .getByRole('region', { name: 'Пресет' })
-    .getByRole('button', { name: LOAD_PRESET })
-    .click();
-  const chooser = await choosing;
-  await chooser.setFiles({
-    name: 'preset.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(text),
-  });
 }
 
 async function chooseSnapshot(page: Page, text: string): Promise<void> {
