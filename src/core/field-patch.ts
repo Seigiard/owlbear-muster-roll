@@ -146,6 +146,7 @@ export function patchedRecord(
   current: VersionedRecord | undefined,
   fieldId: string,
   value: FieldPatchValue,
+  allowUnchanged = false,
 ): Result<PatchedRecord, FieldPatchFailure> {
   const k = patchRecordKey(sheetId, target);
 
@@ -162,7 +163,8 @@ export function patchedRecord(
         });
   }
 
-  if (sameFieldValue(block.data.cells[fieldId]?.[0], value)) return Result.err('unchanged');
+  if (!allowUnchanged && sameFieldValue(block.data.cells[fieldId]?.[0], value))
+    return Result.err('unchanged');
 
   return Result.ok({
     k,

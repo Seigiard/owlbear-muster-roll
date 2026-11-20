@@ -51,7 +51,9 @@ import {
   presetDataSchema,
   repDataSchema,
   sheetDataSchema,
+  type FieldValue,
   type FieldValues,
+  type Lifecycle,
   type SheetData,
   type VersionedRecord,
 } from '@/core/records';
@@ -87,6 +89,7 @@ export type ComposeContext = {
   newRecordId: (kind: RecordIdKind, role: string) => string;
   isGmPlayer: (playerId: string) => boolean;
   mode: ComposeMode;
+  allowUnchanged?: boolean;
 };
 
 // TASK-37: new ids are short, so a drawn id can collide. A command that draws its own ids draws a
@@ -122,6 +125,15 @@ export type Composers = {
     context: ComposeContext,
     command: Command,
   ) => Result<VersionedRecord[], RejectionReason>;
+  composePending: (
+    context: ComposeContext,
+    key: string,
+    commands: readonly PendingCommand[],
+    prior: VersionedRecord | null,
+    force: boolean,
+    fixedVersion?: Version,
+    lifecycle?: Lifecycle,
+  ) => Result<VersionedRecord, RejectionReason>;
   // Several field patches of one record key, applied in order and minted once.
   composePatches: (context: ComposeContext, patches: readonly IdentifiedPatch[]) => ComposedPatches;
   composePresetUpload: (
@@ -135,6 +147,11 @@ export type Composers = {
     data: string,
   ) => Result<PresetUploadLoss, RejectionReason>;
 };
+
+export type PendingCommand = Extract<
+  Command,
+  { type: 'field-patch' | 'repeat-block-add' | 'repeat-block-delete' }
+>;
 
 // The preset decoded from the `d` it came from, so a run of patches decodes it once.
 type DecodedPreset = { d: string; preset: Preset | null };
@@ -297,6 +314,7 @@ export function createComposers(connectionId: string): Composers {
     context: ComposeContext,
     command: FieldPatchCommand,
     current: VersionedRecord | undefined,
+    allowUnchanged = false,
   ): Result<PatchedRecord, RejectionReason> {
     const policy = sheetPolicyOf(context, command.sheetId, 'unknown-field');
 
@@ -328,7 +346,14 @@ export function createComposers(connectionId: string): Composers {
       return value;
     }
 
-    const patched = patchedRecord(command.sheetId, target, current, command.fieldId, value.value);
+    const patched = patchedRecord(
+      command.sheetId,
+      target,
+      current,
+      command.fieldId,
+      value.value,
+      allowUnchanged,
+    );
 
     if (!patched.isOk()) {
       return patched;
@@ -347,7 +372,7 @@ export function createComposers(connectionId: string): Composers {
     const target = command.target;
 
     const existing = context.records.get(patchRecordKey(command.sheetId, target));
-    const patched = patchOnto(context, command, existing);
+    const patched = patchOnto(context, command, existing, context.allowUnchanged ?? false);
 
     if (!patched.isOk()) {
       return patched;
@@ -355,7 +380,15 @@ export function createComposers(connectionId: string): Composers {
 
     const { c, a } = context.mint(patched.value.k, existing?.c ?? 0);
 
-    return Result.ok(mintedPatch(patched.value, existing, { c, a }, context.mode));
+    return Result.ok(
+      mintedPatch(
+        patched.value,
+        existing,
+        { c, a },
+        context.mode,
+        context.allowUnchanged ? [command.fieldId] : [],
+      ),
+    );
   }
 
   // A patch that changes nothing on the record built so far is skipped in silence: the window
@@ -835,6 +868,183 @@ export function createComposers(connectionId: string): Composers {
     return batch.every(recordFitsOneMessage) ? Result.ok(batch) : Result.err('too-large');
   }
 
+  function composePending(
+    context: ComposeContext,
+    key: string,
+    commands: readonly PendingCommand[],
+    prior: VersionedRecord | null,
+    force: boolean,
+    fixedVersion?: Version,
+    lifecycle?: Lifecycle,
+  ): Result<VersionedRecord, RejectionReason> {
+    if (commands.length === 0) {
+      return Result.err('unchanged');
+    }
+
+    const base = context.records.get(key);
+
+    if (
+      base === undefined &&
+      prior?.d === null &&
+      commands.some((command) => command.type === 'repeat-block-delete')
+    ) {
+      return fixedVersion === undefined
+        ? Result.err('unchanged')
+        : Result.ok({ ...prior, ...fixedVersion });
+    }
+
+    if (
+      base === undefined &&
+      prior === null &&
+      lifecycle !== undefined &&
+      commands.length === 1 &&
+      commands[0]?.type === 'repeat-block-delete'
+    ) {
+      const parsedKey = parseBlockKey(key);
+
+      if (parsedKey === null) {
+        return Result.err('unknown-instance');
+      }
+
+      const version = fixedVersion ?? context.mint(key, 0);
+
+      return Result.ok({
+        k: blockKeyOf(parsedKey),
+        d: null,
+        ...version,
+        l: lifecycle,
+      });
+    }
+
+    if (base?.d === null && commands.some((command) => command.type === 'repeat-block-delete')) {
+      return Result.err('unchanged');
+    }
+
+    const priorData = blockDataSchema.safeParse(prior?.d).data;
+
+    const fieldIds = new Set(
+      commands.flatMap((command) => (command.type === 'field-patch' ? [command.fieldId] : [])),
+    );
+
+    const currentData = blockDataSchema.safeParse(base?.d).data;
+
+    const highest = Math.max(base?.c ?? 0, prior?.c ?? 0);
+
+    const working = new Map<string, VersionedRecord>(context.records);
+
+    const replayContext: ComposeContext = {
+      ...context,
+      mint: (_key, highestKnownCounter) => ({
+        c: highestKnownCounter + 1,
+        a: connectionId,
+      }),
+      allowUnchanged: force,
+    };
+
+    const source =
+      commands.some((command) => command.type === 'repeat-block-delete') && base === undefined
+        ? (prior ?? undefined)
+        : (base ?? prior ?? undefined);
+
+    if (base?.d === null && commands.some((command) => command.type !== 'repeat-block-delete')) {
+      return Result.err('unknown-instance');
+    }
+
+    if (source === undefined) {
+      working.delete(key);
+    } else if (source.d === null || currentData === undefined) {
+      working.set(key, source);
+    } else {
+      const parsedKey = parseBlockKey(key);
+
+      if (parsedKey === null) {
+        return Result.err('unknown-instance');
+      }
+
+      working.set(key, {
+        k: blockKeyOf(parsedKey),
+        a: source.a,
+        l: source.l ?? [source.c, source.a],
+        c: highest,
+        d: {
+          ...currentData,
+          cells: Object.fromEntries(
+            Object.entries(currentData.cells).filter(([fieldId]) => fieldIds.has(fieldId)),
+          ),
+        },
+      });
+    }
+
+    let latest: VersionedRecord | undefined;
+    const values: Record<string, FieldValue | null> = {};
+
+    for (const command of commands) {
+      if (command.type === 'repeat-block-add') {
+        working.delete(key);
+      }
+
+      const result = compose({ ...replayContext, records: working }, command);
+
+      if (!result.isOk()) {
+        if (result.error === 'unchanged' && command.type === 'field-patch') {
+          const current = blockDataSchema.safeParse(
+            working.get(patchRecordKey(command.sheetId, command.target))?.d,
+          ).data;
+
+          values[command.fieldId] = current?.cells[command.fieldId]?.[0] ?? null;
+          continue;
+        }
+
+        return result;
+      }
+
+      for (const record of result.value) {
+        working.set(record.k, record);
+
+        if (record.k !== key) continue;
+        latest = record;
+        const data = blockDataSchema.safeParse(record.d).data;
+
+        if (data !== undefined) {
+          Object.assign(values, cellValues(data.cells));
+        }
+      }
+    }
+
+    if (latest === undefined) {
+      return Result.err('unchanged');
+    }
+
+    const version = fixedVersion ?? context.mint(key, highest);
+
+    if (latest.d === null) {
+      return Result.ok({
+        ...latest,
+        ...version,
+        l: base?.l ?? prior?.l ?? latest.l ?? [version.c, version.a],
+      });
+    }
+
+    const data = blockDataSchema.safeParse(latest.d).data;
+
+    if (data === undefined) {
+      return Result.err('unknown-instance');
+    }
+
+    const add = commands.find((command) => command.type === 'repeat-block-add');
+
+    return Result.ok({
+      ...latest,
+      ...version,
+      l: base?.l ?? prior?.l ?? lifecycle ?? latest.l ?? [version.c, version.a],
+      d: {
+        ...data,
+        order: add === undefined ? data.order : (priorData?.order ?? data.order),
+        cells: versionCells(values, version.c, version.a),
+      },
+    });
+  }
+
   function currentPreset(context: ComposeContext): Preset | null {
     const data = presetDataSchema.safeParse(context.records.get('preset')?.d);
 
@@ -851,44 +1061,49 @@ export function createComposers(connectionId: string): Composers {
     return decodedPreset.preset;
   }
 
-  return {
-    compose: (context, command) => {
-      switch (command.type) {
-        case 'sheet-create':
-          return listOf(composeSheetCreate(context, command));
-        case 'sheet-delete':
-          return composeSheetDelete(context, command);
-        case 'repeat-block-duplicate':
-          return composeRepeatBlockDuplicate(context, command);
-        case 'link-set':
-          return listOf(composeLinkSet(context, command));
-        case 'link-clear':
-          return listOf(composeLinkClear(context, command));
-        case 'acl-set':
-          return listOf(composeAclSet(context, command));
-        case 'owner-set':
-          return composeOwnerSet(context, command);
-        // AD-14: an upload is an ordered batch with its own confirmation, sent through
-        // `composePresetUpload` only. A flat list here would lose the order.
-        case 'preset-upload':
-          return Result.err('not-allowed');
-        // AD-9: an import and a wipe replace the generation, so the engine runs each on its own
-        // path.
-        case 'snapshot-import':
-        case 'wipe':
-          return Result.err('not-allowed');
+  function compose(
+    context: ComposeContext,
+    command: Command,
+  ): Result<VersionedRecord[], RejectionReason> {
+    switch (command.type) {
+      case 'sheet-create':
+        return listOf(composeSheetCreate(context, command));
+      case 'sheet-delete':
+        return composeSheetDelete(context, command);
+      case 'repeat-block-duplicate':
+        return composeRepeatBlockDuplicate(context, command);
+      case 'link-set':
+        return listOf(composeLinkSet(context, command));
+      case 'link-clear':
+        return listOf(composeLinkClear(context, command));
+      case 'acl-set':
+        return listOf(composeAclSet(context, command));
+      case 'owner-set':
+        return composeOwnerSet(context, command);
+      // AD-14: an upload is an ordered batch with its own confirmation, sent through
+      // `composePresetUpload` only. A flat list here would lose the order.
+      case 'preset-upload':
+        return Result.err('not-allowed');
+      // AD-9: an import and a wipe replace the generation, so the engine runs each on its own
+      // path.
+      case 'snapshot-import':
+      case 'wipe':
+        return Result.err('not-allowed');
+      case 'field-patch':
+        return listOf(composeFieldPatch(context, command));
+      case 'repeat-block-add':
+        return listOf(composeRepeatBlockAdd(context, command));
+      case 'repeat-block-delete':
+        return composeRepeatBlockDelete(context, command);
+      default:
+        return unknownCommand(command);
+    }
+  }
 
-        case 'field-patch':
-          return listOf(composeFieldPatch(context, command));
-        case 'repeat-block-add':
-          return listOf(composeRepeatBlockAdd(context, command));
-        case 'repeat-block-delete':
-          return composeRepeatBlockDelete(context, command);
-        default:
-          return unknownCommand(command);
-      }
-    },
+  return {
+    compose,
     composePatches,
+    composePending,
     composePresetUpload,
     presetDiffResult: (context, data) => {
       const planned = planPresetUpload(context, data);
@@ -1102,12 +1317,13 @@ function mintedPatch(
   existing: VersionedRecord | undefined,
   version: Version,
   mode: ComposeMode,
+  forcedFields: readonly string[] = [],
 ): VersionedRecord {
   const before = blockDataSchema.safeParse(existing?.d).data;
 
   const changed = Object.fromEntries(
     Object.entries(patched.d.cells)
-      .filter(([id, cell]) => cell[0] !== before?.cells[id]?.[0])
+      .filter(([id, cell]) => forcedFields.includes(id) || cell[0] !== before?.cells[id]?.[0])
       .map(([id, [value]]) => [id, value]),
   );
 
