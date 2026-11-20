@@ -708,8 +708,14 @@ export function scopeFieldsAt(
       return row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field');
     }
 
-    if (section !== null && section.repeat?.id === last && path.length === currentPath.length) {
-      return sectionFields(section);
+    const sectionPathLength = currentPath.length - (row?.repeat === undefined ? 0 : 1);
+
+    if (section !== null && section.repeat?.id === last && path.length === sectionPathLength) {
+      return section.rows.flatMap((candidateRow) =>
+        candidateRow.repeat === undefined
+          ? candidateRow.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field')
+          : [],
+      );
     }
 
     if (tab !== undefined && tab.repeat?.id === last && path.length === 1) {
