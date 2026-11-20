@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-20T07:42:00Z'
-updated_date: '2026-11-20T14:05:00Z'
+updated_date: '2026-11-20T14:19:00Z'
 labels:
   - review-follow-up
 dependencies: []
@@ -52,4 +52,6 @@ TASK-100 and TASK-108 primarily cover repeat-id reuse. TASK-100 also includes a 
 Implementation 269fafbe1010110677ccddd2e96baf4aca70898d: 414 focused tests pass; 3677 unit tests pass with 1 environment skip; 55/55 mutants killed; build, lint, typecheck, format, formal drift pass. Chromium submitted the same invalid file through window upload and Builder; both show the id and both JSON cell locations. Focused review (2/2) found that Add field can generate a newly forbidden id from a valid Builder draft. Reproduced with sheet bonus and repeat label Bonus: addCell generates bonus, then builderProblems reports shadowed-field-id. CAP-24 expects generated ids to follow the preset rules; awaiting scope decision before publishing.
 
 Orchestrator decision (2026-11-20): include the CAP-24 Add field suggestion fix and regression so validation does not break the normal Builder flow. Keep manual formula rename out. Full Chromium suite passed on the initial validation implementation: 588/588, with four workers.
+
+Final owner severity: upload and file import reject the preset. During Builder structure editing the field shows a warning and stays editable. Preset export uses the existing problem gate, so export is unavailable until the field id is corrected. CAP-24 Add field now avoids conflicts in either direction. Manual formula rename is tracked separately as TASK-150.
 <!-- SECTION:NOTES:END -->

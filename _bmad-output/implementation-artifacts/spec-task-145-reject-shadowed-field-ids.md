@@ -19,8 +19,12 @@ baseline_commit: '0ed72921fffa6af957e0fd84bd2acdbcafed078b'
 
 Builder's Add field chooses an id that avoids conflicts in its own scope, its enclosing scopes, and its descendant scopes. A draft with no field id conflict does not gain one from adding a field. Manual field renaming and formula rewrites are out of scope.
 
+Uploading or importing an invalid preset refuses the file. In the Builder form, the conflict is a warning at the repeat field. The GM can still edit the draft. As with other preset problems, the Builder blocks export until the GM fixes it.
+
 </frozen-after-approval>
 
 ## Implementation Notes
 
 - Scope decision after review: include CAP-24 id suggestions because Builder otherwise creates a field id that the new validation rejects.
+- The shared validator indexes only valid field ids, so empty ids do not get an extra conflict warning.
+- Manual formula renaming remains separate. A single-GM reproduction is tracked in TASK-150.
