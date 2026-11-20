@@ -1029,6 +1029,120 @@ test('a file replaces the draft after one confirmation, and a refused file chang
   );
 });
 
+const ENCOUNTER_TAB = {
+  title: 'NPCs',
+  repeat: { id: 'npc', nameField: 'npc_name' },
+  sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }] }],
+} satisfies Template['tabs'][number];
+
+function attacksSection(id: string, formula: string): Template['tabs'][number]['sections'][number] {
+  return {
+    title: 'Attacks',
+    repeat: { id, nameField: 'attack_name' },
+    rows: [
+      {
+        cells: [
+          { kind: 'field', type: 'text', id: 'attack_name' },
+          { kind: 'field', type: 'number', id: 'bonus' },
+          { kind: 'dice', formula },
+        ],
+      },
+    ],
+  };
+}
+
+function encounterFile(tabs: Template['tabs']): string {
+  return JSON.stringify({ v: 4, templates: [{ id: 'encounter', title: 'Encounter', tabs }] });
+}
+
+for (const { name, section, details } of [
+  {
+    name: 'a repeated ancestor id',
+    section: attacksSection('npc', '1d6+bonus'),
+    details: ['npc', 'templates[0].tabs[0].sections[1]'],
+  },
+  {
+    name: 'a dangling formula reference',
+    section: attacksSection('attack', '1d6+missing_bonus'),
+    details: [
+      'missing_bonus',
+      '1d6+missing_bonus',
+      'templates[0].tabs[0].sections[1].rows[0].cells[2]',
+    ],
+  },
+]) {
+  test(`Builder import refuses ${name} and keeps the draft`, async ({ page }) => {
+    // #given
+    await page.goto(PAGE);
+    await openFromMenu(page, builder.openD20);
+    const original = item(page, `Персонажи · ${builder.form.kindSet}`);
+    await expect(original).toBeVisible();
+
+    // #when
+    await openFile(
+      page,
+      'invalid-encounter.json',
+      encounterFile([{ ...ENCOUNTER_TAB, sections: [...ENCOUNTER_TAB.sections, section] }]),
+    );
+
+    // #then
+    const message = page.getByText(/^Файл не подошёл:.*Ничего не изменено\.$/);
+    await Promise.all(details.map((detail) => expect(message).toContainText(detail)));
+    await expect(original).toBeVisible();
+    await expect(page.getByText(builder.replaceDraft('invalid-encounter.json'))).toHaveCount(0);
+  });
+}
+
+test('Builder marks a dangling formula reference and enables download after correction', async ({
+  page,
+}) => {
+  // #given
+  await page.goto(PAGE);
+  await openFile(
+    page,
+    'encounter.json',
+    encounterFile([
+      {
+        ...ENCOUNTER_TAB,
+        sections: [...ENCOUNTER_TAB.sections, attacksSection('attack', '1d6+bonus')],
+      },
+    ]),
+  );
+  await pick(item(page, '1d6+bonus'));
+  const formula = form(page).getByRole('combobox', { name: builder.form.formula });
+  await expect(page.getByText(builder.noProblems)).toBeVisible();
+
+  // #when
+  await formula.fill('1d6+missing_bonus');
+
+  // #then
+  await expect(formula).toHaveValue('1d6+missing_bonus');
+  await expect(problemCounter(page, 1)).toBeVisible();
+  await expect(item(page, '1d6+missing_bonus')).toHaveAttribute('data-problem', 'true');
+  await expect(
+    form(page).getByText(/(?=.*1d6\+missing_bonus).*missing_bonus.*missing_bonus/),
+  ).toBeVisible();
+  await expect(await presetDownloadButton(page)).toBeDisabled();
+
+  // #when
+  await page.keyboard.press('Escape');
+  await formula.fill('1d6+bonus');
+
+  // #then
+  await expect(page.getByText(builder.noProblems)).toBeVisible();
+  const downloading = page.waitForEvent('download');
+  await (await presetDownloadButton(page)).click();
+
+  const downloaded = parsePresetFile(
+    readFileSync(await (await downloading).path(), 'utf8'),
+  ).unwrap();
+
+  expect(downloaded.templates[0]?.tabs[0]?.sections[1]?.rows[0]?.cells[2]).toEqual({
+    kind: 'dice',
+    formula: '1d6+bonus',
+  });
+});
+
 test('an example opens with no confirmation while the draft is empty', async ({ page }) => {
   // #given
   await page.goto(PAGE);

@@ -7,6 +7,7 @@ import {
   addTab,
   EMPTY_DOCUMENT,
   fromPreset,
+  moveItem,
   PRESET_UID,
   removeItem,
   toPreset,
@@ -31,6 +32,65 @@ const VALID: Preset = {
 };
 
 describe('builderProblems', () => {
+  test('marks a repeat id conflict after moving a section and allows the move back', () => {
+    // #given
+    const preset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'encounter',
+          title: 'Encounter',
+          tabs: [
+            {
+              title: 'Library',
+              repeat: { id: 'library', nameField: 'library_name' },
+              sections: [
+                { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'library_name' }] }] },
+                {
+                  title: 'Attacks',
+                  repeat: { id: 'npc', nameField: 'attack_name' },
+                  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack_name' }] }],
+                },
+              ],
+            },
+            {
+              title: 'NPCs',
+              repeat: { id: 'npc', nameField: 'npc_name' },
+              sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }] }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const draft = fromPreset(preset);
+    const section = uidOf(draft, [0, 0, 1]);
+    const library = uidOf(draft, [0, 0]);
+    const npcs = uidOf(draft, [0, 1]);
+
+    // #when
+    const moved = edited(moveItem(draft, section, { place: 'into', parent: npcs })).document;
+    const fixed = edited(moveItem(moved, section, { place: 'into', parent: library })).document;
+
+    // #then
+    expect({
+      movedSection: uidOf(moved, [0, 1, 1]),
+      problems: builderProblems(moved).map(({ uid, failure }) => ({
+        uid,
+        reason: problemReason(failure),
+      })),
+      blockedDownload: downloadText(moved),
+      fixedProblems: builderProblems(fixed),
+      downloaded: parsePresetFile(downloadText(fixed) ?? ''),
+    }).toEqual({
+      movedSection: section,
+      problems: [{ uid: section, reason: expect.stringContaining('npc') }],
+      blockedDownload: null,
+      fixedProblems: [],
+      downloaded: Result.ok(preset),
+    });
+  });
+
   test('marks the inner field that reuses a sheet field id and refuses download', () => {
     // #given
     const document = fromPreset({

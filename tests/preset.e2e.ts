@@ -288,6 +288,62 @@ for (const [name, text, reason] of BAD_FILES) {
   });
 }
 
+for (const { name, text, details } of [
+  {
+    name: 'a repeated ancestor id',
+    text: templatesText([
+      {
+        id: 'encounter',
+        title: 'Encounter',
+        tabs: [
+          {
+            repeat: { id: 'npc', nameField: 'npc_name' },
+            sections: [
+              { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }] },
+              {
+                repeat: { id: 'npc', nameField: 'attack_name' },
+                rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack_name' }] }],
+              },
+            ],
+          },
+        ],
+      },
+    ]),
+    details: ['npc', 'templates[0].tabs[0].sections[1]'],
+  },
+  {
+    name: 'a dangling formula reference',
+    text: fileText({ rows: [{ cells: [{ kind: 'dice', formula: '1d6+missing_bonus' }] }] }),
+    details: [
+      'missing_bonus',
+      'templates[0].tabs[0].sections[1].rows[0].cells[0]',
+      '1d6+missing_bonus',
+    ],
+  },
+]) {
+  test(`upload refuses ${name} and keeps the room preset`, async ({ page, context }) => {
+    // #given
+    await page.goto('/index.html');
+    await seedStorage(page, [], EXAMPLE_PRESET_TEXT);
+    await openBackground(context);
+    await expect(page.getByRole('button', { name: ADD })).toBeVisible();
+    await page.getByRole('tab', { name: SETTINGS }).click();
+    await expect(page.getByRole('button', { name: DOWNLOAD })).toBeEnabled();
+    await watchWire(page);
+
+    // #when
+    await uploadFile(page, text);
+
+    // #then
+    const message = page.getByText(/^Файл не подошёл:.*Ничего не изменено\.$/);
+    await Promise.all(details.map((detail) => expect(message).toContainText(detail)));
+    expect({
+      commands: await wireCount(page, 'command'),
+      stored: await storedPreset(page),
+    }).toEqual({ commands: 0, stored: EXAMPLE });
+  });
+}
+
 test('the bad file message sits under the upload button', async ({ page, context }) => {
   // #given
   await openWindowAndBackground(page, context);

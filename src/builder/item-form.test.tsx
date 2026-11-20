@@ -122,6 +122,79 @@ describe('field id keyboard confirmation', () => {
   });
 });
 
+describe('repeat id keyboard confirmation', () => {
+  const preset: Preset = {
+    v: 4,
+    templates: [
+      {
+        id: 'encounter',
+        title: 'Encounter',
+        tabs: [
+          {
+            title: 'NPCs',
+            repeat: { id: 'npc', nameField: 'npc_name' },
+            sections: [
+              { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }] },
+              {
+                title: 'Attacks',
+                repeat: { id: 'attack', nameField: 'attack_name' },
+                rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack_name' }] }],
+              },
+            ],
+          },
+          {
+            title: 'Bosses',
+            repeat: { id: 'boss', nameField: 'boss_name' },
+            sections: [
+              { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'boss_name' }] }] },
+              {
+                repeat: { id: 'loot', nameField: 'item_name' },
+                rows: [{ cells: [{ kind: 'field', type: 'text', id: 'item_name' }] }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  test.each([
+    ['enclosing tab', [0, 0, 1], 'npc', { id: 'attack', nameField: 'attack_name' }],
+    ['nested section', [0, 0], 'attack', { id: 'npc', nameField: 'npc_name' }],
+  ] as const)(
+    'refuses the id of the %s but commits an id used in a separate branch',
+    async (_name, path, conflict, original) => {
+      // #given
+      const form = await openForm(preset, path, null);
+      const input = inputControl(form.container, 'Id');
+
+      // #when
+      await enterText(input, conflict);
+      await pressKey(input, 'Enter');
+
+      const refused = {
+        repeat: repeatAt(form.store, path),
+        invalid: input.getAttribute('aria-invalid'),
+        message: liveMessages(form.container).join(' '),
+      };
+
+      await enterText(input, 'loot');
+      await pressKey(input, 'Enter');
+
+      // #then
+      expect({
+        refused,
+        corrected: repeatAt(form.store, path),
+        messages: liveMessages(form.container),
+      }).toEqual({
+        refused: { repeat: original, invalid: 'true', message: expect.stringContaining(conflict) },
+        corrected: { id: 'loot', nameField: original.nameField },
+        messages: [],
+      });
+    },
+  );
+});
+
 describe('v4 node forms', () => {
   test.each([
     [
