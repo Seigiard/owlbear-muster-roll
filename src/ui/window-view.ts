@@ -24,8 +24,10 @@ export function useWindowView(store: WindowViewStore, initialRole: PlayerRole): 
   const sync = useStore(store.$sync);
   const role = loaded ? sync.role : initialRole;
   const presetData = presetDataOf(records);
+  // Decoding a preset traverses the complete layout on each projection update.
   const preset = useMemo(() => decodedPreset(presetData), [presetData]);
 
+  // Records and links identities drive the window's projection effects.
   return useMemo(() => windowViewOf(role, preset, records), [role, preset, records]);
 }
 

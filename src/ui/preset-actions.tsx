@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useReducer, useRef } from 'react';
+import { useEffect, useReducer, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { FileTrigger } from 'react-aria-components';
 
@@ -69,18 +69,6 @@ export function usePresetUpload({
     dispatch({ type: 'catch-up-started' });
   }
 
-  const sendUpload = useCallback(
-    (data: string, expected: { count: number; sheets: number }, expectedDigest: string) =>
-      sendCommand({
-        type: 'preset-upload',
-        data,
-        expectedCount: expected.count,
-        expectedSheets: expected.sheets,
-        expectedDigest,
-      }),
-    [sendCommand],
-  );
-
   // Resolve the request before starting an upload, so the send never runs inside a state updater.
   useEffect(() => {
     if (state.phase !== 'diffing' && state.phase !== 'uploading') {
@@ -105,7 +93,7 @@ export function usePresetUpload({
     return () => {
       active = false;
     };
-  }, [state, waiting]);
+  }, [state]);
 
   useEffect(() => {
     if (state.phase !== 'send') {
@@ -122,9 +110,15 @@ export function usePresetUpload({
     sentZeroLoss.current = current;
     dispatch({
       type: 'send-started',
-      outcome: sendUpload(current.data, NO_LOSS, current.digest),
+      outcome: sendCommand({
+        type: 'preset-upload',
+        data: current.data,
+        expectedCount: NO_LOSS.count,
+        expectedSheets: NO_LOSS.sheets,
+        expectedDigest: current.digest,
+      }),
     });
-  }, [sendUpload, state]);
+  }, [sendCommand, state]);
 
   useEffect(() => {
     if (state.phase === 'idle' && refocus.current) {
@@ -160,7 +154,13 @@ export function usePresetUpload({
         count={state.loss.count}
         sheets={state.loss.sheets}
         onConfirm={() => {
-          const sent = sendUpload(state.data, state.loss, state.loss.digest);
+          const sent = sendCommand({
+            type: 'preset-upload',
+            data: state.data,
+            expectedCount: state.loss.count,
+            expectedSheets: state.loss.sheets,
+            expectedDigest: state.loss.digest,
+          });
 
           refocus.current = true;
           dispatch({ type: 'confirm', outcome: sent });

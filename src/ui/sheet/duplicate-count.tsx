@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { FieldError, Input, Label, TextField } from 'react-aria-components';
 
@@ -42,6 +42,7 @@ export function DuplicateCount({
   const [text, setText] = useState(String(DUPLICATE_COUNT_MIN));
   const [problem, setProblem] = useState<Problem>(null);
   const [sent, setSent] = useState<Sent | null>(null);
+  const notifyDone = useEffectEvent(onDone);
 
   useEffect(() => {
     if (sent === null) {
@@ -59,7 +60,7 @@ export function DuplicateCount({
         setSent(null);
 
         if (outcome.kind === 'answered') {
-          onDone();
+          notifyDone();
         } else {
           setProblem('failed');
         }
@@ -71,7 +72,7 @@ export function DuplicateCount({
     return () => {
       active = false;
     };
-  }, [sent, onDone]);
+  }, [sent]);
 
   useEffect(() => {
     inputRef.current?.focus();

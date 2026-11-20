@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react';
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -208,18 +208,21 @@ function WindowRoot({
     blockReveal,
   } = navigation;
 
-  const targetTokens = useMemo(() => tokensByTarget(links), [links]);
-  const linkedTargets = useMemo(() => new Set(targetTokens.keys()), [targetTokens]);
+  const targetTokens = tokensByTarget(links);
+  const linkedTargets = new Set(targetTokens.keys());
   const mapSelected = useStore(mapSelection.$selection);
   const sceneItems = useStore(mapSelection.$sceneItems);
   // CAP-32: the marks follow this client's own selection through the links this role sees.
+  // Sidebar and focus effects react to changes in the selection-derived marks.
   const mapMarks = useMemo(() => selectionMarks(links, mapSelected), [links, mapSelected]);
 
+  // A stable sidebar projection keeps derived tab dependencies from retriggering effects per render.
   const sidebar = useMemo<SidebarEntries>(
     () => sidebarEntries(role, preset, records, playerId, mapMarks.sheetIds),
     [role, preset, records, playerId, mapMarks.sheetIds],
   );
 
+  // Navigation projection effects run when the rendered tab list changes.
   const tabs = useMemo(
     () =>
       sidebar.sections.flatMap((section) =>
@@ -228,81 +231,67 @@ function WindowRoot({
     [sidebar],
   );
 
+  // The navigation reducer consumes this list as a change signal.
   const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
 
   // UX-DR28: each sheet gets only its own waiting edits and marks.
-  const pendingBySheet = useMemo(() => {
-    const pending: SheetPending = { entries: pendingEntries, marked };
+  const pending: SheetPending = { entries: pendingEntries, marked };
 
-    return new Map(tabs.map((tab) => [tab.sheetId, sheetPendingOf(pending, tab.sheetId)]));
-  }, [pendingEntries, marked, tabs]);
-
-  const mapView = useMemo<MapSelectionView>(
-    () => ({
-      marked: mapMarks.targets,
-      // Selecting tokens from the window is GM-only.
-      selector: isGm
-        ? {
-            stepFor: (target: LinkTarget) =>
-              selectionStep(targetTokens.get(linkTargetKey(target)) ?? [], sceneItems, mapSelected),
-            take: (step: SelectionStep) => {
-              const write =
-                step.kind === 'select'
-                  ? platform.selection.select(step.tokenIds)
-                  : platform.selection.deselect(step.tokenIds);
-
-              write.catch((error) => {
-                console.error('Muster Roll could not change the map selection', error);
-              });
-            },
-          }
-        : null,
-    }),
-    [mapMarks, isGm, targetTokens, sceneItems, mapSelected],
+  const pendingBySheet = new Map(
+    tabs.map((tab) => [tab.sheetId, sheetPendingOf(pending, tab.sheetId)]),
   );
 
-  const editing = useMemo<FieldEditing>(
-    () => ({
-      sendCommand,
-      pauseMs: TIMING.fieldSavePauseMs,
-      pageHideFlushes,
-      localValues: localFieldValues,
-    }),
-    [sendCommand],
-  );
+  const mapView: MapSelectionView = {
+    marked: mapMarks.targets,
+    // Selecting tokens from the window is GM-only.
+    selector: isGm
+      ? {
+          stepFor: (target: LinkTarget) =>
+            selectionStep(targetTokens.get(linkTargetKey(target)) ?? [], sceneItems, mapSelected),
+          take: (step: SelectionStep) => {
+            const write =
+              step.kind === 'select'
+                ? platform.selection.select(step.tokenIds)
+                : platform.selection.deselect(step.tokenIds);
 
-  const presetClient = useMemo(
-    () => ({ sendCommand, requestPresetDiff, requestSnapshotCheck }),
-    [sendCommand, requestPresetDiff, requestSnapshotCheck],
-  );
+            write.catch((error) => {
+              console.error('Muster Roll could not change the map selection', error);
+            });
+          },
+        }
+      : null,
+  };
 
-  const rolling = useMemo<DiceRolling>(
-    () => ({
-      requestRoll,
-      localValues: localFieldValues,
-    }),
-    [requestRoll],
-  );
+  const editing: FieldEditing = {
+    sendCommand,
+    pauseMs: TIMING.fieldSavePauseMs,
+    pageHideFlushes,
+    localValues: localFieldValues,
+  };
 
-  const blockTools = useMemo<BlockTools>(
-    () => ({
-      sendCommand: (command) => sendCommand(command),
-      linkedTargets,
-      open: (target) => {
-        void platform.popover
-          .open({
-            id: LINK_PICKER_POPOVER_ID,
-            url: tokenCellPickerUrl(target),
-            width: 320,
-            height: 420,
-          })
-          .catch((error) => {
-            console.error('Muster Roll could not open the token-cell picker', error);
-          });
-      },
-    }),
-    [sendCommand, linkedTargets],
-  );
+  const presetClient = { sendCommand, requestPresetDiff, requestSnapshotCheck };
+
+  const rolling: DiceRolling = {
+    requestRoll,
+    localValues: localFieldValues,
+  };
+
+  const blockTools: BlockTools = {
+    sendCommand,
+    linkedTargets,
+    open: (target) => {
+      void platform.popover
+        .open({
+          id: LINK_PICKER_POPOVER_ID,
+          url: tokenCellPickerUrl(target),
+          width: 320,
+          height: 420,
+        })
+        .catch((error) => {
+          console.error('Muster Roll could not open the token-cell picker', error);
+        });
+    },
+  };
 
   // A projection effect keeps reducer state aligned with the facts needed by navigation. The
   // selected sidebar entry remains derived here when the role no longer lists it.
@@ -320,19 +309,19 @@ function WindowRoot({
     shownTab = firstTab;
   }
 
-  const clearNameFocus = useCallback(() => {
+  function clearNameFocus(): void {
     if (focusNameOf !== null) {
       dispatch({ type: 'name-focused', sheet: focusNameOf });
     }
-  }, [focusNameOf]);
+  }
 
-  const clearActionsFocus = useCallback(() => {
+  function clearActionsFocus(): void {
     if (focusActionsOf !== null) {
       dispatch({ type: 'actions-focused', sheet: focusActionsOf });
     }
-  }, [focusActionsOf]);
+  }
 
-  const clearBlockReveal = useCallback(() => {
+  function clearBlockReveal(): void {
     if (blockReveal !== null) {
       dispatch({
         type: 'block-revealed',
@@ -340,7 +329,7 @@ function WindowRoot({
         block: blockReveal.block,
       });
     }
-  }, [blockReveal]);
+  }
 
   // FR14: an open request is reduced from the visible tab and repeat block calculated by the
   // renderer. The reducer stores only the resulting navigation intent.

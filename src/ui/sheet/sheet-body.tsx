@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import {
@@ -79,23 +79,18 @@ export function SheetBody({
   onRevealed,
 }: SheetBodyProps): ReactNode {
   const body = useRef<HTMLDivElement>(null);
-  const shownRecords = useMemo(() => withRemovedRows(records, pending), [records, pending]);
+  const shownRecords = withRemovedRows(records, pending);
 
   const localChanges = useStore(rolling.localValues.$changes).get(sheetId) ?? 0;
 
-  const valuesSignature = useMemo(
-    () => sheetValuesSignature(template, records, sheetId, localChanges),
-    [template, records, sheetId, localChanges],
-  );
+  const valuesSignature = sheetValuesSignature(template, records, sheetId, localChanges);
 
-  const diceSheet = useMemo<DiceSheet>(
-    () => ({ ...rolling, valuesSignature }),
-    [rolling, valuesSignature],
-  );
+  const diceSheet: DiceSheet = { ...rolling, valuesSignature };
 
   // Runs when the body mounts too, so a request that selected this sheet, and the tab that holds
   // its repeat block, finds that block. A repeat block that is gone shows nothing, and the request
   // still ends.
+  // Rerunning on callback changes preserves token-cell focus after a reveal.
   useEffect(() => {
     if (reveal === null || openTab === null) {
       return undefined;

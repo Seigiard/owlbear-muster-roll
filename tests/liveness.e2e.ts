@@ -96,7 +96,7 @@ test('a player sees the no-GM banner once the GM pages close, and loses it when 
   const banner = player.window.getByRole('status');
   await expect(player.window.getByRole('tab', { name: 'Брок' })).toBeVisible();
   // Two timeouts with only pings and their answers from the GM.
-  // oxlint-disable-next-line playwright/no-wait-for-timeout -- verifies two GM-link timeouts while GM heartbeats keep the link online
+  // oxlint-disable-next-line no-restricted-properties -- verifies two GM-link timeouts while GM heartbeats keep the link online
   await player.window.waitForTimeout(2 * GM_LINK_TIMEOUT_MS);
   await expect
     .poll(() => syncRead(player.window))

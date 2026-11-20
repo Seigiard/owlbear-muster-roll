@@ -4,6 +4,7 @@ import { blockDataSchema } from '@/core/records';
 import {
   ADD,
   addPartyMember,
+  afterSettling,
   connectionIdOf,
   deviceKeys,
   openClientBackground,
@@ -14,6 +15,7 @@ import {
   STORAGE_PREFIX,
   storedCell,
   storedRecords,
+  watchCommands,
   type ClientParams,
   type RoomClient,
   type StoredRecord,
@@ -144,13 +146,15 @@ test('a GM edit and a new sheet made during catch-up show at once and are saved 
   await client.window.getByRole('tab', { name: SETTINGS }).click();
   await expect(client.window.getByRole('button', { name: DOWNLOAD_PRESET })).toBeDisabled();
   await client.window.getByRole('tab', { name: 'Брок' }).click();
+  await watchCommands(client.window);
   // #when
   await strength(client.window).fill('16');
   await strength(client.window).press('Enter');
   await expect(strength(client.window)).toHaveValue('16');
-  // A live client saves within a few send spacings, so a value still unsaved after this pause
-  // waits in the pending queue.
-  await client.window.waitForTimeout(500);
+  await expect
+    .poll(() => client.window.evaluate(() => window.seenCommands.map((command) => command.type)))
+    .toContain('field-patch');
+  await afterSettling(client.window);
   const savedDuringCatchUp = await storedCell(client.window, 'blk:brok', 'str');
   await client.window.getByRole('button', { name: ADD }).click();
   // #then

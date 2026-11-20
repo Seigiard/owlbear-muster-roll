@@ -4,6 +4,7 @@ import {
   ABSENT,
   ADD,
   addPartyMember,
+  afterSettling,
   connectionIdOf,
   openClientBackground,
   openClientWindow,
@@ -441,15 +442,18 @@ test('a refused pick puts the radio back and says so in the panel', async ({ con
   });
 });
 
-test('an answered pick shows no failure, also after the timeout', async ({ context }) => {
+test('an answered pick shows no failure, also after the timeout', async ({ context, page }) => {
   // #given
+  await page.clock.install();
   const gm = await openGm(context, RECORDS);
   await openClient(context, PLAYER, null);
   await accessChip(gm.window).click();
+  await watchCommands(gm.window);
   // #when
   await ownerRadio(gm.window, 'Лиза').click();
   await expect.poll(() => storedData(gm.window, 'plink:brok:lisa')).toEqual({ name: 'Лиза' });
-  await gm.window.waitForTimeout(ACCESS_CHANGE_TIMEOUT_MS + 1000);
+  await afterSettling(gm.window);
+  await gm.window.clock.runFor(ACCESS_CHANGE_TIMEOUT_MS + 1000);
   // #then
   await expect(accessPanel(gm.window).getByRole('status')).toHaveText('');
   await expect(ownerRadio(gm.window, 'Лиза')).toBeChecked();
