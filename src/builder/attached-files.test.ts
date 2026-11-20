@@ -12,7 +12,7 @@ import {
   type TestFileReference,
 } from '../../tests/support/file-access';
 import { BuilderPage } from './builder-page';
-import { createBuilderStore, type BuilderStore } from './builder-store';
+import { createBuilderStore, DRAFT_STORAGE_KEY, type BuilderStore } from './builder-store';
 import { toPreset, uidAt, updateSection, updateTemplate, withRepeat } from './document';
 import { builderProblems } from './problems';
 
@@ -1087,6 +1087,81 @@ describe('attached Builder files', () => {
       });
     },
   );
+  test.each([
+    {
+      scenario: 'legacy on restore',
+      origin: REPEAT_CREW_PRESET,
+      metadata: {},
+      reload: false,
+      unavailable: true,
+    },
+    {
+      scenario: 'legacy after another save',
+      origin: REPEAT_CREW_PRESET,
+      metadata: {},
+      reload: true,
+      unavailable: true,
+    },
+    {
+      scenario: 'known empty correspondence',
+      origin: REPEAT_CREW_PRESET,
+      metadata: { originRepeatIds: [] },
+      reload: true,
+      unavailable: false,
+    },
+    {
+      scenario: 'legacy with no original repeats',
+      origin: CREW_PRESET,
+      metadata: {},
+      reload: false,
+      unavailable: false,
+    },
+  ])(
+    'reports repeat warning availability in a $scenario draft',
+    async ({ origin, metadata, reload, unavailable }) => {
+      // #given
+      const storage = memoryStorage();
+      const preset = { ...REPEAT_CREW_PRESET, window: { width: 900, height: 700 } };
+      const name = 'saved-crew';
+      const records = snapshotRecords(SNAPSHOT_TEXT);
+      storage.setItem(
+        DRAFT_STORAGE_KEY,
+        JSON.stringify({ preset, origin, name, records, ...metadata }),
+      );
+
+      // #when
+      const restored = createBuilderStore(storage);
+      const step = restored.$state.get().step;
+      editSectionRepeat(restored, [0, 0, 2], 'id');
+      const displayed = reload ? createBuilderStore(storage) : restored;
+      displayed.select(uidAt(displayed.$state.get().step.document, [0, 0, 2]));
+      await mount(displayed, new TestFileAccessFake());
+
+      // #then
+      expect({
+        restored: {
+          preset: toPreset(step.document),
+          origin: step.origin,
+          name: step.name,
+          records: step.records,
+        },
+        repeatId: toPreset(displayed.$state.get().step.document).templates[0]?.tabs[0]?.sections[2]
+          ?.repeat?.id,
+        snapshotValue: previewValue('Сила'),
+        unavailable: document.body.textContent.includes(
+          'Для этого черновика недоступны точные предупреждения о том, какие блоки могут быть стёрты при загрузке пресета в комнату.',
+        ),
+        exactWarnings: repeatWarnings(),
+      }).toEqual({
+        restored: { preset, origin, name, records },
+        repeatId: 'moves',
+        snapshotValue: '12',
+        unavailable,
+        exactWarnings: [],
+      });
+    },
+  );
+
   test('keeps open and download without write or follow claims in an unsupported browser', async () => {
     // #given
     const access = new TestFileAccessFake('open-only');
