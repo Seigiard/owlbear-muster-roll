@@ -231,6 +231,20 @@ describe('pending edits', () => {
       size: 1,
     });
   });
+  test('the combined proposal sets one field and clears another', () => {
+    // #given
+    const harness = createHarness({
+      records: BASE.map((record) =>
+        record.k === STR.k ? fixturePatch(record, { str: 10, note: 'x' }, 2, 'seed') : record,
+      ),
+    });
+
+    harness.pending.edit(field('str', 11), harness.records);
+    // #when
+    harness.pending.edit(field('note', null), harness.records);
+    // #then
+    expect(harness.sent).toEqual([pcRecord({ str: 11 }, 3), pcRecord({ str: 11, note: null }, 4)]);
+  });
   test('an edit during catch-up overlays at once and sends above caught-up records', () => {
     // #given
     const harness = createHarness({ catchingUp: true });
@@ -334,6 +348,15 @@ describe('pending edits', () => {
       record: STR,
       size: 0,
     });
+  });
+  test('restoring a sent edit to its base value sends the restored value at a newer counter', () => {
+    // #given
+    const harness = createHarness();
+    harness.pending.edit(field('str', 11), harness.records);
+    // #when
+    harness.pending.edit(field('str', 10), pendingView(harness));
+    // #then
+    expect(harness.sent).toEqual([pcRecord({ str: 11 }, 3), pcRecord({ str: 10 }, 4)]);
   });
   test('an answer clears only its matching edit, while an older answer leaves it', () => {
     // #given
@@ -717,6 +740,47 @@ describe('pending edits', () => {
       fixtureRecord(SWORD.k, null, 2, CONNECTION),
       fixtureRecord(SWORD.k, null, 6, CONNECTION),
     ]);
+  });
+  test('a pending creation and its later field edit share a lifecycle', () => {
+    // #given
+    const harness = createHarness();
+    harness.pending.edit(add('new'), harness.records);
+    // #when
+    harness.pending.edit(
+      field('item', 'Sword', 'brok', {
+        kind: 'rep',
+        block: { sheetId: 'brok', path: ['item', 'new'] },
+      }),
+      pendingView(harness),
+    );
+    const [creation, updated] = harness.sent;
+
+    if (creation === undefined || updated === undefined) throw new Error('missing proposals');
+    const merged = mergeRecords(creation, updated);
+    // #then
+    expect(merged).toEqual({
+      k: 'blk:brok:item:new',
+      d: { order: 1, cells: { item: ['Sword', 2, CONNECTION] } },
+      c: 2,
+      a: CONNECTION,
+      l: [1, CONNECTION],
+    });
+  });
+  test('deleting a pending creation defeats its delayed creation proposal', () => {
+    // #given
+    const harness = createHarness();
+    harness.pending.edit(add('new'), harness.records);
+    // #when
+    harness.pending.edit(remove('new'), pendingView(harness));
+    const [creation, removal] = harness.sent;
+
+    if (creation === undefined || removal === undefined) throw new Error('missing proposals');
+    const merged = mergeRecords(removal, creation);
+    // #then
+    expect({ lifecycle: merged.l, data: merged.d }).toEqual({
+      lifecycle: [1, CONNECTION],
+      data: null,
+    });
   });
   test.each<
     [
@@ -1216,7 +1280,7 @@ function movedPreset(): Preset {
 
 function field(
   fieldId: string,
-  value: string | number,
+  value: string | number | null,
   sheetId = 'brok',
   target:
     | {

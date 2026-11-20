@@ -1,17 +1,14 @@
-import { Result } from 'better-result';
-import { fixtureCells, fixtureRecord } from '../../tests/support/block-fixtures';
+import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
-import { mergeRecords, type Version } from '@/core/merge';
-import type { TemplateLayout } from '@/core/preset';
+import type { Template, TemplateLayout } from '@/core/preset';
 import { presetMoves } from '@/core/preset-migrate';
-import { blockDataSchema, cellValues, type VersionedRecord } from '@/core/records';
+import { type VersionedRecord } from '@/core/records';
 import {
-  combinePatches,
+  combineCommands,
   createProposalQueue,
-  movedPatches,
-  proposedRecord,
-  strippedPatch,
-  type ProposalPatch,
+  movedCommands,
+  strippedCommands,
+  type ProposalCommand,
   type ProposalEntry,
   type ProposalQueue,
 } from '@/replica/proposal-queue';
@@ -34,8 +31,6 @@ type Rig = {
   }[];
   reported: string[];
 };
-
-const MINT = (): Version => ({ c: 9, a: 'p-conn' });
 
 function createRig(): Rig {
   const composes: Rig['composes'] = [];
@@ -70,7 +65,7 @@ function createRig(): Rig {
 function entry(k: string, c: number | null, str = c ?? 0): ProposalEntry {
   return {
     k,
-    patch: { kind: 'fields', values: { str } },
+    commands: [rootField('str', str)],
     record: c === null ? null : fixtureRecord(k, { str }, c, 'p-conn'),
     sent: false,
   };
@@ -314,102 +309,75 @@ describe('proposal queue', () => {
   });
 });
 
-describe('proposed repeat blocks', () => {
-  const key = 'blk:hero:item:new';
-  const lifecycle: [number, string] = [1, 'player'];
+const itemBlock = { sheetId: 'brok', path: ['item', 'new'] };
 
-  function made(patch: ProposalPatch, counter: number): VersionedRecord {
-    const result = proposedRecord(
-      key,
-      patch,
-      undefined,
-      () => ({ c: counter, a: 'player' }),
-      true,
-      lifecycle,
-    );
+const addItem = {
+  type: 'repeat-block-add',
+  sheetId: 'brok',
+  block: itemBlock,
+} satisfies ProposalCommand;
 
-    if (!result.isOk()) throw new Error(result.error);
+const deleteItem = {
+  type: 'repeat-block-delete',
+  sheetId: 'brok',
+  block: itemBlock,
+} satisfies ProposalCommand;
 
-    return result.value;
-  }
+function rootField(fieldId: string, value: string | number | boolean | null): ProposalCommand {
+  return {
+    type: 'field-patch',
+    sheetId: 'brok',
+    target: { kind: 'row', rowId: 'str' },
+    fieldId,
+    value,
+  };
+}
 
-  test('a resent creation with new cells keeps its lifecycle independent of its proposal counter', () => {
+function itemField(fieldId: string, value: string | number | boolean | null): ProposalCommand {
+  return {
+    type: 'field-patch',
+    sheetId: 'brok',
+    target: { kind: 'rep', block: itemBlock },
+    fieldId,
+    value,
+  };
+}
+
+describe('combineCommands', () => {
+  test('keeps an add before its fields and the newest value of each field', () => {
     // #given
-    const first = made({ kind: 'add', d: { order: 0, cells: {} } }, 1);
+    const commands = [addItem, itemField('item', 'Меч')];
 
-    const second = made(
-      { kind: 'add', d: { order: 0, cells: { item: ['Sword', 2, 'player'] } } },
-      2,
-    );
     // #when
-
-    const merged = mergeRecords(first, second);
-    // #then
-    expect({
-      lifecycle: merged.l,
-      proposalCounter: merged.c,
-      values: cellValues(blockDataSchema.parse(merged.d).cells),
-    }).toEqual({
-      lifecycle: [1, 'player'],
-      proposalCounter: 2,
-      values: { item: 'Sword' },
-    });
-  });
-
-  test('deleting a pending creation defeats its delayed creation proposal', () => {
-    // #given
-    const creation = made({ kind: 'add', d: { order: 0, cells: {} } }, 1);
-    const removal = made({ kind: 'remove' }, 2);
-    // #when
-    const merged = mergeRecords(removal, creation);
-    // #then
-    expect({ lifecycle: merged.l, data: merged.d }).toEqual({
-      lifecycle: [1, 'player'],
-      data: null,
-    });
-  });
-});
-
-describe('combinePatches', () => {
-  test('puts a field edit into the cells of a new row, which keeps its order', () => {
-    // #when
-    const combined = combinePatches(
-      { kind: 'add', d: { order: 3, cells: fixtureCells({ item: 'Меч' }, 1, 'pending') } },
-      { kind: 'fields', values: { qty: 2, item: null } },
+    const combined = combineCommands(
+      combineCommands(commands, itemField('qty', 2)),
+      itemField('item', null),
     );
 
     // #then
-    expect(combined).toEqual({
-      kind: 'add',
-      d: {
-        order: 3,
-        cells: { item: [null, 1, 'pending'], qty: [2, 1, 'pending'] },
-      },
-    });
+    expect(combined).toEqual([addItem, itemField('item', null), itemField('qty', 2)]);
   });
   test('keeps every field of two edits, the newer value winning', () => {
+    // #given
+    const commands = [rootField('str', 1), rootField('dex', 2)];
     // #when
-    const combined = combinePatches(
-      { kind: 'fields', values: { str: 1, dex: 2 } },
-      { kind: 'fields', values: { str: 5 } },
-    );
-
+    const combined = combineCommands(commands, rootField('str', 5));
     // #then
-    expect(combined).toEqual({ kind: 'fields', values: { str: 5, dex: 2 } });
+    expect(combined).toEqual([rootField('str', 5), rootField('dex', 2)]);
   });
   test('a removal replaces a new row and a field edit', () => {
     // #when
     const combined = [
-      combinePatches({ kind: 'add', d: { order: 0, cells: {} } }, { kind: 'remove' }),
-      combinePatches({ kind: 'fields', values: { qty: 1 } }, { kind: 'remove' }),
+      combineCommands([addItem], deleteItem),
+      combineCommands([itemField('qty', 1)], deleteItem),
     ];
 
     // #then
-    expect(combined).toEqual([{ kind: 'remove' }, { kind: 'remove' }]);
+    expect(combined).toEqual([[deleteItem], [deleteItem]]);
   });
 });
 
-describe('movedPatches', () => {
+describe('movedCommands', () => {
   test('keeps pending edits under every unchanged repeat scope', () => {
     // #given
     const template: TemplateLayout = {
@@ -417,189 +385,52 @@ describe('movedPatches', () => {
         {
           repeat: { id: 'npc', nameField: 'npc_name' },
           sections: [
-            {
-              rows: [
-                {
-                  cells: [{ kind: 'field', type: 'text', id: 'npc_name' }],
-                },
-              ],
-            },
+            { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }] },
             {
               repeat: { id: 'atk', nameField: 'attack_name' },
-              rows: [
-                {
-                  cells: [{ kind: 'field', type: 'text', id: 'attack_name' }],
-                },
-              ],
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack_name' }] }],
             },
           ],
         },
       ],
     };
 
-    const patch: ProposalPatch = { kind: 'fields', values: { npc_name: 'Skeleton' } };
+    const npc: ProposalCommand = {
+      type: 'field-patch',
+      sheetId: 's',
+      target: { kind: 'rep', block: { sheetId: 's', path: ['npc', 'a'] } },
+      fieldId: 'npc_name',
+      value: 'Skeleton',
+    };
+
+    const attack: ProposalCommand = {
+      type: 'field-patch',
+      sheetId: 's',
+      target: { kind: 'rep', block: { sheetId: 's', path: ['npc', 'a', 'atk', 'x'] } },
+      fieldId: 'npc_name',
+      value: 'Skeleton',
+    };
+
     const moves = presetMoves(template, template);
 
     // #when
     const moved = [
-      movedPatches('blk:s:npc:a', patch, moves),
-      movedPatches('blk:s:npc:a:atk:x', patch, moves),
+      movedCommands('blk:s:npc:a', [npc], moves),
+      movedCommands('blk:s:npc:a:atk:x', [attack], moves),
     ];
 
     // #then
-    expect(moved).toEqual([[{ k: 'blk:s:npc:a', patch }], [{ k: 'blk:s:npc:a:atk:x', patch }]]);
-  });
-});
-
-describe('proposedRecord', () => {
-  const ROW: VersionedRecord = {
-    k: 'blk:brok',
-    d: { order: 0, cells: { str: [5, 3, 'gm'], note: ['x', 3, 'gm'] } },
-    c: 3,
-    a: 'gm',
-    l: [1, 'seed'],
-  };
-
-  const REP: VersionedRecord = {
-    k: 'blk:brok:item:r1',
-    d: { order: 2, cells: { item: ['Меч', 3, 'gm'] } },
-    c: 3,
-    a: 'gm',
-    l: [1, 'seed'],
-  };
-
-  const REMOVED: VersionedRecord = {
-    k: 'blk:brok:item:r1',
-    d: null,
-    c: 4,
-    a: 'gm',
-    l: [1, 'seed'],
-  };
-
-  test('sets and clears fields of the row over its newest record', () => {
-    // #when
-    const made = proposedRecord(
-      ROW.k,
-      { kind: 'fields', values: { str: 6, note: null } },
-      ROW,
-      MINT,
-    );
-
-    // #then
-    expect(made).toEqual(
-      Result.ok({
-        k: ROW.k,
-        d: {
-          order: 0,
-          cells: { str: [6, 9, 'p-conn'], note: [null, 9, 'p-conn'] },
-        },
-        c: 9,
-        a: 'p-conn',
-        l: [1, 'seed'],
-      }),
-    );
-  });
-  test('starts a row with no record empty', () => {
-    // #when
-    const made = proposedRecord(ROW.k, { kind: 'fields', values: { str: 1 } }, undefined, MINT);
-    // #then
-    expect(made).toEqual(
-      Result.ok({
-        k: ROW.k,
-        d: { order: 0, cells: { str: [1, 9, 'p-conn'] } },
-        c: 9,
-        a: 'p-conn',
-        l: [9, 'p-conn'],
-      }),
-    );
-  });
-  test('refuses a patch the record already holds, unless forced', () => {
-    // #when
-    const made = [
-      proposedRecord(ROW.k, { kind: 'fields', values: { str: 5 } }, ROW, MINT),
-      proposedRecord(ROW.k, { kind: 'fields', values: { str: 5 } }, ROW, MINT, true),
-    ];
-
-    // #then
-    expect(made).toEqual([
-      Result.err('unchanged'),
-      Result.ok({
-        k: ROW.k,
-        d: { order: 0, cells: { str: [5, 9, 'p-conn'] } },
-        c: 9,
-        a: 'p-conn',
-        l: [1, 'seed'],
-      }),
-    ]);
-  });
-  test('edits the cells of a live repeat row and keeps its order', () => {
-    // #when
-    const made = proposedRecord(REP.k, { kind: 'fields', values: { qty: 2 } }, REP, MINT);
-    // #then
-    expect(made).toEqual(
-      Result.ok({
-        k: REP.k,
-        d: { order: 2, cells: { qty: [2, 9, 'p-conn'] } },
-        c: 9,
-        a: 'p-conn',
-        l: [1, 'seed'],
-      }),
-    );
-  });
-  test('a new row keeps its own order and cells over a live record of its key', () => {
-    // #when
-    const made = proposedRecord(
-      REP.k,
-      { kind: 'add', d: { order: 7, cells: fixtureCells({ qty: 1 }) } },
-      REP,
-      MINT,
-    );
-
-    // #then
-    expect(made).toEqual(
-      Result.ok(fixtureRecord(REP.k, { order: 7, cells: { qty: 1 } }, 9, 'p-conn')),
-    );
-  });
-  test('a removal stays a removal over a live row, and over no record', () => {
-    // #when
-    const made = [
-      proposedRecord(REP.k, { kind: 'remove' }, REP, MINT),
-      proposedRecord(REP.k, { kind: 'remove' }, undefined, MINT),
-    ];
-
-    // #then
-    expect(made).toEqual([
-      Result.ok(fixtureRecord(REP.k, null, 9, 'p-conn')),
-      Result.ok({
-        k: REP.k,
-        d: null,
-        c: 9,
-        a: 'p-conn',
-        l: [9, 'p-conn'],
-      }),
-    ]);
-  });
-  test('an edit or a new row over a removed repeat row is gone, and its removal unchanged', () => {
-    // #when
-    const made = [
-      proposedRecord(REP.k, { kind: 'fields', values: { qty: 2 } }, REMOVED, MINT, true),
-      proposedRecord(REP.k, { kind: 'add', d: { order: 0, cells: {} } }, REMOVED, MINT, true),
-      proposedRecord(REP.k, { kind: 'fields', values: { qty: 2 } }, undefined, MINT),
-      proposedRecord(REP.k, { kind: 'remove' }, REMOVED, MINT, true),
-    ];
-
-    // #then
-    expect(made).toEqual([
-      Result.err('gone'),
-      Result.err('gone'),
-      Result.err('gone'),
-      Result.err('unchanged'),
+    expect(moved).toEqual([
+      [{ k: 'blk:s:npc:a', commands: [npc] }],
+      [{ k: 'blk:s:npc:a:atk:x', commands: [attack] }],
     ]);
   });
 });
 
-describe('strippedPatch', () => {
-  const TEMPLATE: TemplateLayout = {
+describe('strippedCommands', () => {
+  const TEMPLATE: Template = {
+    id: 'brok',
+    title: 'Brok',
     tabs: [
       {
         sections: [
@@ -614,7 +445,7 @@ describe('strippedPatch', () => {
             ],
           },
           {
-            repeat: { id: 'attack', nameField: 'attack' },
+            repeat: { id: 'item', nameField: 'attack' },
             rows: [
               {
                 cells: [
@@ -629,22 +460,22 @@ describe('strippedPatch', () => {
     ],
   };
 
-  test('returns the same patch when the template has every field', () => {
+  test('keeps every valid field', () => {
     // #given
-    const patch = { kind: 'fields', values: { str: 3, str_tired: null } } as const;
+    const commands = [rootField('str', 3), rootField('str_tired', null)];
+    // #when
+    const stripped = strippedCommands('blk:brok', commands, TEMPLATE);
     // #then
-    expect(strippedPatch('blk:brok', patch, TEMPLATE)).toBe(patch);
+    expect(stripped).toEqual(commands);
   });
   test('keeps a root number proposal when a repeat tab has a same-id text field', () => {
     // #given
-    const template: TemplateLayout = {
+    const template: Template = {
+      id: 'brok',
+      title: 'Brok',
       tabs: [
+        { sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] },
         {
-          title: 'Основное',
-          sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }],
-        },
-        {
-          title: 'Состояния',
           repeat: { id: 'condition', nameField: 'condition_name' },
           sections: [
             {
@@ -662,53 +493,70 @@ describe('strippedPatch', () => {
       ],
     };
 
-    const patch = { kind: 'fields', values: { hp: 8 } } as const;
+    const command: ProposalCommand = {
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'row', rowId: 'hp' },
+      fieldId: 'hp',
+      value: 8,
+    };
 
     // #when
-    const stripped = strippedPatch('blk:brok', patch, template);
-
+    const stripped = strippedCommands('blk:brok', [command], template);
     // #then
-    expect(stripped).toBe(patch);
+    expect(stripped).toEqual([command]);
   });
   test('drops the fields the row no longer has, and values of another type', () => {
     // #when
-    const stripped = strippedPatch(
+    const stripped = strippedCommands(
       'blk:brok',
-      { kind: 'fields', values: { str: 3, str_tired: 'yes', gone: 1 } },
+      [rootField('str', 3), rootField('str_tired', 'yes'), rootField('gone', 1)],
       TEMPLATE,
     );
 
     // #then
-    expect(stripped).toEqual({ kind: 'fields', values: { str: 3 } });
+    expect(stripped).toEqual([rootField('str', 3)]);
   });
-  test.each<[string, string, Parameters<typeof strippedPatch>[1]]>([
-    ['only removed fields', 'blk:brok', { kind: 'fields', values: { gone: 1 } }],
-    ['a row the template no longer has', 'blk:brok', { kind: 'fields', values: { gone: 1 } }],
-    ['a removal in a section that is gone', 'blk:brok:spell:i1', { kind: 'remove' }],
+  test.each<[string, string, ProposalCommand[]]>([
+    ['only removed fields', 'blk:brok', [rootField('gone', 1)]],
+    ['a row the template no longer has', 'blk:brok', [rootField('gone', 1)]],
+    [
+      'a removal in a section that is gone',
+      'blk:brok:spell:i1',
+      [
+        {
+          type: 'repeat-block-delete',
+          sheetId: 'brok',
+          block: { sheetId: 'brok', path: ['spell', 'i1'] },
+        },
+      ],
+    ],
     [
       'a new row in a section that is gone',
       'blk:brok:spell:i1',
-      { kind: 'add', d: { order: 0, cells: {} } },
+      [
+        {
+          type: 'repeat-block-add',
+          sheetId: 'brok',
+          block: { sheetId: 'brok', path: ['spell', 'i1'] },
+        },
+      ],
     ],
-  ])('leaves nothing of %s', (_name, key, patch) => {
+  ])('leaves nothing of %s', (_name, key, commands) => {
+    // #when
+    const stripped = strippedCommands(key, commands, TEMPLATE);
     // #then
-    expect(strippedPatch(key, patch, TEMPLATE)).toBeNull();
+    expect(stripped).toBeNull();
   });
   test('keeps a new repeat row with only the cells its section has', () => {
     // #when
-    const stripped = strippedPatch(
-      'blk:brok:attack:i1',
-      {
-        kind: 'add',
-        d: { order: 2, cells: fixtureCells({ attack: 'Меч', range: 30 }) },
-      },
+    const stripped = strippedCommands(
+      'blk:brok:item:new',
+      [addItem, itemField('attack', 'Меч'), itemField('range', 30)],
       TEMPLATE,
     );
 
     // #then
-    expect(stripped).toEqual({
-      kind: 'add',
-      d: { order: 2, cells: { attack: ['Меч', 1, 'seed'] } },
-    });
+    expect(stripped).toEqual([addItem, itemField('attack', 'Меч')]);
   });
 });
