@@ -384,7 +384,7 @@ describe('a preset upload', () => {
     // #then
     expect(Object(storedRecord(gmA, root.k)?.d).cells.hp).toEqual([20, 4, 'gm-b']);
   });
-  test('preserves a root number when a later repeat tab has a same-id text field', async () => {
+  test('preserves a root number when a later repeat tab has a distinct text field', async () => {
     // #given
     const preset: Preset = {
       v: 4,
@@ -410,7 +410,7 @@ describe('a preset upload', () => {
                     {
                       cells: [
                         { kind: 'field', type: 'text', id: 'condition_name' },
-                        { kind: 'field', type: 'text', id: 'hp' },
+                        { kind: 'field', type: 'text', id: 'condition_text' },
                       ],
                     },
                   ],
@@ -440,7 +440,7 @@ describe('a preset upload', () => {
             order: 0,
             cells: {
               condition_name: ['Ранен', 1, 'seed'],
-              hp: ['критично', 1, 'seed'],
+              condition_text: ['критично', 1, 'seed'],
             },
           },
           c: 1,
@@ -465,7 +465,7 @@ describe('a preset upload', () => {
       result: { count: 0, sheets: 0 },
       rejection: undefined,
       cells: { hp: 7 },
-      condition: { condition_name: 'Ранен', hp: 'критично' },
+      condition: { condition_name: 'Ранен', condition_text: 'критично' },
       commits: [['preset']],
     });
   });

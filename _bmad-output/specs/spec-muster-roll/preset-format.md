@@ -63,6 +63,7 @@ A template is the root of a sheet. Its interface words stay: a template with `re
 - A repeat scope may sit inside another repeat scope. Each block then has its own nested blocks: a repeat tab «Персонаж» with a repeat section «Атаки» gives every NPC its own attacks (CAP-42).
 - A block is addressed by the sheet and a path of `(scope id, block id)` pairs. A record and a link name a block by that path.
 - Ids resolve inside the block first, then in each enclosing block, then in the sheet across all its tabs. Fields outside every repeat scope of a template are one scope across its tabs.
+- A field inside a repeat scope cannot reuse an id from an enclosing repeat scope or the sheet scope. The preset check reports both field locations.
 - The GM can duplicate a block (CAP-30). A duplicate keeps the values and its nested blocks, takes a number in `nameField` when that field holds a value, and has no token link.
 - Rejected: forbidding nested repeat, or one level only. A repeat tab without its own lists is useless, and a depth limit is an exception the registry must know.
 

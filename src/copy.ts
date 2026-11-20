@@ -154,6 +154,8 @@ export const copy = {
       `в наборе «${id}» нет текстового поля «${field}» вне повторяемых секций`,
     invalidFieldId: (id: string): string => `недопустимый id поля «${id}»`,
     duplicateFieldId: (id: string): string => `поле «${id}» повторяется`,
+    shadowedFieldId: (id: string, inner: string, enclosing: string): string =>
+      `поле «${id}» повторяется во вложенной области: ${inner} и ${enclosing}`,
     badRepeat: 'в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем',
     duplicateSection: (id: string): string => `две повторяемые секции с id «${id}»`,
     rowTooWide: 'в строке больше ячеек, чем колонок',

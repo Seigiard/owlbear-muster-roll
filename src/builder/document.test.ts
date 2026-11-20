@@ -356,6 +356,85 @@ describe('addCell', () => {
     // #then
     expect(findCell(added.document, added.changed)).toMatchObject({ id: 'field_2' });
   });
+  test.each([
+    ['enclosing sheet', 'sheet', 1, 'bonus_2'],
+    ['descendant repeat', 'repeat', 0, 'bonus_2'],
+    ['unrelated repeat', 'repeat', 2, 'bonus'],
+  ] as const)(
+    'adding a field handles an id in the %s',
+    (_scope, existing, targetSection, expectedId) => {
+      // #given
+      const bonus = { kind: 'field', type: 'number', id: 'bonus' } as const;
+
+      const preset: Preset = {
+        v: 4,
+        templates: [
+          {
+            id: 'sheet',
+            title: 'Sheet',
+            tabs: [
+              {
+                sections: [
+                  {
+                    rows: [
+                      {
+                        cells: [
+                          ...(existing === 'sheet' ? [bonus] : []),
+                          { kind: 'text', text: 'Bonus' },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    repeat: { id: 'first', nameField: 'first_name' },
+                    rows: [
+                      {
+                        cells: [
+                          { kind: 'field', type: 'text', id: 'first_name' },
+                          ...(existing === 'repeat' ? [bonus] : []),
+                          { kind: 'text', text: 'Bonus' },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    repeat: { id: 'second', nameField: 'second_name' },
+                    rows: [
+                      {
+                        cells: [
+                          { kind: 'field', type: 'text', id: 'second_name' },
+                          { kind: 'text', text: 'Bonus' },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+
+      const document = fromPreset(preset);
+
+      // #when
+      const added = applied(addCell(document, uid(document, 0, 0, targetSection, 0), 'field'));
+      const cell = findCell(added.document, added.changed);
+
+      // #then
+      expect({
+        initialAccepted: parsePresetFile(JSON.stringify(preset)).isOk(),
+        id: cell !== null && 'id' in cell ? cell.id : null,
+        problems: builderProblems(added.document),
+        resultAccepted: parsePresetFile(JSON.stringify(toPreset(added.document))).isOk(),
+      }).toEqual({
+        initialAccepted: true,
+        id: expectedId,
+        problems: [],
+        resultAccepted: true,
+      });
+    },
+  );
   test('token ids are unique beside other token ids in their scope', () => {
     // #given
     const document = fromPreset({

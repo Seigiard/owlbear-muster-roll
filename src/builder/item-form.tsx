@@ -68,9 +68,7 @@ export function ItemForm({
   const headingId = useId();
   const path = selection === null ? null : locate(document, selection);
 
-  const messages = problems
-    .filter((problem) => problem.uid === selection)
-    .map((problem) => problemReason(problem.failure));
+  const messages = problems.filter((problem) => problem.uid === selection);
 
   // The preset itself has no form: when the counter lands on a problem of the whole preset, its
   // messages show alone.
@@ -94,7 +92,12 @@ export function ItemForm({
       {messages.length === 0 ? null : (
         <ul className="flex flex-col gap-1 text-danger-text" data-builder-problems>
           {messages.map((message, index) => (
-            <li key={index}>{message}</li>
+            <li
+              key={`${message.failure.code}-${index}`}
+              className={clsx(message.failure.code === 'shadowed-field-id' && 'text-warning-text')}
+            >
+              {problemReason(message.failure)}
+            </li>
           ))}
         </ul>
       )}
