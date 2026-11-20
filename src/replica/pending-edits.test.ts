@@ -18,6 +18,48 @@ import {
 const PLAYER = 'player-a';
 const CONNECTION = 'player-connection';
 
+const PARITY_PRESET: Preset = {
+  v: 4,
+  templates: [
+    {
+      id: 'camp',
+      title: 'Camp',
+      players: 'edit',
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'food' },
+                    { kind: 'field', type: 'number', id: 'water' },
+                  ],
+                },
+              ],
+            },
+            {
+              repeat: { id: 'gear', nameField: 'name' },
+              rows: [
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                {
+                  repeat: { id: 'part', nameField: 'part_name' },
+                  cells: [{ kind: 'field', type: 'text', id: 'part_name' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const PARITY_RECORDS: VersionedRecord[] = [
+  { k: 'preset', d: encodePreset(PARITY_PRESET), c: 1, a: 'seed' },
+  fixtureRecord('blk:camp', { order: 0, cells: { food: 1, water: 1 } }, 1, 'seed'),
+];
+
 const PRESET: Preset = {
   v: 4,
   templates: [
@@ -128,6 +170,122 @@ type Harness = {
 };
 
 describe('pending edits', () => {
+  test('held sibling additions keep their original order after a GM sibling arrives', () => {
+    // #given
+    const harness = createHarness({ records: PARITY_RECORDS, catchingUp: true });
+
+    const first = {
+      type: 'repeat-block-add',
+      sheetId: 'camp',
+      block: { sheetId: 'camp', path: ['gear', 'a'] },
+    } satisfies PlayerEditCommand;
+
+    const second = {
+      type: 'repeat-block-add',
+      sheetId: 'camp',
+      block: { sheetId: 'camp', path: ['gear', 'b'] },
+    } satisfies PlayerEditCommand;
+
+    harness.pending.edit(first, pendingView(harness));
+    harness.pending.edit(second, pendingView(harness));
+    const view = pendingView(harness);
+    harness.records.set('blk:camp:gear:gm', {
+      k: 'blk:camp:gear:gm',
+      d: { order: 9, cells: {} },
+      c: 2,
+      a: 'gm',
+      l: [2, 'gm'],
+    });
+    harness.setCatchingUp(false);
+    // #when
+    harness.pending.caughtUp();
+    // #then
+    expect({
+      view: [view.get('blk:camp:gear:a')?.d, view.get('blk:camp:gear:b')?.d],
+      sent: harness.sent.map((record) => record.d),
+    }).toEqual({
+      view: [
+        { order: 0, cells: {} },
+        { order: 1, cells: {} },
+      ],
+      sent: [
+        { order: 0, cells: {} },
+        { order: 1, cells: {} },
+      ],
+    });
+  });
+  test('a held nested addition appears under its pending parent', () => {
+    // #given
+    const harness = createHarness({ records: PARITY_RECORDS, catchingUp: true });
+
+    const parent = {
+      type: 'repeat-block-add',
+      sheetId: 'camp',
+      block: { sheetId: 'camp', path: ['gear', 'a'] },
+    } satisfies PlayerEditCommand;
+
+    const child = {
+      type: 'repeat-block-add',
+      sheetId: 'camp',
+      block: { sheetId: 'camp', path: ['gear', 'a', 'part', 'b'] },
+    } satisfies PlayerEditCommand;
+
+    harness.pending.edit(parent, pendingView(harness));
+    harness.pending.edit(child, pendingView(harness));
+    // #when
+    const view = pendingView(harness);
+    // #then
+    expect(view.get('blk:camp:gear:a:part:b')).toEqual({
+      k: 'blk:camp:gear:a:part:b',
+      d: { order: 0, cells: {} },
+      c: 1,
+      a: CONNECTION,
+      l: [1, CONNECTION],
+    });
+  });
+  test('a preset type change resends only the still-valid pending field', () => {
+    // #given
+    const harness = createHarness({ records: PARITY_RECORDS });
+    const target = { kind: 'row', rowId: 'food' } as const;
+    harness.pending.edit(field('food', 2, 'camp', target), pendingView(harness));
+    harness.pending.edit(field('water', 2, 'camp', target), pendingView(harness));
+    const before = harness.records.get('preset');
+
+    const changed: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'camp',
+          title: 'Camp',
+          players: 'edit',
+          tabs: [
+            {
+              sections: [
+                {
+                  rows: [
+                    { cells: [{ kind: 'field', type: 'text', id: 'water' }] },
+                    { cells: [{ kind: 'field', type: 'number', id: 'food' }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    harness.records.set('preset', { k: 'preset', d: encodePreset(changed), c: 2, a: 'gm' });
+    // #when
+    harness.pending.recordsChanged(before);
+    // #then
+    expect(harness.sent.at(-1)).toEqual({
+      k: 'blk:camp',
+      d: { order: 0, cells: { food: [2, 4, CONNECTION] } },
+      c: 4,
+      a: CONNECTION,
+      l: [1, 'seed'],
+    });
+  });
   test('edit with access sends a stripped version above the known counter', () => {
     // #given
     const harness = createHarness({
