@@ -1285,6 +1285,27 @@ describe("a player's pending edit when the preset changes", () => {
       notifications: [],
     });
   });
+  test('keeps and proposes a later valid edit when the sent field is removed', async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm();
+    send(player, strEdit('note', 'устал'));
+    await waitUntil(() => proposals(room).length === 1);
+    const later = send(player, strEdit('str', 11));
+    await waitUntil(() => outcome(player, later) !== undefined);
+
+    // #when
+    answer(room, commit([{ k: 'preset', d: encodePreset(NO_NOTE), c: 2, a: 'gm-a' }]));
+    await waitUntil(() => player.store.$replica.get().get('preset')?.c === 2);
+    await pause(20);
+
+    // #then
+    expect({
+      followUp: proposals(room)
+        .slice(1)
+        .map((record) => cellValues(Object(record.d).cells)),
+      shown: cellValues(Object(shown(player, STR_ROW.k)?.d).cells),
+    }).toEqual({ followUp: [{ str: 11 }], shown: { str: 11 } });
+  });
   test('whose older version the GM denies after the change: no notification', async () => {
     // #given
     const { room, player } = await playerWithSilentGm();
