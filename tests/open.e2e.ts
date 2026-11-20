@@ -257,7 +257,18 @@ test('a GM on the NPC tab who opens another repeat block from its token scrolls 
   // #given
   const background = await openRoom(page, context, ROOM);
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+
+  // The entry swaps its label on press, so the browser drops the click and the press library
+  // focuses and clicks the entry 80 ms later; the open must come after that click.
+  const pressSettled = page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        document.addEventListener('click', () => resolve(), { capture: true, once: true });
+      }),
+  );
+
   await page.getByRole('tab', { name: 'NPC' }).click();
+  await pressSettled;
   await expect(repeatBlock(page, 'Гоблин 1')).toBeInViewport();
   await expect(repeatBlock(page, 'Дракон')).not.toBeInViewport();
   // #when
