@@ -663,3 +663,9 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 ## Deferred from: TASK-112 (2026-11-20)
 
 - `tests/selection.e2e.ts:135` ("a GM selects the token of one repeat block from the keyboard") failed once in a full `bun run test:browser` run on the TASK-112 branch: the map selection poll timed out after 5 s with one of `t-s1`, `t-s2` missing. It passed 3/3 under `--repeat-each 3`. TASK-112 changes only the Builder, which this test does not load.
+
+## Deferred from: TASK-111 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-111-legacy-repeat-warning.md`
+  summary: Prevent the local browser test server from aborting under Node 26 (TASK-144).
+  evidence: Node v26.13.1 aborted in `Buffer.byteLength` with `Lazy deopt after a fast API call with return value is unsupported` while Vite served a dependency. Playwright recorded 265 passes before the abort and 322 connection failures afterward.
