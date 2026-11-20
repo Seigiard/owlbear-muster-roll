@@ -5,6 +5,7 @@ import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
 import { randomFaces } from '@/core/formula-evaluate';
 import {
+  parsePresetFile,
   parsePresetStructure,
   presetProblems,
   type PresetCell,
@@ -602,6 +603,95 @@ describe('rollDiceCell', () => {
       Result.ok({
         cell: 'damage + hp + sheet_bonus',
         result: { roll: 12, faces: [], target: null, targetFaces: [], outcome: null },
+      }),
+    );
+  });
+  test.each([
+    ['the enclosing number field', 2, '1d6+bonus', 7],
+    ['the nearest field with the same field id', 3, '1d6+power', 9],
+    ['the enclosing dice-choice field', 4, '1d8', 4],
+  ])('reads %s when the tab and section repeat ids match', (_name, cellIndex, cell, total) => {
+    // #given
+    const preset = parsePresetFile(
+      JSON.stringify({
+        v: 4,
+        templates: [
+          {
+            id: 'encounter',
+            title: 'Encounter',
+            tabs: [
+              {
+                title: 'NPCs',
+                repeat: { id: 'npc', nameField: 'npc_name' },
+                sections: [
+                  {
+                    rows: [
+                      {
+                        cells: [
+                          { kind: 'field', type: 'text', id: 'npc_name' },
+                          { kind: 'field', type: 'number', id: 'bonus' },
+                          { kind: 'field', type: 'number', id: 'power' },
+                          { kind: 'field', type: 'dice-choice', id: 'weapon_die', options: ['d8'] },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    repeat: { id: 'npc', nameField: 'attack_name' },
+                    rows: [
+                      {
+                        cells: [
+                          { kind: 'field', type: 'text', id: 'attack_name' },
+                          { kind: 'field', type: 'number', id: 'power' },
+                          { kind: 'dice', formula: '1d6+bonus' },
+                          { kind: 'dice', formula: '1d6+power' },
+                          { kind: 'dice', formula: '1d(weapon_die)' },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const layout = preset.isOk() ? preset.value.templates[0] : undefined;
+
+    if (layout === undefined)
+      throw new Error(`Expected a valid v4 preset: ${JSON.stringify(preset)}`);
+
+    const records = assembleRecords([
+      fixtureRecord('blk:encounter:npc:n0', { npc_name: 'Orc', bonus: 8, weapon_die: 'd6' }),
+      fixtureRecord('blk:encounter:npc:n0:npc:a1', { attack_name: 'Bash', power: 1 }),
+      fixtureRecord('blk:encounter:npc:n1', {
+        npc_name: 'Goblin',
+        bonus: 3,
+        power: 1,
+        weapon_die: 'd8',
+      }),
+      fixtureRecord('blk:encounter:npc:n1:npc:a1', { attack_name: 'Slash', power: 5 }),
+    ]);
+
+    const place: DicePlace = {
+      tabIndex: 0,
+      sectionIndex: 1,
+      rowIndex: 0,
+      cellIndex,
+      instanceId: 'a1',
+      path: ['npc', 'n1', 'npc', 'a1'],
+    };
+
+    // #when
+    const rolled = rollDiceCell(layout, records, 'encounter', place, new Map(), () => 4);
+
+    // #then
+    expect(rolled).toEqual(
+      Result.ok({
+        cell,
+        result: { roll: total, faces: [4], target: null, targetFaces: [], outcome: null },
       }),
     );
   });
