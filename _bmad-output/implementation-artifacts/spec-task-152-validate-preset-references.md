@@ -21,9 +21,9 @@ baseline_commit: 'e1739fdbb45e0132f9b422bd27968ed59e171ba1'
 
 **Always:** Given one GM and one window, use the upload and import refusal and editable Builder warning behavior of TASK-145. Follow TASK-150 for manual rename refusal. A new formula problem names the formula, the missing id, and the dice cell's place. The Builder applies its existing save and download limits for presets with problems.
 
-**Installed presets:** Read an installed preset if it fails only these new rules or the TASK-145 shadowed field rule. A GM can replace it with a corrected file through the normal upload. Apply the strict rules to incoming files, including the replica's validation of a new upload.
+**Installed presets:** The owner approved one rule set for all preset parses, including reads of installed presets. A room with an installed preset that breaks either new rule cannot read it or replace it through a normal upload. No such installed preset is known. TASK-145 keeps its existing behavior.
 
-**Never:** Do not ban id reuse under different repeat parents, change formula syntax, change the file version, or handle multiple GMs. Do not edit `tests/snapshot.e2e.ts` or `tests/room-copy.e2e.ts`.
+**Never:** Do not ban id reuse under different repeat parents, change formula syntax, change the file version, add a compatibility mode, or handle multiple GMs. Do not edit `tests/snapshot.e2e.ts` or `tests/room-copy.e2e.ts`.
 
 ## I/O & Edge-Case Matrix
 
@@ -35,14 +35,14 @@ baseline_commit: 'e1739fdbb45e0132f9b422bd27968ed59e171ba1'
 | Scope resolution | A dice formula names fields in its own block, an enclosing block, or the sheet | Accept if the types and other rules pass. A field present only in another branch does not resolve. |
 | Builder draft | A draft has either problem | Show the warning at the item, keep editing available, and block preset export until the problems are fixed. |
 | Builder rename | A GM commits a new repeat id used by an enclosing or nested repeat scope | Keep the old id and show the refusal. A free id still commits. |
-| Installed preset | A stored preset violates the new rules or the TASK-145 field id rule | The room can read it and replace it with a valid upload. Any other preset failure still prevents reading. |
+| Installed preset | A stored preset violates either new rule | The shared decoder rejects it without an exception. Normal replacement upload refuses an unreadable installed preset. |
 
 </frozen-after-approval>
 
 ## Code Map
 
 - `src/core/preset.ts`: `presetProblems` serves `parsePresetFile` and Builder drafts. The tree walk tracks repeat parents, and the formula pass already parses the formula tree for type checks. `resolveFieldReference` must distinguish sheet rows from repeat rows, including in non-repeat sections.
-- `src/core/compose.ts`: keep the validation of an incoming upload strict. `currentPreset`, engine preset reads, and window projection read data that is already installed. If this changes a model-covered path, run the model skill and update its sync point.
+- `src/core/compose.ts`: both new upload validation and `currentPreset` use `decodePreset`. Keep this wiring unchanged so both apply the same rules.
 - `src/ui/preset-errors.ts` and `src/copy.ts`: format refusal reasons in Russian. Preserve the exact tree item path for Builder warnings and include the place in the file message.
 - `src/builder/document.ts` and `src/builder/item-form.tsx`: `repeatIdsAt` already supplies reserved ids for repeat creation. `IdInput` supports the `validate` callback TASK-150 uses to refuse a field rename. Check both ancestor and descendant conflicts for tabs, sections, and rows without treating other branches as related.
 - `src/builder/problems.ts`, `src/builder/builder-page.tsx`, and `src/ui/preset-actions.tsx`: preserve the existing draft problem, import, upload, and export paths; they already use the shared parser or validator.

@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@seigiard'
 created_date: '2026-11-20T15:36:00Z'
-updated_date: '2026-11-20T16:04:00Z'
+updated_date: '2026-11-20T16:10:00Z'
 labels:
   - review-follow-up
 dependencies: []
@@ -30,7 +30,7 @@ A valid Builder preset gives a repeat tab and its nested repeat section the same
 - [ ] #3 Room preset upload and file import reject both problems. Builder shows each problem at its place without blocking editing, and handles download/export as for existing preset problems.
 - [ ] #4 Builder refuses a manual repeat id rename that would conflict with an enclosing or enclosed repeat scope.
 - [ ] #5 Both preset format docs and the glossary state the rules, and shipped presets and docs/example-preset.json still pass the preset parse tests.
-- [ ] #6 An installed preset remains readable and replaceable by a valid upload if its only problems are the new rules or the TASK-145 shadowed-field-id rule. Other installed-preset validation failures are unchanged.
+- [ ] #6 Every strict preset parse, including decode of the installed preset, applies the same rules. TASK-145 behavior is unchanged.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -50,4 +50,6 @@ Owner decision (2026-11-20): «152 делай валидацию + запрет�
 Planning question: parsePresetFile also serves decodePreset for already-installed room presets. Applying the two new errors there would make an affected room preset unreadable and block a corrected replacement upload (src/core/compose.ts:175-200,959-972). No production edits made pending the stored-preset compatibility decision.
 
 Orchestrator decision: keep already-installed presets readable when their only failures are the new rules or TASK-145 shadowed-field-id, if the latter fits the same small change. Strict validation remains at upload and file import; Builder retains warnings and download gating.
+
+Final owner decision (2026-11-20): «согласен» to one rule set everywhere; overrides the earlier option A. Keep TASK-145 unchanged. Accepted risk: an installed preset that violates either new rule is unreadable, and the GM cannot replace it by normal upload. No such installed presets are known to the only GM.
 <!-- SECTION:NOTES:END -->
