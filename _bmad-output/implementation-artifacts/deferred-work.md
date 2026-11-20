@@ -680,3 +680,8 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-135-compiler-builder-page.md`
   summary: Taking the file's version in an attached-file conflict allows a forced write that may overwrite a newer external change.
   evidence: Unverified (`medium` if true). `src/builder/attached-files.ts:230-240` allows the forced write after `resolveConflict(kind, true)`. A test with a second external change after the conflict shows would settle it.
+
+## Deferred from: compiler bailouts TASK-133 to TASK-137 (2026-11-20)
+
+- `tests/room-copy.e2e.ts:73` ("a GM writes the room copy after an edit, and a GM on a new device with no other GM loads from it") failed once in a full `bun run test:browser` run on the `compiler-bailouts` branch: the new-device GM showed "Сила" 14 instead of 17. It passed 15/15 under `--repeat-each` and in the next full run (587/587); `origin/master` passed its one full run. The branch does not touch the room copy or the sheet window. Cause not established; a load-only race is likely.
+- One full `bun run test:browser` run was void: the Vite dev server died with the V8 message `abort: Lazy deopt after a fast API call with return value is unsupported` while serving `react-aria-components.js`, and every later test failed within about 200 ms. A Node or V8 defect on this machine, not a test failure; watch for a repeat.
