@@ -2,7 +2,7 @@
 title: 'TASK-125: Store commands in the pending edit queue'
 type: 'refactor'
 created: '2026-11-20'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '342fb1ad34cbbe62b9a3593b095b46430cfbe67b'
 review_loop_iteration: 0
@@ -46,10 +46,10 @@ context: ['{project-root}/GLOSSARY.md']
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] Capture the engine suite JUnit identities on `origin/master` before editing source.
-- [ ] Compose proposals from commands, preserving repeat order, lifecycle, and the forced no-op rule. Keep `record` as the immutable payload for the minted version.
-- [ ] Port the three queue helper case groups in `src/replica/proposal-queue.test.ts`. Preserve the record assertions from the removed builder where the pending-edits suite does not already cover them.
-- [ ] Update the code map in `.claude/skills/edit-delivery/SKILL.md` and stale names in `formal/edit-delivery/EditDelivery.tla`. Keep the same single-field behavior. After checking the model, move `formal/edit-delivery/coverage.txt` to the checked code commit.
+- [x] Capture the engine suite JUnit identities on `origin/master` before editing source.
+- [x] Compose proposals from commands, preserving repeat order, lifecycle, and the forced no-op rule. Keep `record` as the immutable payload for the minted version.
+- [x] Port the three queue helper case groups in `src/replica/proposal-queue.test.ts`. Preserve the record assertions from the removed builder where the pending-edits suite does not already cover them.
+- [x] Update the code map in `.claude/skills/edit-delivery/SKILL.md` and stale names in `formal/edit-delivery/EditDelivery.tla`. Keep the same single-field behavior. After checking the model, move `formal/edit-delivery/coverage.txt` to the checked code commit.
 
 **Acceptance Criteria:**
 - Given a pending entry, when the replica needs a proposal, then its stored commands feed `core/compose` in `pending` mode without a `ProposalPatch`.
@@ -58,9 +58,17 @@ context: ['{project-root}/GLOSSARY.md']
 
 ## Implementation Notes
 
+- `composePending` takes the stored commands and the base record. A resend uses the cached record instead of calling the composer again. `drain` returns the stored commands and clears the queue.
+- The focused suite passed 81 tests, including the command equivalents of combine, strip, and move. The pending edit tests cover rebuilds and forced reverts, preset strips, and promotion. The row move test checks both the unchanged wire record and the new target on drain.
+- The 745 engine test identities match clean `master` exactly. Both runs passed without skips. Twelve additional replay scenarios matched the baseline.
+- The edit-delivery model passed three gates and seven broken controls without changes to its transitions. All four model coverage checks passed.
+- Format, lint, typecheck, and build passed. Bun passed 3,665 tests with one existing prototype precondition skip. Chromium passed 588 tests on Node 22.19.0. All 55 mutation controls failed as expected.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+The first review's nine minor findings led to a named replay input, one command type, clearer comments and refusal handling, and a promotion assertion for the row move. The confirming review reported no critical or major findings. No issue remains open or deferred. TASK-132 stays separate.
 
 ## Verification
 
