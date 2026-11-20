@@ -653,3 +653,7 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 ## Deferred from: TASK-131 (2026-11-20)
 
 - `tests/pending.e2e.ts:168-177` ("a player's edit shows at once, and "Ожидает" only after the delay"): `clock.runFor` advances every page of the context; if the edit command reaches the background only after the background's `runFor` finished, the spaced second send waits on a fake 50 ms timer that nothing advances, and the poll times out. Load-only race found in review, not observed (25 green runs, full suite green). Fix shape: advance the clock inside the polls (`runFor(TIMING.sendSpacingMs)` per poll), then advance only the rest of the inside-delay time before the zero-mark check.
+
+## Deferred from: TASK-112 (2026-11-20)
+
+- `tests/selection.e2e.ts:135` ("a GM selects the token of one repeat block from the keyboard") failed once in a full `bun run test:browser` run on the TASK-112 branch: the map selection poll timed out after 5 s with one of `t-s1`, `t-s2` missing. It passed 3/3 under `--repeat-each 3`. TASK-112 changes only the Builder, which this test does not load.
