@@ -59,7 +59,13 @@ const NESTED_PRESET: Preset = {
             { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }] },
             {
               repeat: { id: 'attack', nameField: 'attack_name' },
-              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack_name' }] }],
+              rows: [
+                { cells: [{ kind: 'field', type: 'text', id: 'attack_name' }] },
+                {
+                  repeat: { id: 'effect', nameField: 'effect_name' },
+                  cells: [{ kind: 'field', type: 'text', id: 'effect_name' }],
+                },
+              ],
             },
           ],
         },
@@ -115,7 +121,7 @@ describe('createComposers', () => {
       ]),
     );
   });
-  test('a GM delete tombstones links to the block and its descendants but keeps unrelated and stale links', () => {
+  test('a GM deletes a repeat block, its live descendants and their links in one batch', () => {
     // #given
     const records = assembleRecords([
       { k: 'preset', d: encodePreset(NESTED_PRESET), c: 1, a: 'seed' },
@@ -129,13 +135,27 @@ describe('createComposers', () => {
       },
       {
         k: 'blk:encounter:npc:a:attack:x',
-        d: { order: 0, cells: { attack_name: ['Claw', 1, 'seed'] } },
-        c: 1,
+        d: { order: 0, cells: { attack_name: ['Claw', 4, 'seed'] } },
+        c: 4,
         a: 'seed',
-        l: [1, 'seed'],
+        l: [3, 'seed'],
       },
       {
-        k: 'blk:encounter:npc:b',
+        k: 'blk:encounter:npc:a:attack:x:effect:bleed',
+        d: { order: 0, cells: { effect_name: ['Bleed', 9, 'seed'] } },
+        c: 9,
+        a: 'seed',
+        l: [7, 'seed'],
+      },
+      {
+        k: 'blk:encounter:npc:a:attack:old',
+        d: null,
+        c: 10,
+        a: 'seed',
+        l: [8, 'seed'],
+      },
+      {
+        k: 'blk:encounter:npc:ab',
         d: { order: 1, cells: { npc_name: ['B', 1, 'seed'] } },
         c: 1,
         a: 'seed',
@@ -148,7 +168,7 @@ describe('createComposers', () => {
         c: 1,
         a: 'seed',
       },
-      { k: 'link:b', d: { s: 'encounter', path: ['npc', 'b'], c: 'token' }, c: 1, a: 'seed' },
+      { k: 'link:b', d: { s: 'encounter', path: ['npc', 'ab'], c: 'token' }, c: 1, a: 'seed' },
       {
         k: 'link:stale',
         d: { s: 'encounter', path: ['npc', 'missing', 'attack', 'a'], c: 'token' },
@@ -177,12 +197,29 @@ describe('createComposers', () => {
     );
 
     // #then
-    expect(result).toEqual(
-      Result.ok([
-        { k: 'blk:encounter:npc:a', d: null, c: 2, a: 'gm', l: [1, 'seed'] },
-        { k: 'link:a', d: null, c: 2, a: 'gm' },
-        { k: 'link:child', d: null, c: 2, a: 'gm' },
-      ]),
+    expect(
+      result.map(([target, ...others]) => ({
+        target,
+        others: new Set(others),
+        otherCount: others.length,
+      })),
+    ).toEqual(
+      Result.ok({
+        target: { k: 'blk:encounter:npc:a', d: null, c: 2, a: 'gm', l: [1, 'seed'] },
+        others: new Set([
+          { k: 'blk:encounter:npc:a:attack:x', d: null, c: 5, a: 'gm', l: [3, 'seed'] },
+          {
+            k: 'blk:encounter:npc:a:attack:x:effect:bleed',
+            d: null,
+            c: 10,
+            a: 'gm',
+            l: [7, 'seed'],
+          },
+          { k: 'link:a', d: null, c: 2, a: 'gm' },
+          { k: 'link:child', d: null, c: 2, a: 'gm' },
+        ]),
+        otherCount: 4,
+      }),
     );
   });
 });
