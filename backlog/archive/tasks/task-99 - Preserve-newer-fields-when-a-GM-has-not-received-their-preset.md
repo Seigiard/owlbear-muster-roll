@@ -4,7 +4,7 @@ title: Preserve newer fields when a GM has not received their preset
 status: To Do
 assignee: []
 created_date: '2026-11-17T20:14:00Z'
-updated_date: '2026-11-18T06:48:00Z'
+updated_date: '2026-11-20T13:25:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -38,4 +38,6 @@ Window-3 reviews of a6af377 found a code-traced data-loss risk in persisted reco
 
 <!-- SECTION:NOTES:BEGIN -->
 Owner scope decision, 2026-11-18: multiple GMs and multiple windows of one GM are outside current acceptance. This optional follow-up must establish relevance to one GM in one window before implementation; cross-sender constructions alone do not justify work. No dependency or blocker for preset-v4 completion.
+
+Archived 2026-11-20 by the owner's decision ("99 архивируй"). With one GM in one window the GM creates every preset, so it cannot hold an older preset than a block it receives; the path needs a second GM (outside scope) or a failed storage write between the preset and block writes. No live-room occurrence is known.
 <!-- SECTION:NOTES:END -->
