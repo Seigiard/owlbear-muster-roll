@@ -4,6 +4,7 @@ title: Keep the browser suite green when several checkouts run it at once
 status: To Do
 assignee: []
 created_date: '2026-11-20T06:52:00Z'
+updated_date: '2026-11-20T07:03:00Z'
 labels:
   - flaky-test
 dependencies: []
@@ -30,3 +31,9 @@ On 2026-11-20 four task lanes ran their full local checks in parallel worktrees.
 - [ ] #3 A browser test that fails only under load can be told apart from a real failure without re-running the whole suite by hand
 - [ ] #4 TASK-139 is closed by this work or still names a cause this task does not cover
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Further cases of the same pattern, 2026-11-20, from the TASK-108 lane (one timeout per full run, each in a different test, each green when its file ran alone): tests/player.e2e.ts:145 hit the 30 s test timeout (alone 15/15); tests/builder.e2e.ts:415 timed out in page.waitForEvent for the download (alone 31/31). These were filed as TASK-143, which is archived as a duplicate of this task.
+<!-- SECTION:NOTES:END -->

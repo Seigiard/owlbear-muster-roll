@@ -4,6 +4,7 @@ title: Stabilize the player-tabs and builder download e2e under full-suite load
 status: To Do
 assignee: []
 created_date: '2026-11-20T06:59:00Z'
+updated_date: '2026-11-20T07:03:00Z'
 labels:
   - flaky-test
 dependencies: []
@@ -26,3 +27,9 @@ Two browser tests hit the 30 s test timeout in full bun run test:browser runs on
 - [ ] #1 The cause of each timeout under full-suite load is found and named in the task notes
 - [ ] #2 Both tests pass in repeated full bun run test:browser runs
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Duplicate of TASK-142, which tracks browser-suite timeouts when several checkouts run test:browser at once. Its two cases are copied into TASK-142 notes.
+<!-- SECTION:NOTES:END -->
