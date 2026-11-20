@@ -2,7 +2,7 @@
 title: 'TASK-131 Replace the fixed sleeps that playwright/no-wait-for-timeout does not detect'
 type: 'chore'
 created: '2026-11-20'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '694b8b0e33c391807b48102d2b00cb19e0ecd1eb'
@@ -66,6 +66,13 @@ context: []
 
 ## Implementation Notes
 
+- Built through `tdd` (run dir `~/.claude/artifacts/tdd-20261120-053748/task-131-no-fixed-sleeps/`): one test-writer commit (tests + `.oxlintrc.json`, no production code), then calibration of 7 false-green rows: each negative assertion went red under a temporary production mutation.
+- Clock-based tests install `page.clock` before any page opens; the clock is context-wide, so the background page's timers move with it.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+| Finding | Verdict | Evidence | Route |
+|---|---|---|---|
+| `pending.e2e.ts:168-177` context-wide `runFor` can finish on the background before the edit arrives (revmux 01 bugs-1) | low | Reasoned load-only race; 25 green runs and the full suite green | rejected (low); recorded in deferred-work.md |

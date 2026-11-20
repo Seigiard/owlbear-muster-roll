@@ -1,11 +1,11 @@
 ---
 id: TASK-131
 title: Replace the fixed sleeps that playwright/no-wait-for-timeout does not detect
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-19T19:14:00Z'
-updated_date: '2026-11-20T04:37:00Z'
+updated_date: '2026-11-20T05:15:00Z'
 labels: []
 dependencies:
   - TASK-128
@@ -20,7 +20,19 @@ playwright/no-wait-for-timeout reports only some receivers, such as page.waitFor
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 No waitForTimeout call remains in tests/ without a targeted disable that states why
-- [ ] #2 A lint rule or check reports a waitForTimeout call on any receiver
-- [ ] #3 bun run test:browser passes
+- [x] #1 No waitForTimeout call remains in tests/ without a targeted disable that states why
+- [x] #2 A lint rule or check reports a waitForTimeout call on any receiver
+- [x] #3 bun run test:browser passes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Replaced all 12 sleeps: Playwright clock for the delay checks (installed before pages open; context-wide), condition polls and afterSettling barriers for the others. Lint: no-restricted-properties reports waitForTimeout on any receiver in tests/ (probe a.window.waitForTimeout(5) reports it); playwright/no-wait-for-timeout is off; the two justified disables (liveness.e2e.ts:100, field-edit.e2e.ts:357) name the new rule. Calibration: 7/7 negative assertions red under production mutation. Review (revmux focused): one minor load-race in pending.e2e.ts deferred.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The 12 fixed sleeps in tests/ that playwright/no-wait-for-timeout missed are gone: delay checks advance the Playwright clock, the rest wait on conditions or command barriers, and each test keeps its expected values. A core no-restricted-properties rule now reports waitForTimeout on any receiver; the two remaining real-time waits keep targeted disables with reasons. Evidence: changed files 565/565 at --repeat-each=5 --workers=4, full bun run test:browser 587/587, lint/typecheck/format pass, 7/7 calibration rows red under mutation. Deferred: a load-only clock race in tests/pending.e2e.ts:168 (deferred-work.md).
+<!-- SECTION:FINAL_SUMMARY:END -->
