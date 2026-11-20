@@ -1,6 +1,7 @@
 import { suggestFieldId, suggestTemplateId } from '@/core/field-id-suggest';
 import { PRESET_FORMAT_VERSION as FORMAT_VERSION } from '@/core/format-version';
 import { renameFieldId } from '@/core/formula-rename';
+import { readableFieldIds } from '@/core/preset';
 import type {
   Preset,
   PresetCell,
@@ -499,18 +500,15 @@ export function scopeIds(template: DocTemplate, spot: SectionSpot): Set<string> 
   ]);
 }
 
-// The field ids a formula in a row of the section at `spot` can read, for completion: its own
-// repeat section's ids first, then the template's ids outside repeat sections, on any tab.
-export function formulaFieldIds(template: DocTemplate, spot: SectionSpot): string[] {
-  const own = sectionOf(template, spot);
-
-  const outside = templateSections(template).flatMap((section) =>
-    section.repeat !== undefined ? [] : sectionFieldIds(section, null),
-  );
-
-  const block = own?.repeat !== undefined ? sectionFieldIds(own, null) : [];
-
-  return [...new Set([...block, ...outside])];
+export function formulaFieldIds(
+  template: DocTemplate,
+  spot: SectionSpot & { row: number },
+): string[] {
+  return readableFieldIds(templateToPreset(template), {
+    tabIndex: spot.tab,
+    sectionIndex: spot.section,
+    rowIndex: spot.row,
+  });
 }
 
 function sectionFieldIds(section: DocSection, except: string | null): string[] {
