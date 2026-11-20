@@ -19,14 +19,17 @@ import {
   placedSections,
   plainRowIdOf,
   presetProblems,
+  repeatSectionByPath,
   repeatSectionPlaceByPath,
   repeatSectionId,
   resolveFieldReference,
   templateById,
   windowSizeOf,
   type Preset,
+  type PresetRow,
   type PresetSection,
   type TemplateLayout,
+  type TemplateSectionPlace,
   type WindowSize,
 } from './preset';
 import { cellLabel } from './sheet-values';
@@ -189,6 +192,125 @@ describe('repeatSectionPlaceByPath', () => {
         rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }],
       },
     });
+  });
+});
+
+// A root row repeat `attack` and a row repeat `attack` nested in the repeat section `npc`.
+const ROOT_ATTACK_ROW: PresetRow = {
+  repeat: { id: 'attack', nameField: 'attack_name' },
+  cells: [
+    { kind: 'field', type: 'text', id: 'attack_name' },
+    { kind: 'field', type: 'number', id: 'dmg' },
+  ],
+};
+
+const NESTED_ATTACK_ROW: PresetRow = {
+  repeat: { id: 'attack', nameField: 'attack_name' },
+  cells: [
+    { kind: 'field', type: 'text', id: 'attack_name' },
+    { kind: 'field', type: 'number', id: 'hit' },
+  ],
+};
+
+const NPC_SECTION: PresetSection = {
+  repeat: { id: 'npc', nameField: 'npc_name' },
+  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }, NESTED_ATTACK_ROW],
+};
+
+const ROOT_ATTACK_SECTION: PresetSection = { rows: [ROOT_ATTACK_ROW] };
+
+describe('root and nested repeat scopes that share an id', () => {
+  const nestedFirst: TemplateLayout = { tabs: [{ sections: [NPC_SECTION, ROOT_ATTACK_SECTION] }] };
+
+  const rootFirst: TemplateLayout = { tabs: [{ sections: [ROOT_ATTACK_SECTION, NPC_SECTION] }] };
+
+  const nestedOnEarlierTab: TemplateLayout = {
+    tabs: [
+      { title: 'NPC', sections: [NPC_SECTION] },
+      { title: 'Attacks', sections: [ROOT_ATTACK_SECTION] },
+    ],
+  };
+
+  const layouts: [string, TemplateLayout][] = [
+    ['the nested scope comes first', nestedFirst],
+    ['the root scope comes first', rootFirst],
+    ['the nested scope is on an earlier tab', nestedOnEarlierTab],
+  ];
+
+  test.each(layouts)('the parser accepts the layout when %s', (_name, layout) => {
+    // #given
+    const template = { id: 'encounter', title: 'Encounter', ...layout };
+
+    // #when
+    const parsed = parsePresetFile(JSON.stringify({ v: 4, templates: [template] }));
+
+    // #then
+    expect(parsed.isOk()).toBe(true);
+  });
+
+  test.each(layouts)('the root path finds the root row when %s', (_name, layout) => {
+    // #when
+    const section = repeatSectionByPath(layout, ['attack']);
+
+    // #then
+    expect(section?.rows).toEqual([ROOT_ATTACK_ROW]);
+  });
+
+  test.each<[string, TemplateLayout, TemplateSectionPlace]>([
+    ['the nested scope comes first', nestedFirst, { tabIndex: 0, sectionIndex: 1 }],
+    ['the root scope comes first', rootFirst, { tabIndex: 0, sectionIndex: 0 }],
+    ['the nested scope is on an earlier tab', nestedOnEarlierTab, { tabIndex: 1, sectionIndex: 0 }],
+  ])('the root path places the root row when %s', (_name, layout, place) => {
+    // #when
+    const found = repeatSectionPlaceByPath(layout, ['attack']);
+
+    // #then
+    expect(found?.place).toEqual(place);
+  });
+
+  test.each<[string, TemplateLayout, PresetRow[]]>([
+    [
+      'a root repeat section',
+      {
+        tabs: [
+          {
+            sections: [
+              NPC_SECTION,
+              { repeat: ROOT_ATTACK_ROW.repeat, rows: [{ cells: ROOT_ATTACK_ROW.cells }] },
+            ],
+          },
+        ],
+      },
+      [{ cells: ROOT_ATTACK_ROW.cells }],
+    ],
+    [
+      'a root repeat tab',
+      {
+        tabs: [
+          { title: 'NPC', sections: [NPC_SECTION] },
+          {
+            title: 'Attacks',
+            repeat: ROOT_ATTACK_ROW.repeat,
+            sections: [{ rows: [{ cells: ROOT_ATTACK_ROW.cells }] }],
+          },
+        ],
+      },
+      [{ cells: ROOT_ATTACK_ROW.cells }],
+    ],
+  ])('the root path finds %s after a nested row of the same id', (_name, layout, rows) => {
+    // #when
+    const section = repeatSectionByPath(layout, ['attack']);
+
+    // #then
+    expect(section?.rows).toEqual(rows);
+  });
+
+  test.each(layouts)('the nested path finds the nested row when %s', (_name, layout) => {
+    // #when
+    const section = repeatSectionByPath(layout, ['npc', 'attack']);
+
+    // #then
+    expect(section?.rows).toEqual([NESTED_ATTACK_ROW]);
   });
 });
 

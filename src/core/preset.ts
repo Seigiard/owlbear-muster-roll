@@ -408,59 +408,7 @@ export function repeatSectionByPath(
   layout: TemplateLayout,
   scopePath: readonly string[],
 ): PresetSection | null {
-  const [tabScopeId, childScopeId, rowScopeId] = scopePath;
-
-  for (const tab of layout.tabs) {
-    const tabId = tab.repeat?.id;
-
-    if (tabId !== undefined && tabId === tabScopeId) {
-      if (scopePath.length === 1) return tabAsSection(tab);
-
-      for (const section of tab.sections) {
-        const sectionId = section.repeat?.id;
-
-        if (childScopeId !== undefined && sectionId === childScopeId) {
-          if (scopePath.length === 2) return section;
-
-          const row =
-            rowScopeId === undefined
-              ? undefined
-              : section.rows.find((candidate) => candidate.repeat?.id === rowScopeId);
-
-          return row === undefined ? null : { ...section, repeat: row.repeat, rows: [row] };
-        }
-
-        if (sectionId === undefined && scopePath.length === 2) {
-          const row = section.rows.find((candidate) => candidate.repeat?.id === childScopeId);
-
-          if (row !== undefined) return { ...section, repeat: row.repeat, rows: [row] };
-        }
-      }
-
-      return null;
-    }
-
-    if (tabId === undefined && (scopePath.length === 1 || scopePath.length === 2)) {
-      for (const section of tab.sections) {
-        if (section.repeat?.id === tabScopeId) {
-          if (scopePath.length === 1) return section;
-
-          const row = section.rows.find((candidate) => candidate.repeat?.id === childScopeId);
-
-          return row === undefined ? null : { ...section, repeat: row.repeat, rows: [row] };
-        }
-
-        const row =
-          scopePath.length === 1
-            ? section.rows.find((candidate) => candidate.repeat?.id === tabScopeId)
-            : undefined;
-
-        if (row !== undefined) return { ...section, repeat: row.repeat, rows: [row] };
-      }
-    }
-  }
-
-  return null;
+  return repeatSectionPlaceByPath(layout, scopePath)?.section ?? null;
 }
 
 function tabAsSection(tab: PresetTab): PresetSection {
@@ -553,8 +501,9 @@ export function repeatScopeByPath(
           return { place: { tabIndex, sectionIndex }, section, row: null };
         }
 
+        // A root row repeat sits only in a plain section; a repeat section's rows are nested scopes.
         const row =
-          scopePath.length === 1
+          scopePath.length === 1 && section.repeat === undefined
             ? section.rows.find((candidate) => candidate.repeat?.id === tabScopeId)
             : undefined;
 
