@@ -61,6 +61,12 @@ export function badFileReason(failure: Exclude<PresetFailure, { code: 'newer-ver
       return reason.invalidFieldId(failure.detail);
     case 'duplicate-id':
       return reason.duplicateFieldId(failure.detail);
+    case 'shadowed-field-id':
+      return reason.shadowedFieldId(
+        failure.field,
+        presetCellLocation(failure.path),
+        presetCellLocation(failure.enclosingPath),
+      );
     case 'bad-repeat':
       return reason.badRepeat;
     case 'duplicate-section':
@@ -90,6 +96,12 @@ export function badFileReason(failure: Exclude<PresetFailure, { code: 'newer-ver
     default:
       return unknownFailure(failure);
   }
+}
+
+function presetCellLocation(path: readonly number[]): string {
+  const [template, tab, section, row, cell] = path;
+
+  return `templates[${template}].tabs[${tab}].sections[${section}].rows[${row}].cells[${cell}]`;
 }
 
 // `tsc` fails here when a failure code has no reason above.

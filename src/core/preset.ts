@@ -200,6 +200,12 @@ export type PresetFailure =
   | { code: 'bad-name-field'; detail: string; field: string }
   | { code: 'invalid-id'; detail: string }
   | { code: 'duplicate-id'; detail: string }
+  | {
+      code: 'shadowed-field-id';
+      field: string;
+      path: readonly number[];
+      enclosingPath: readonly number[];
+    }
   | { code: 'bad-repeat' }
   | { code: 'duplicate-section'; detail: string }
   | { code: 'row-too-wide' }
@@ -215,6 +221,12 @@ export type PresetFailure =
   | { code: 'long-name'; detail: string; cell: 'field' | 'dice' };
 
 export type PresetProblem = { failure: PresetFailure; path: readonly number[] };
+
+type FieldScope = {
+  ids: Set<string>;
+  fields: Map<string, number[]>;
+  parent: FieldScope | null;
+};
 
 const encoder = new TextEncoder();
 
@@ -835,8 +847,23 @@ function fieldReference(
 
 function treeProblems(template: Template, templatePath: number[]): PresetProblem[] {
   const problems: PresetProblem[] = [];
-  const rootFields = new Set<string>();
+
+  const rootScope: FieldScope = {
+    ids: new Set<string>(),
+    fields: new Map(),
+    parent: null,
+  };
+
   const repeatIdsByParent = new Map<string, Set<string>>();
+  const repeatScopes: FieldScope[] = [];
+
+  const newRepeatScope = (parent: FieldScope): FieldScope => {
+    const scope: FieldScope = { ids: new Set(), fields: new Map(), parent };
+
+    repeatScopes.push(scope);
+
+    return scope;
+  };
 
   const addRepeat = (
     repeatValue: { id: string; nameField: string },
@@ -860,7 +887,7 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
   };
 
   template.tabs.forEach((tab, ti) => {
-    const tabScope = tab.repeat === undefined ? rootFields : new Set<string>();
+    const tabScope = tab.repeat === undefined ? rootScope : newRepeatScope(rootScope);
     let tabRepeatPath: readonly string[] = [];
 
     if (tab.repeat !== undefined) {
@@ -890,7 +917,7 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
         sectionRepeatPath = addRepeat(section.repeat, tabRepeatPath, sectionPath);
       }
 
-      const scope = section.repeat === undefined ? tabScope : new Set<string>();
+      const sectionScope = section.repeat === undefined ? tabScope : newRepeatScope(tabScope);
       section.rows.forEach((item, ri) => {
         const rowPath = [...sectionPath, ri];
 
@@ -903,9 +930,15 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
 
         if (section.columns !== undefined && item.cells.length > section.columns)
           problems.push({ failure: { code: 'row-too-wide' }, path: rowPath });
-        const rowScope = item.repeat === undefined ? scope : new Set<string>();
+        const rowScope = item.repeat === undefined ? sectionScope : newRepeatScope(sectionScope);
         item.cells.forEach((candidate, ci) => {
-          const failure = cellFailure(candidate, rowScope);
+          if (candidate.kind === 'field') {
+            if (!rowScope.fields.has(candidate.id)) {
+              rowScope.fields.set(candidate.id, [...rowPath, ci]);
+            }
+          }
+
+          const failure = cellFailure(candidate, rowScope.ids);
 
           if (failure !== null) problems.push({ failure, path: [...rowPath, ci] });
         });
@@ -937,6 +970,34 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
       }
     });
   });
+
+  problems.push(...shadowedFieldProblems(repeatScopes));
+
+  return problems;
+}
+
+function shadowedFieldProblems(scopes: readonly FieldScope[]): PresetProblem[] {
+  const problems: PresetProblem[] = [];
+
+  for (const scope of scopes) {
+    for (const [field, path] of scope.fields) {
+      let enclosing = scope.parent;
+
+      while (enclosing !== null) {
+        const enclosingPath = enclosing.fields.get(field);
+
+        if (enclosingPath !== undefined) {
+          problems.push({
+            failure: { code: 'shadowed-field-id', field, path, enclosingPath },
+            path,
+          });
+          break;
+        }
+
+        enclosing = enclosing.parent;
+      }
+    }
+  }
 
   return problems;
 }
