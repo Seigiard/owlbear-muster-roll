@@ -659,3 +659,18 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-134-compiler-structure-tree.md`
   summary: Add a repository check that fails when the React Compiler bails out on a component, so a fixed bailout (TASK-133, TASK-134, TASK-135) cannot come back unnoticed.
   evidence: The build does not report bailouts; the compiler probe (`@babel/core` 7 with `babel-plugin-react-compiler` and a `logger` that prints `CompileError` events) is a scratch script outside git. Blind Hunter on TASK-134 found that `StructureTree` returns to a silent bailout if a call comes back as a computed key, and no check would fail.
+
+## Deferred from: TASK-135 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-135-compiler-builder-page.md`
+  summary: `enqueueWrite` in `src/builder/builder-page.tsx` can leave a stale queued write behind, so an attached file ends with an older text than the builder shows.
+  evidence: Verified by reading. With write A active and B queued, a request for A again returns early on the active-match check and leaves B in `queue.queued`; the drain then writes B. Found by Blind Hunter on TASK-135, whose change only moved the surrounding functions.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-135-compiler-builder-page.md`
+  summary: `writeFile` may write to, or report a conflict for, a file the GM replaced while `fileAccess.read` was pending.
+  evidence: Unverified (`medium` if true). It checks the attached file before `await fileAccess.read` and not after. A test that attaches another file while the read is pending would settle it.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-135-compiler-builder-page.md`
+  summary: An external edit between opening an attached preset and the first follow poll may go unnoticed.
+  evidence: Unverified (`medium` if true). `src/builder/file-access.ts:151-160` takes the first poll as the base version, and the window includes the time the GM spends confirming the draft replacement. A test that edits the file inside that window would settle it.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-135-compiler-builder-page.md`
+  summary: Taking the file's version in an attached-file conflict allows a forced write that may overwrite a newer external change.
+  evidence: Unverified (`medium` if true). `src/builder/attached-files.ts:230-240` allows the forced write after `resolveConflict(kind, true)`. A test with a second external change after the conflict shows would settle it.
