@@ -5,11 +5,11 @@ description: Model-check AD-4/AD-5 edit delivery, a player's pending edit reachi
 
 # Edit delivery model
 
-`formal/edit-delivery/EditDelivery.tla` is a TLA+ model of one player's pending edit (see `GLOSSARY.md`) of one field, sent as `propose` to one GM client that commits, rejects or drops it. TLC checks every order of edits, sends, resends, losses, GM edits, GM absences and catch-ups within the bounds below. A pass covers the model, not the code: the model is only as true as its code map.
+`formal/edit-delivery/EditDelivery.tla` is a TLA+ model of one player's pending edit (see `GLOSSARY.md`) for one block key, sent as `propose` to one GM client that commits, rejects or drops it. Field-indexed cells let the existing configs retain one field and `TwoFields.cfg` check two fields on one key. TLC checks every order of edits, sends, resends, losses, GM edits, GM absences and catch-ups within the bounds below. A pass covers the model, not the code: the model is only as true as its code map.
 
 ## When a change touches this
 
-Compare the change with the coverage record at the end. A change to a listed function, or to how the engine calls it, needs this check. `formal/drift.sh edit-delivery` lists the covered files that changed after the sync commit in `formal/edit-delivery/coverage.txt`. The model leaves out preset moves and strips, repeat blocks, fragments, and the overlay. For composition it covers only how a single field command becomes a proposal.
+Compare the change with the coverage record at the end. A change to a listed function, or to how the engine calls it, needs this check. `formal/drift.sh edit-delivery` lists the covered files that changed after the sync commit in `formal/edit-delivery/coverage.txt`. The model leaves out preset moves and strips, repeat blocks, fragments, and the overlay. It models field commands as sparse cells on one block key, not full preset composition.
 
 ## Run
 
@@ -19,16 +19,17 @@ From the repo root:
 formal/edit-delivery/check.sh
 ```
 
-It runs `formal/tlc.sh` on every config in `formal/edit-delivery/` and prints one line per config. Exit 0 means every result matched what the config expects: the gates pass, and each broken variant fails on its property. The run takes about 30 seconds (31 s at the sync commit, on a shared CPU). Set `OUT=<folder>` to keep each config's TLC output. For one config, run `formal/tlc.sh formal/edit-delivery/EditDelivery.tla formal/edit-delivery/<config>.cfg`.
+It runs `formal/tlc.sh` on every config in `formal/edit-delivery/` and prints one line per config. Exit 0 means every result matched what the config expects: the gates pass, and each broken variant fails on its property. Set `OUT=<folder>` to keep each config's TLC output. For one config, run `formal/tlc.sh formal/edit-delivery/EditDelivery.tla formal/edit-delivery/<config>.cfg`.
 
 | Config | Expected | Checks |
 | --- | --- | --- |
 | `EditDelivery.cfg` | pass | delivery gate: 2 edits, GM edit, GM away and back, catch-up, 1 loss |
 | `Refusals.cfg` | pass | revoke, too-large, catch-up, 1 loss |
 | `Liveness.cfg` | pass | `EntryResolves`, 1 edit |
+| `TwoFields.cfg` | pass | two fields on one key: a committed cell loses its ACK, the GM edits it, and a later field edit advances after the merge |
 | `broken/*.cfg` | the property its header names | each property can fail |
 
-Read every result, pass or fail, with the `/statechart` skill: on a violation it tells the shortest path in plain words, and on a pass it draws how the edit moves between states. Run it in a scratch folder outside the repo. Its chart budget is 500 TLC states and the gates have about a million, so chart a copy with smaller constants: one player value, one edit, no GM flips, and a `CONSTRAINT` of two messages in flight still show the former F1 on `broken/ForgetsCommitted.cfg`.
+Read every result, pass or fail, with the `/statechart` skill: on a violation it tells the shortest path in plain words, and on a pass it draws how the edit moves between states. Run it in a scratch folder outside the repo. Its chart budget is 500 TLC states and the gates have about a million, so chart a copy with smaller constants. For the old folding bug, use two fields, two player edits, one GM edit, and one lost message with `broken/FoldsUnackedCells.cfg`.
 
 ## Properties
 
@@ -37,8 +38,9 @@ Each is an operator in `EditDelivery.tla`. Status is at the sync commit.
 | Property | Plain sentence | Harm when broken | Status |
 | --- | --- | --- | --- |
 | `NoSilentLoss` | An accepted edit is still pending, or the GM merged it or a newer edit, or the player saw a denial notice ("Правка слишком большая" for too-large, "Нет прав на правку" otherwise), or the record the player knows already held its value. | The player believes a value is saved and it never reaches the room, with no notice. | holds |
-| `NoDoubleApply` | The GM merges each player edit into the room at most once. | A committed edit comes back later and overwrites whatever came after it, such as a GM's correction. | holds (the former F1, fixed by TASK-119) |
-| `OwnOrderKept` | Once the GM merged a newer edit of this player, the room never shows an older one. | The room ends with the player's earlier value though the later one was accepted. | holds |
+| `NoDoubleApply` | The GM merges each player field edit into the room at most once. | A committed edit comes back later and overwrites whatever came after it, such as a GM's correction. | holds (the former F1, fixed by TASK-119) |
+| `NoOldCellReplayAfterLostAck` | After a committed cell's ACK is lost and the GM changes that field, a later edit of another field does not apply the old cell again. | A new field edit restores an old value over the GM's correction. | holds in `TwoFields.cfg`; `broken/FoldsUnackedCells.cfg` must break it |
+| `OwnOrderKept` | For each field, once the GM merged a newer edit of this player, the room never shows an older one. | The room ends with the player's earlier value though the later one was accepted. | holds |
 | `OneVersionOneEdit` | The player never sends two different edits under one `(k, c, a)` (AD-3). | Two clients pick different winners for one version, or an ack clears the wrong edit. | holds |
 | `NeverStranded` | A minted entry always has a resend timer; an entry with no version exists only during catch-up, whose end mints it. | An edit waits forever with no resend, even after the GM is back. | holds |
 | `EntryResolves` | When the GM ends up live for good, every pending edit is answered. | Same as above, through any path the structural rule misses. | holds (1 edit; 2 edits pass too, in 45 s) |
@@ -49,24 +51,26 @@ Each is an operator in `EditDelivery.tla`. Status is at the sync commit.
 
 None open.
 
-Fixed: former F1, TASK-119, **a lost ack let a committed edit overwrite a later GM edit**. The GM committed the player's `(k, 3, P)`; the commit never reached the player (the send queue gave up, or the player's AD-5 gate dropped it); the GM edited the field at `c=4`; the player's resend of `(k, 3, P)` read as `stale`, and `rejected` rebuilt it at `c=5`, which the GM committed over its own edit. `stale` compares counters only, so neither side could tell "my committed version was overwritten" from "my version lost a race". Now `receiveProposal` remembers the generation and `(k, c, a)` of each proposal it commits (`committedEdits`, the newest 1000), and answers the same proposal again with its held record and the echo, ahead of `checkProposal`. The player's `answered` clears its entry and merges the GM's record. A proposal that really lost a race carries a `(k, c, a)` the GM never committed, so it still reads as `stale`. In the model, `GmReceives` answers a counter in `committed` that way; `broken/ForgetsCommitted.cfg` removes it and fails `NoDoubleApply`, and `NoDoubleApply` is in both gates. Three paths still apply the player's edit twice, each outside the model:
+Fixed: former F1, TASK-119, **a lost ack let a committed edit overwrite a later GM edit**. The GM committed the player's `(k, 3, P)`; the commit never reached the player (the send queue gave up, or the player's AD-5 gate dropped it); the GM edited the field at `c=4`; the player's resend of `(k, 3, P)` read as `stale`, and `rejected` rebuilt it at `c=5`, which the GM committed over its own edit. `stale` compares counters only, so neither side could tell "my committed version was overwritten" from "my version lost a race". Now `receiveProposal` remembers the generation and `(k, c, a)` of each proposal it commits (`committedEdits`, the newest 1000), and answers the same proposal again with its held record and the echo, ahead of `checkProposal`. The player's `answered` clears its entry and merges the GM's record. A proposal that really lost a race carries a `(k, c, a)` the GM never committed, so it still reads as `stale`. In the model, `GmReceives` answers a counter in `committed` that way; `broken/ForgetsCommitted.cfg` removes it and fails `NoDoubleApply`, and `NoDoubleApply` is in both one-field gates. Two paths still apply the player's edit twice outside the model:
 - a GM reload before the player's resend: the memory is in RAM, and the model leaves `stop` and reloads out;
-- a second GM page that did not commit the proposal: it answers `stale` and may answer first (two GM clients are not modeled; the owner's verdict counts two GM pages as one GM's accepted risk);
-- a later player edit of another field of the same key before the resend: `combineCommands` retains the unacknowledged command when `composePending` makes a new `(k, c, a)` that the GM never committed. The model has one field. TASK-132 tracks this case.
+- a second GM page that did not commit the proposal: it answers `stale` and may answer first (two GM clients are not modeled; the owner's verdict counts two GM pages as one GM's accepted risk).
+The old folding path is now in the model: a later player edit of another field of the same key can put an unacknowledged cell in a new `(k, c, a)`. `TwoFields.cfg` keeps the fixed behavior in the shared model, and `broken/FoldsUnackedCells.cfg` makes it fail `NoOldCellReplayAfterLostAck`.
+
+TASK-132 code map: `ProposalEntry.commands` is the current batch and `laterCommands` is staged behind a sent version. A command for the only active field replaces the sent batch. A command for another field is staged when `rc # 0 /\ sent`, including during catch-up; staging keeps the active record, `rc` and timer. Only a non-stage edit during catch-up clears `rc`. `sendNow` marks the entry sent and returns the stored record that the queue takes. `composePending` checks whether any command changes a value, then stamps all commands when one changes or `force` is true. An exact ACK promotes the later commands, then `engine.receiveRecords` merges all records and calls `pendingEdits.advance`, even when none changed. During catch-up, commands with no record wait for `caughtUp`; it mints above the merged block counter and inherits `entry.sent` to force an explicit restoration when no later batch exists. A matching stale reply combines both command groups and rebases them over the GM's current record.
 
 ## Code map
 
 | Model action | Code |
 | --- | --- |
-| `PlayerEdits` | `command-routing.ts` `handlePlayerCommand` → `pending-edits.ts` `edit` → `proposeEntry` → `rebuiltRecord` → `core/compose.ts` `composePending` in pending mode. The entry holds the command and the minted record, or no record during catch-up. `proposal-queue.ts` `put` stores it. |
-| `QueueTakesPropose` | `proposal-queue.ts` `sendNow` returns the newest stored record when the `enqueue` callback runs. It does not recompose the commands. |
+| `PlayerEdits` | `command-routing.ts` `handlePlayerCommand` → `pending-edits.ts` `edit` → `proposeEntry` → `rebuiltRecord` → `core/compose.ts` `composePending` in pending mode. The entry keeps the active batch and later commands separate after a sent version. It stores no record during catch-up. `proposal-queue.ts` `put` stores it. |
+| `QueueTakesPropose` | `proposal-queue.ts` `sendNow` marks the entry sent and returns its stored record when the `enqueue` callback runs. It does not recompose the commands. |
 | `ResendFires` | `proposal-queue.ts` `armResend` timer, through `platform/schedule.ts` `schedule` |
 | `GmLinkLost` | `catch-up-table.ts` `livenessFired` on `gm-silence` when `silenceAnswered` |
 | `GmBack` | `catch-up.ts` `heard` → `catch-up-table.ts` `livenessHeard` emits `gm-back` → `catch-up-effects.ts` `run` → `pendingEdits.gmBack()` → `resendAll`; in the same run `catchUpHeard` enters `gm-return` for a live player |
 | `CatchUpStarts`, `CatchUpEnds` | `engine.ts` `enterCatchUp` → `catchUpEnter`; `catch-up-table.ts` `leave` emits `caught-up` → `catch-up-effects.ts` → `engine.ts` `performCaughtUp` → `pending-edits.ts` `caughtUp`; the `state` answer merges first in the same handler (`room-protocol.ts` `receiveState`: `receiveRecords`, then `stateMerged`) |
-| `PlayerReceives` (commit) | `room-protocol.ts` `dispatchRoomMessage` `case 'commit'` → `answered`, then `engine.ts` `receiveRecords` → `recordsChanged` for a revoke |
-| `PlayerReceives` (reject) | `room-protocol.ts` `receiveReject` → `pending-edits.ts` `rejected` → `proposeEntry`. `rebuiltRecord` composes the stored command over the newer base before `put` or `hold`. |
-| `GmReceives` | `room-protocol.ts` `receiveProposal` (gate at line 285; `committedEdits` answers a committed `(k, c, a)` before `checkProposal`, and `rememberCommitted` records each `commit` and `commit-existing`) with `core/access.ts` `checkProposal`; `apply` merges with `core/merge.ts` `mergeBlock` |
+| `PlayerReceives` (commit) | `room-protocol.ts` `dispatchRoomMessage` `case 'commit'` → `answered`, then `engine.ts` `receiveRecords` merges the records and calls `advance`, including when none changed; it calls `recordsChanged` for a revoke |
+| `PlayerReceives` (reject) | `room-protocol.ts` `receiveReject` → `pending-edits.ts` `rejected` → `proposeEntry`. `rejected` combines both command groups over the newer base before `put` or `hold`. |
+| `GmReceives` | `room-protocol.ts` `receiveProposal` (gate at line 285; `committedEdits` answers a committed `(k, c, a)` before `checkProposal`, and `rememberCommitted` records each `commit` and `commit-existing`) with `core/access.ts` `checkProposal`; `apply` merges each proposed field with `core/merge.ts` `mergeBlock` |
 | `GmEdits`, `GmRevokes` | a GM command (`command-routing.ts` `composeCommand`) applied and sent through `engine.ts` `sendCommits` |
 | `OutboxAdd` (operator) | `commit-outbox.ts` `add`, `withAck`, `schedule` |
 | `GmQueueSends` | `platform/send-queue.ts` `drain`, composing `commit-outbox.ts` `take` → `nextChunk` |
@@ -77,11 +81,11 @@ One atomic step is one synchronous run of one handler: one room message through 
 
 ## Bounds and what is left out
 
-Gate bounds: player values `{0, 1}`, GM value `{1}`, 2 player edits, 1 GM edit, 2 GM flips (away, back), 1 catch-up, 1 lost message, 1 revoke, too-large allowed (`Refusals.cfg`).
+Gate bounds: one-field configs use player values `{0, 1}` and GM value `{1}`. `TwoFields.cfg` uses fields `str` and `note`, player values `{0, 1}`, and GM value `{2}`. The gates allow 2 player edits, 1 GM edit, 2 GM flips (away, back), 1 catch-up, 1 lost message, and 1 revoke. Too-large edits are allowed only in `Refusals.cfg`.
 
 Assumptions and simplifications:
 
-- One player, one GM client, one key with one field. `entry.val` represents the stored field command and the value in its minted record when `entry.rc` is not zero. Two GM clients answering one proposal are not modeled.
+- One player, one GM client, one key. Each config has one field, except `TwoFields.cfg` and `broken/FoldsUnackedCells.cfg`, which use `str` and `note`. `entry.active` and `entry.later` are per-field command maps. `entry.rc` versions the active batch. Two GM clients answering one proposal are not modeled.
 - `committed` is unbounded; the code keeps the newest 1000 committed proposals, and a resend comes within the 30-second backoff cap.
 - The player's `propose` messages are a set: any order, a copy folds into one. Messages to the player are FIFO, as the GM's send queue and one sender's arrival order are.
 - An identical message queued twice is queued once; its second copy would find the entry already past it.
