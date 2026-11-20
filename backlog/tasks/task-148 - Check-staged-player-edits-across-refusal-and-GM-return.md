@@ -1,17 +1,18 @@
 ---
 id: TASK-148
 title: Check staged player edits across refusal and GM return
-status: In Progress
+status: Done
 assignee:
   - '@seigiard'
 created_date: '2026-11-20T12:17:00Z'
-updated_date: '2026-11-20T13:32:00Z'
+updated_date: '2026-11-20T13:59:00Z'
 labels: []
 dependencies:
   - TASK-132
 references:
   - formal/edit-delivery
   - .claude/skills/edit-delivery/SKILL.md
+  - formal/edit-delivery/broken/ReloadReplayAfterLostAck.cfg
 priority: low
 type: task
 ordinal: 183000
@@ -25,25 +26,33 @@ The two-field EditDelivery gate can stage a command after a sent version, but it
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 TLC explores a staged two-field entry when a refusal or revocation arrives, and checks that no edit disappears without an answer or a report.
-- [ ] #2 A two-field liveness check covers a staged edit as the GM returns and verifies that the pending entry resolves under the stated fairness assumptions.
-- [ ] #3 The model guide names the bounds and what remains outside them.
+- [x] #1 TLC explores a staged two-field entry when a refusal or revocation arrives, and checks that no edit disappears without an answer or a report.
+- [x] #2 A two-field liveness check covers a staged edit as the GM returns and verifies that the pending entry resolves under the stated fairness assumptions.
+- [x] #3 The model guide names the bounds and what remains outside them.
 <!-- AC:END -->
 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Map refusal and GM return to the current code and verify the model reaches both with later commands staged.
-2. Run bounded two-field TLC checks, including fair resend after a reload. Replay any counterexample against the current code and stop if confirmed.
-3. Record bounds, traces and run times. Run the edit-delivery gate and drift checks.
+1. Verify that the model reaches a staged batch at a matching denial, a revoke, and GM return.
+2. Add bounded two-field refusal and fair resend checks. Keep the reproduced reload race as an expected failure, per the owner decision.
+3. Record the model bounds, counterexample and run times. Run edit-delivery and drift checks.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-2026-11-20: Investigation stopped at a reproduced existing GM reload race. TLC failed NoOldCellReplayAfterLostAck in 17 states (3.95 s elapsed, 2 workers); the two-field replay against the real replica engine with the mock platform failed twice after a reload and passed twice without it. The first proposal sets str=11 and its ACK is lost. The GM saves str=15. The player stages note=tired without sending it. The GM reloads, reads the same storage and loses its committed-proposal memory. The resend draws stale, the next proposal includes both str=11 and note=tired, and the GM persists str=11 over str=15. The reload limit was already named in TASK-119 and AD-4. No application or checked-in model files changed.
+StagedRefusals.cfg checks NoSilentLoss. Reachability probes show that a matching denial and a revoke can arrive while the second field is staged. StagedReturn.cfg checks EntryResolves under weak fairness. A witness stages the second edit before GM absence, loses the proposal sent on return, and has a timer ready for resend with no reply in flight.
 
-Scratch proof on this machine: /private/var/folders/mg/mg22yjv17054nxmbq8_jkqnm0000gn/T/opencode/task-148/{StagedReloadReplayAfterLostAck.out,replay.out}. Two-field scratch checks also passed: StagedRefusals (154,854 states, 5.14 s) and StagedReturn (52,270 states, 9.17 s, excludes GM field edits); separate TLC reachability checks found a staged batch before matching denial, revoke and GM return. The current repository gate passed all 13 cases in 52.29 s and formal/drift.sh passed. No acceptance criteria are marked complete pending the owner decision.
+Known limit from TASK-119 and AD-4: a lost acknowledgement, a GM correction to the same field, and a reload before resend can replay the original edit along with the staged edit. TLC found the path in 16 transitions. The real replica engine on the mock platform saved str=11 instead of the GM’s str=15 after reload and kept str=15 without reload. The owner kept this as an accepted limit under the one-GM, one-window policy. The expected-failure model config records it. No application code, application tests, or follow-up tasks changed.
 
-Owner policy confirmed by the orchestrator: keep the reload race as a known limit. Finish with model-only checks and one expected failing reload config. Do not change application code or add an application regression test or a follow-up task.
+Local TLC run: 16 expected results in 101 seconds. The staged refusal and return checks completed in 1 and 7 TLC seconds, with 37,421 and 52,270 distinct states. TLC found the expected reload failure in 2 seconds. formal/drift.sh passed without moving the sync commit; no covered source file changed. The formatter skipped these file types.
+
+The confirming run matched all 16 outcomes in 77 seconds. Both independent reviewers reported no remaining findings after the model guide correction.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added TLC checks for staged two-field edits at refusal or revoke and for queue completion after GM return. Recorded the accepted GM reload replay as an expected failure, with its trace and bounds in the model guide. All 16 configured outcomes matched and the drift check passed. No application files or follow-up tasks changed.
+<!-- SECTION:FINAL_SUMMARY:END -->
