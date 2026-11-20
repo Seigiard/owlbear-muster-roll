@@ -4,6 +4,7 @@ title: Consider nested pending edits during preset field removal
 status: To Do
 assignee: []
 created_date: '2026-11-18T06:48:00Z'
+updated_date: '2026-11-20T13:18:00Z'
 labels: []
 dependencies: []
 priority: low
@@ -21,3 +22,9 @@ Optional follow-up, not a preset-v4 acceptance blocker. The owner deferred concu
 <!-- AC:BEGIN -->
 - [ ] #1 If selected, establish the user-visible contract for pending nested values after a preset removes a field, and preserve the remaining edit at its complete nested path.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Archived 2026-11-20 by the owner's decision ("103 102 - архивировать"). The path needs a race between a GM change (preset field removal or parent block deletion) and a player edit still in flight. No live-room occurrence is known, and the owner does not spend code and tests on minimal-probability races.
+<!-- SECTION:NOTES:END -->
