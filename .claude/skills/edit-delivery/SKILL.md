@@ -9,7 +9,7 @@ description: Model-check AD-4/AD-5 edit delivery, a player's pending edit reachi
 
 ## When a change touches this
 
-Compare the change with the coverage record at the end. A change to a listed function, or to how the engine calls it, needs this check. `formal/drift.sh edit-delivery` lists the covered files that changed after the sync commit in `formal/edit-delivery/coverage.txt`. Changes to composers, presets (`recordsChanged` moves and strips), repeat blocks, fragments or the overlay do not: the model leaves them out.
+Compare the change with the coverage record at the end. A change to a listed function, or to how the engine calls it, needs this check. `formal/drift.sh edit-delivery` lists the covered files that changed after the sync commit in `formal/edit-delivery/coverage.txt`. The model leaves out preset moves and strips, repeat blocks, fragments, and the overlay. For composition it covers only how a single field command becomes a proposal.
 
 ## Run
 
@@ -52,20 +52,20 @@ None open.
 Fixed: former F1, TASK-119, **a lost ack let a committed edit overwrite a later GM edit**. The GM committed the player's `(k, 3, P)`; the commit never reached the player (the send queue gave up, or the player's AD-5 gate dropped it); the GM edited the field at `c=4`; the player's resend of `(k, 3, P)` read as `stale`, and `rejected` rebuilt it at `c=5`, which the GM committed over its own edit. `stale` compares counters only, so neither side could tell "my committed version was overwritten" from "my version lost a race". Now `receiveProposal` remembers the generation and `(k, c, a)` of each proposal it commits (`committedEdits`, the newest 1000), and answers the same proposal again with its held record and the echo, ahead of `checkProposal`. The player's `answered` clears its entry and merges the GM's record. A proposal that really lost a race carries a `(k, c, a)` the GM never committed, so it still reads as `stale`. In the model, `GmReceives` answers a counter in `committed` that way; `broken/ForgetsCommitted.cfg` removes it and fails `NoDoubleApply`, and `NoDoubleApply` is in both gates. Three paths still apply the player's edit twice, each outside the model:
 - a GM reload before the player's resend: the memory is in RAM, and the model leaves `stop` and reloads out;
 - a second GM page that did not commit the proposal: it answers `stale` and may answer first (two GM clients are not modeled; the owner's verdict counts two GM pages as one GM's accepted risk);
-- a later player edit of another field of the same key before the resend: `combinePatches` carries the unacknowledged cell into a new `(k, c, a)` that the GM never committed (the model has one field). TASK-132 tracks it.
+- a later player edit of another field of the same key before the resend: `combineCommands` retains the unacknowledged command when `composePending` makes a new `(k, c, a)` that the GM never committed. The model has one field. TASK-132 tracks this case.
 
 ## Code map
 
 | Model action | Code |
 | --- | --- |
-| `PlayerEdits` | `command-routing.ts` `handlePlayerCommand` → `src/replica/pending-edits.ts` `edit` → `proposeEntry` → `rebuiltRecord`, `proposal-queue.ts` `proposedRecord`, `put` |
-| `QueueTakesPropose` | `proposal-queue.ts` `sendNow`'s compose, run by the `enqueue` option of `createPendingEdits` in `engine.ts` |
+| `PlayerEdits` | `command-routing.ts` `handlePlayerCommand` → `pending-edits.ts` `edit` → `proposeEntry` → `rebuiltRecord` → `core/compose.ts` `composePending` in pending mode. The entry holds the command and the minted record, or no record during catch-up. `proposal-queue.ts` `put` stores it. |
+| `QueueTakesPropose` | `proposal-queue.ts` `sendNow` returns the newest stored record when the `enqueue` callback runs. It does not recompose the commands. |
 | `ResendFires` | `proposal-queue.ts` `armResend` timer, through `platform/schedule.ts` `schedule` |
 | `GmLinkLost` | `catch-up-table.ts` `livenessFired` on `gm-silence` when `silenceAnswered` |
 | `GmBack` | `catch-up.ts` `heard` → `catch-up-table.ts` `livenessHeard` emits `gm-back` → `catch-up-effects.ts` `run` → `pendingEdits.gmBack()` → `resendAll`; in the same run `catchUpHeard` enters `gm-return` for a live player |
 | `CatchUpStarts`, `CatchUpEnds` | `engine.ts` `enterCatchUp` → `catchUpEnter`; `catch-up-table.ts` `leave` emits `caught-up` → `catch-up-effects.ts` → `engine.ts` `performCaughtUp` → `pending-edits.ts` `caughtUp`; the `state` answer merges first in the same handler (`room-protocol.ts` `receiveState`: `receiveRecords`, then `stateMerged`) |
 | `PlayerReceives` (commit) | `room-protocol.ts` `dispatchRoomMessage` `case 'commit'` → `answered`, then `engine.ts` `receiveRecords` → `recordsChanged` for a revoke |
-| `PlayerReceives` (reject) | `room-protocol.ts` `receiveReject` → `pending-edits.ts` `rejected` → `proposeEntry` (`put` or `hold`) |
+| `PlayerReceives` (reject) | `room-protocol.ts` `receiveReject` → `pending-edits.ts` `rejected` → `proposeEntry`. `rebuiltRecord` composes the stored command over the newer base before `put` or `hold`. |
 | `GmReceives` | `room-protocol.ts` `receiveProposal` (gate at line 285; `committedEdits` answers a committed `(k, c, a)` before `checkProposal`, and `rememberCommitted` records each `commit` and `commit-existing`) with `core/access.ts` `checkProposal`; `apply` merges with `core/merge.ts` `mergeBlock` |
 | `GmEdits`, `GmRevokes` | a GM command (`command-routing.ts` `composeCommand`) applied and sent through `engine.ts` `sendCommits` |
 | `OutboxAdd` (operator) | `commit-outbox.ts` `add`, `withAck`, `schedule` |
@@ -81,7 +81,7 @@ Gate bounds: player values `{0, 1}`, GM value `{1}`, 2 player edits, 1 GM edit, 
 
 Assumptions and simplifications:
 
-- One player, one GM client, one key with one field. Two GM clients answering one proposal are not modeled.
+- One player, one GM client, one key with one field. `entry.val` represents the stored field command and the value in its minted record when `entry.rc` is not zero. Two GM clients answering one proposal are not modeled.
 - `committed` is unbounded; the code keeps the newest 1000 committed proposals, and a resend comes within the 30-second backoff cap.
 - The player's `propose` messages are a set: any order, a copy folds into one. Messages to the player are FIFO, as the GM's send queue and one sender's arrival order are.
 - An identical message queued twice is queued once; its second copy would find the entry already past it.
@@ -105,7 +105,8 @@ Replay the path against the real code before calling it a bug: the `pending-edit
 The sync commit and the covered file list live in `formal/edit-delivery/coverage.txt`. At that sync commit the model describes:
 
 - `src/replica/pending-edits.ts`: `edit`, `answered`, `rejected`, `caughtUp`, `recordsChanged` (revoke only), `gmBack`, `proposeEntry`, `rebuiltRecord`, `denial`, `deniesEdit`, `recheckFailureCause`
-- `src/replica/proposal-queue.ts`: `sendNow`, `armResend`, `propose`, `put`, `hold`, `drop`, `matching`, `resendAll`, `proposedRecord` (fields only)
+- `src/replica/proposal-queue.ts`: `combineCommands` (one field), `sendNow`, `armResend`, `propose`, `put`, `hold`, `drop`, `matching`, `resendAll`
+- `src/core/compose.ts`: `composePending` (one field), including the unchanged check before mint and the record built by `mintedBlock`
 - `src/core/version-minter.ts`: `mint`
 - `src/replica/commit-outbox.ts`: `add`, `withAck`, `schedule`, `take`, `nextChunk` (one part)
 - `src/replica/room-protocol.ts`: `receive`, `handleRoomMessage`, `dispatchRoomMessage` (`commit`, `reject`), `receiveProposal` (one part, with `committedEdits` and `rememberCommitted`), `receiveReject`, `receiveState` (merge, then `stateMerged`)

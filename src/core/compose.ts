@@ -20,6 +20,7 @@ import {
   findPatchField,
   patchedRecord,
   patchedRecordFits,
+  sameFieldValue,
   patchRecordKey,
   type PatchedRecord,
 } from '@/core/field-patch';
@@ -34,6 +35,7 @@ import {
   templateById,
   type Preset,
   type PresetSection,
+  type TemplateLayout,
 } from '@/core/preset';
 import {
   presetDiff,
@@ -51,7 +53,9 @@ import {
   presetDataSchema,
   repDataSchema,
   sheetDataSchema,
+  type FieldValue,
   type FieldValues,
+  type Lifecycle,
   type SheetData,
   type VersionedRecord,
 } from '@/core/records';
@@ -89,6 +93,24 @@ export type ComposeContext = {
   mode: ComposeMode;
 };
 
+export type PendingComposeContext = Pick<ComposeContext, 'records' | 'mint'> & {
+  mode: 'pending';
+};
+
+// Replay one admitted key with its reserved order and life. A fixed version is reused for the
+// overlay; otherwise mint only after the commands change the base or `force` requires a resend.
+export type PendingReplay = {
+  context: PendingComposeContext;
+  key: string;
+  commands: readonly PendingCommand[];
+  prior: VersionedRecord | null;
+  force: boolean;
+  fixedVersion?: Version;
+  lifecycle?: Lifecycle;
+  base?: VersionedRecord;
+  order?: number;
+};
+
 // TASK-37: new ids are short, so a drawn id can collide. A command that draws its own ids draws a
 // colliding one again this many times before it refuses.
 const MAX_ID_REDRAWS = 5;
@@ -122,6 +144,7 @@ export type Composers = {
     context: ComposeContext,
     command: Command,
   ) => Result<VersionedRecord[], RejectionReason>;
+  composePending: (replay: PendingReplay) => Result<VersionedRecord, RejectionReason>;
   // Several field patches of one record key, applied in order and minted once.
   composePatches: (context: ComposeContext, patches: readonly IdentifiedPatch[]) => ComposedPatches;
   composePresetUpload: (
@@ -135,6 +158,11 @@ export type Composers = {
     data: string,
   ) => Result<PresetUploadLoss, RejectionReason>;
 };
+
+export type PendingCommand = Extract<
+  Command,
+  { type: 'field-patch' | 'repeat-block-add' | 'repeat-block-delete' }
+>;
 
 // The preset decoded from the `d` it came from, so a run of patches decodes it once.
 type DecodedPreset = { d: string; preset: Preset | null };
@@ -240,7 +268,7 @@ export function createComposers(connectionId: string): Composers {
   // sheet needs a live root block. `noPreset` names the rejection for a sheet whose template cannot
   // be known yet.
   function sheetPolicyOf(
-    context: ComposeContext,
+    context: Pick<ComposeContext, 'records'>,
     sheetId: string,
     noPreset: RejectionReason,
   ): Result<SheetPolicy, RejectionReason> {
@@ -300,11 +328,8 @@ export function createComposers(connectionId: string): Composers {
   ): Result<PatchedRecord, RejectionReason> {
     const policy = sheetPolicyOf(context, command.sheetId, 'unknown-field');
 
-    if (!policy.isOk()) {
-      return policy;
-    }
+    if (!policy.isOk()) return policy;
 
-    const { template } = policy.value;
     const target = command.target;
 
     if (
@@ -316,13 +341,7 @@ export function createComposers(connectionId: string): Composers {
       return Result.err('unknown-instance');
     }
 
-    const field = findPatchField(template, target, command.fieldId);
-
-    if (field === null) {
-      return Result.err('unknown-field');
-    }
-
-    const value = acceptedFieldValue(field, command.value);
+    const value = acceptedPatchValue(policy.value.template, command);
 
     if (!value.isOk()) {
       return value;
@@ -335,7 +354,7 @@ export function createComposers(connectionId: string): Composers {
     }
 
     // AD-14: a new version keeps no value the template no longer has in this row or repeat block.
-    const stripped = stripToTemplate(patched.value, template);
+    const stripped = stripToTemplate(patched.value, policy.value.template);
 
     return patchedRecordFits(stripped) ? Result.ok(stripped) : Result.err('too-large');
   }
@@ -835,7 +854,99 @@ export function createComposers(connectionId: string): Composers {
     return batch.every(recordFitsOneMessage) ? Result.ok(batch) : Result.err('too-large');
   }
 
-  function currentPreset(context: ComposeContext): Preset | null {
+  function composePending({
+    context,
+    key,
+    commands,
+    prior,
+    force,
+    fixedVersion,
+    lifecycle,
+    base,
+    order,
+  }: PendingReplay): Result<VersionedRecord, RejectionReason> {
+    if (commands.length === 0) return Result.err('unchanged');
+
+    const add = commands.some((command) => command.type === 'repeat-block-add');
+    const remove = commands.some((command) => command.type === 'repeat-block-delete');
+
+    if (remove) {
+      if (base?.d === null) {
+        return Result.err('unchanged');
+      }
+
+      const source = base ?? prior;
+
+      if (source === null || source === undefined) {
+        if (lifecycle === undefined) return Result.err('unknown-instance');
+
+        const version = fixedVersion ?? context.mint(key, 0);
+
+        return Result.ok({ k: key, d: null, ...version, l: lifecycle });
+      }
+
+      const version = fixedVersion ?? context.mint(key, Math.max(base?.c ?? 0, prior?.c ?? 0));
+
+      return Result.ok({
+        ...source,
+        d: null,
+        ...version,
+        l: source.l ?? lifecycle ?? [version.c, version.a],
+      });
+    }
+
+    if (base?.d === null) return Result.err('unknown-instance');
+
+    const baseData = blockDataSchema.safeParse(base?.d).data;
+    const priorData = blockDataSchema.safeParse(prior?.d).data;
+    const values: Record<string, FieldValue | null> = {};
+    let changed = add;
+
+    for (const command of commands) {
+      if (command.type !== 'field-patch') continue;
+
+      const policy = sheetPolicyOf(context, command.sheetId, 'unknown-field');
+
+      if (!policy.isOk()) return policy;
+
+      const value = acceptedPatchValue(policy.value.template, command);
+
+      if (!value.isOk()) return value;
+
+      if (!add && command.target.kind === 'rep' && baseData === undefined) {
+        return Result.err('unknown-instance');
+      }
+
+      values[command.fieldId] = value.value;
+
+      if (!sameFieldValue(add ? undefined : baseData?.cells[command.fieldId]?.[0], value.value)) {
+        changed = true;
+      }
+    }
+
+    if (!changed && !force) return Result.err('unchanged');
+
+    const version = fixedVersion ?? context.mint(key, Math.max(base?.c ?? 0, prior?.c ?? 0));
+    const inheritedData = add ? undefined : baseData;
+
+    return Result.ok(
+      mintedBlock(
+        key,
+        version,
+        base?.l ?? prior?.l ?? lifecycle ?? [version.c, version.a],
+        {
+          ...inheritedData,
+          order: add
+            ? (order ?? priorData?.order ?? 0)
+            : (baseData?.order ?? priorData?.order ?? 0),
+          cells: {},
+        },
+        values,
+      ),
+    );
+  }
+
+  function currentPreset(context: Pick<ComposeContext, 'records'>): Preset | null {
     const data = presetDataSchema.safeParse(context.records.get('preset')?.d);
 
     if (!data.success) {
@@ -889,6 +1000,7 @@ export function createComposers(connectionId: string): Composers {
       }
     },
     composePatches,
+    composePending,
     composePresetUpload,
     presetDiffResult: (context, data) => {
       const planned = planPresetUpload(context, data);
@@ -921,6 +1033,15 @@ export function blockLinkTombstones(
 
 function lossOf(migration: PresetMigration): PresetUploadLoss {
   return { count: migration.count, sheets: migration.sheets, digest: migration.digest };
+}
+
+function acceptedPatchValue(
+  template: TemplateLayout,
+  command: FieldPatchCommand,
+): Result<FieldValue | null, RejectionReason> {
+  const field = findPatchField(template, command.target, command.fieldId);
+
+  return field === null ? Result.err('unknown-field') : acceptedFieldValue(field, command.value);
 }
 
 // The link goes, and the sheet and the token stay. A link to a deleted sheet is still a record, so
@@ -1029,7 +1150,7 @@ function liveDependentSheetIds(context: ComposeContext): Set<string> {
 }
 
 function liveSheetRecord(
-  context: ComposeContext,
+  context: Pick<ComposeContext, 'records'>,
   sheetId: string,
 ): Result<VersionedRecord, RejectionReason> {
   if (!sheetIdSchema.safeParse(sheetId).success) {
@@ -1120,14 +1241,24 @@ function mintedPatch(
         )
       : {};
 
+  return mintedBlock(patched.k, version, existing?.l ?? [version.c, version.a], patched.d, {
+    ...changed,
+    ...removed,
+  });
+}
+
+function mintedBlock(
+  key: string,
+  version: Version,
+  lifecycle: Lifecycle,
+  data: PatchedRecord['d'],
+  values: Record<string, FieldValue | null>,
+): VersionedRecord {
   return {
-    k: patched.k,
+    k: key,
     ...version,
-    l: existing?.l ?? [version.c, version.a],
-    d: {
-      ...patched.d,
-      cells: versionCells({ ...changed, ...removed }, version.c, version.a),
-    },
+    l: lifecycle,
+    d: { ...data, cells: versionCells(values, version.c, version.a) },
   };
 }
 

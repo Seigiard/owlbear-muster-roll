@@ -1,46 +1,32 @@
 import { playerMayEdit, proposalAllowed, type ProposalContext } from '@/core/access';
-import { parseBlockKey, sectionIdOf, type BlockAddress } from '@/core/block-address';
+import { parseBlockKey, sectionIdOf } from '@/core/block-address';
+import { createComposers } from '@/core/compose';
 import { createFragmentAssembler, GM_FRAGMENT_ASSEMBLER_LIMITS } from '@/core/fragment-assembler';
 import { counterAbove, mergeRecords, type Version } from '@/core/merge';
 import { recordFitsOneMessage } from '@/core/message-size';
-import { plainRowIdOf, repeatTabById, type Preset, type Template } from '@/core/preset';
+import { repeatTabById, type Preset, type Template } from '@/core/preset';
 import { presetMoves, stripToTemplate, type PresetMoves } from '@/core/preset-migrate';
 import { dependentSheetId, resolveSheet } from '@/core/sheets';
-import {
-  blockDataSchema,
-  cellValues,
-  repDataSchema,
-  type FieldValue,
-  type VersionedRecord,
-} from '@/core/records';
+import { blockDataSchema, type VersionedRecord } from '@/core/records';
 import { Result } from 'better-result';
 import { type EditId, type RejectMessage } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 import { type Command, type RejectionReason } from '@/core/ui-messages';
 import type { FailureReporter } from '@/replica/failures';
 import {
-  combinePatches,
+  combineCommands,
   createProposalQueue,
-  movedPatches,
-  proposedRecord,
-  strippedPatch,
+  movedCommands,
+  strippedCommands,
   type ProposalEntry,
+  type ProposalCommand,
   type ProposalFailure,
-  type ProposalPatch,
   type ProposalQueueOptions,
 } from '@/replica/proposal-queue';
 
-type InternalPlayerEditCommand = Extract<
-  Command,
-  { type: 'field-patch' | 'repeat-block-add' | 'repeat-block-delete' }
->;
+type InternalPlayerEditCommand = ProposalCommand;
 
-export type PlayerEditCommand =
-  | Extract<Command, { type: 'field-patch' }>
-  | Extract<Command, { type: 'repeat-block-add' }>
-  | Extract<Command, { type: 'repeat-block-delete' }>;
-
-type FieldPatchCommandTarget = Extract<Command, { type: 'field-patch' }>['target'];
+export type PlayerEditCommand = ProposalCommand;
 
 export type DenialCause = 'gone' | 'too-large' | 'denied';
 
@@ -83,6 +69,7 @@ export type PendingEdits = {
 
 export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   const { records, catchingUp, presetOf, compose, mint, now } = options;
+  const proposalComposers = createComposers(options.connectionId);
 
   const proposals = createProposalQueue({
     timing: options.timing,
@@ -139,13 +126,17 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       return Result.err('not-allowed');
     }
 
-    const patch = patchOf(command, record);
     const existing = proposals.get(record.k);
 
     const entry: ProposalEntry = {
       k: record.k,
       l: existing?.l ?? record.l,
-      patch: existing === undefined ? patch : combinePatches(existing.patch, patch),
+      order:
+        existing?.order ??
+        (command.type === 'repeat-block-add'
+          ? blockDataSchema.safeParse(record.d).data?.order
+          : undefined),
+      commands: existing === undefined ? [command] : combineCommands(existing.commands, command),
       record: existing?.record ?? null,
       sent: existing?.sent ?? false,
     };
@@ -205,9 +196,9 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   }
 
   // AD-4: only a rejection of this client's newest version of a key counts. `denied` drops the
-  // entry, so the value returns. `stale` applies the patch to the GM's record, takes a `c` above it
-  // and proposes again with the backoff started over; an edit of a row the GM holds removed is
-  // dropped as denied, and a patch the record already holds ends there. A stale answer over a
+  // entry, so the value returns. `stale` replays the commands over the GM's record, takes a `c` above
+  // it and proposes again with the backoff started over; an edit of a row the GM holds removed is
+  // dropped as denied, and commands the record already satisfies end there. A stale answer over a
   // record below the rejected version is about a field the GM's template lacks, not the version:
   // the GM would answer the same at once, so the new version waits for the running backoff, and the
   // preset that reaches one side in the meantime ends it.
@@ -307,7 +298,24 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
           ? null
           : templateMoves(currentRecords, before, context.preset, found.k);
 
-      const parts = moves === null ? null : movedPatches(found.k, found.patch, moves);
+      const parts = moves === null ? null : movedCommands(found.k, found.commands, moves);
+
+      if (
+        parts !== null &&
+        parts.length === 1 &&
+        parts[0]?.k === found.k &&
+        onlyRowTargetsMoved(found.commands, parts[0].commands)
+      ) {
+        const nextCause = recheckProposal(
+          { ...found, commands: parts[0].commands },
+          context,
+          false,
+          true,
+        );
+
+        cause ??= nextCause;
+        continue;
+      }
 
       if (parts === null || (parts.length === 1 && parts[0]?.k === found.k)) {
         const nextCause = recheckProposal(found, context, false);
@@ -320,13 +328,19 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       for (const part of parts) {
         const existing = proposals.get(part.k);
 
-        const patch =
-          existing === undefined ? part.patch : combinePatches(part.patch, existing.patch);
+        const commands =
+          existing === undefined
+            ? part.commands
+            : part.commands.reduce(
+                (combined, command) => combineCommands(combined, command),
+                existing.commands,
+              );
 
         const entry: ProposalEntry = {
           k: part.k,
           l: existing?.l ?? found.l,
-          patch,
+          order: existing?.order ?? found.order,
+          commands,
           record: found.record === null ? null : (existing?.record ?? found.record),
           sent: existing?.sent ?? false,
         };
@@ -344,11 +358,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   }
 
   function drain(): PlayerEditCommand[] {
-    const commands = proposals
-      .entries()
-      .flatMap((entry) =>
-        commandsOf(entry, templateOfKey(records(), presetOf(records().get('preset')), entry.k)),
-      );
+    const commands = proposals.entries().flatMap((entry) => entry.commands);
 
     proposals.clear();
     staleRejects.clear();
@@ -434,20 +444,42 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     entry: ProposalEntry,
     base: VersionedRecord | undefined,
     force: boolean,
+    mintVersion = true,
+    fixedVersion?: Version,
   ): Result<VersionedRecord, ProposalFailure> {
-    const highest = Math.max(base?.c ?? 0, entry.record?.c ?? 0);
+    const preset = presetOf(records().get('preset'));
+    const template = templateOfKey(records(), preset, entry.k);
 
-    const made = proposedRecord(
-      entry.k,
-      entry.patch,
-      base,
-      () => mint(entry.k, highest),
+    const commands =
+      template === null ? entry.commands : strippedCommands(entry.k, entry.commands, template);
+
+    if (commands === null || commands.length === 0) {
+      return Result.err('unchanged');
+    }
+
+    const made = proposalComposers.composePending({
+      context: {
+        records: records(),
+        mint: mintVersion
+          ? mint
+          : (_key, highestKnownCounter) => ({
+              c: highestKnownCounter + 1,
+              a: options.connectionId,
+            }),
+        mode: 'pending',
+      },
+      key: entry.k,
+      commands,
+      prior: entry.record,
       force,
-      entry.l,
-    );
+      fixedVersion,
+      lifecycle: entry.l,
+      base,
+      order: entry.order,
+    });
 
     if (!made.isOk()) {
-      return made;
+      return Result.err(proposalFailure(made.error));
     }
 
     const stripped = strippedProposal(made.value);
@@ -467,49 +499,43 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     entry: ProposalEntry,
     base: VersionedRecord | undefined,
   ): VersionedRecord | null {
-    const made = proposedRecord(
-      entry.k,
-      entry.patch,
-      base,
-      () =>
-        entry.record === null
-          ? { c: (base?.c ?? 0) + 1, a: options.connectionId }
-          : { c: entry.record.c, a: entry.record.a },
-      true,
-      entry.l,
-    );
+    const version = entry.record ?? {
+      c: (base?.c ?? 0) + 1,
+      a: options.connectionId,
+    };
 
-    return made.isOk() ? strippedProposal(made.value) : null;
+    const made = rebuiltRecord(entry, base, true, false, version);
+
+    return made.isOk() ? made.value : null;
   }
 
   // AD-14: the entry loses the fields its sheet's template no longer has in its row or repeat
-  // block, in silence. An entry with nothing left drops in silence too, and one that lost fields or
-  // moved goes out again, so the GM never answers its older version. True when a drop needs the
-  // denied notification.
+  // block, in silence. An entry with nothing left drops in silence. A row-only retarget keeps the
+  // fixed wire version; a move to another key or a stripped command requires a new version.
   function recheckProposal(
     found: ProposalEntry,
     context: ProposalContext,
     moved: boolean,
+    preserveRecord = false,
   ): DenialCause | null {
     const template = templateOfKey(records(), context.preset, found.k);
-    const patch = template === null ? found.patch : strippedPatch(found.k, found.patch, template);
 
-    if (patch === null) {
+    const commands =
+      template === null ? found.commands : strippedCommands(found.k, found.commands, template);
+
+    if (commands === null || commands.length === 0) {
       proposals.drop(found.k);
 
       return null;
     }
 
-    const entry = patch === found.patch ? found : { ...found, patch };
+    const unchangedCommands =
+      commands.length === found.commands.length &&
+      commands.every((command, index) => command === found.commands[index]);
 
-    // The version is a placeholder: no check of `proposalAllowed` reads it.
-    const made = proposedRecord(
-      entry.k,
-      entry.patch,
-      records().get(entry.k),
-      () => ({ c: 1, a: options.connectionId }),
-      true,
-    );
+    const entry = unchangedCommands ? found : { ...found, commands };
+
+    const made = rebuiltRecord(entry, records().get(entry.k), true, false);
 
     if (!made.isOk() || !proposalAllowed(context, options.playerId, made.value)) {
       proposals.drop(entry.k);
@@ -522,6 +548,16 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     }
 
     if (entry === found && !moved) {
+      if (preserveRecord) {
+        proposals.hold(entry);
+      }
+
+      return null;
+    }
+
+    if (preserveRecord && entry.record !== null && commands.length === found.commands.length) {
+      proposals.hold(entry);
+
       return null;
     }
 
@@ -592,87 +628,37 @@ function recheckFailureCause(key: string, failure: ProposalFailure): DenialCause
   return parseBlockKey(key)?.path.length === 0 ? 'denied' : 'gone';
 }
 
-// The patch an edit makes, read from the record it composed: a field's value as the composer
-// accepted it, a new repeat block with its order and cells, or a removal.
-function patchOf(command: InternalPlayerEditCommand, record: VersionedRecord): ProposalPatch {
-  if (command.type === 'repeat-block-delete') {
-    return { kind: 'remove' };
+function onlyRowTargetsMoved(
+  before: readonly ProposalCommand[],
+  after: readonly ProposalCommand[],
+): boolean {
+  if (before.length === 0 || before.length !== after.length) {
+    return false;
   }
 
-  const block = repDataSchema.parse(record.d);
+  let moved = false;
 
-  if (command.type === 'repeat-block-add') {
-    return { kind: 'add', d: block };
-  }
+  return (
+    before.every((previous, index) => {
+      const next = after[index];
 
-  const values = block.cells;
-  const fieldId = command.type === 'field-patch' ? command.fieldId : '';
+      if (
+        previous.type !== 'field-patch' ||
+        next?.type !== 'field-patch' ||
+        previous.sheetId !== next.sheetId ||
+        previous.fieldId !== next.fieldId ||
+        previous.value !== next.value ||
+        previous.target.kind !== 'row' ||
+        next.target.kind !== 'row'
+      ) {
+        return false;
+      }
 
-  return { kind: 'fields', values: { [fieldId]: values[fieldId]?.[0] ?? null } };
-}
+      moved ||= previous.target.rowId !== next.target.rowId;
 
-// The commands that make a player's entry again as a GM's own edit: a removal, or a new repeat
-// block and then its cells, or the fields it sets and clears.
-function commandsOf(entry: ProposalEntry, template: Template | null): InternalPlayerEditCommand[] {
-  const parsed = parseBlockKey(entry.k);
-
-  if (parsed === null) {
-    return [];
-  }
-
-  const sectionId = sectionIdOf(parsed);
-  const sheetId = parsed.sheetId;
-
-  const target: FieldPatchCommandTarget =
-    sectionId === null ? { kind: 'row', rowId: '' } : repeatTarget(parsed);
-
-  const fieldPatches = (
-    values: Readonly<Record<string, FieldValue | null>>,
-  ): InternalPlayerEditCommand[] =>
-    Object.entries(values).map(([fieldId, value]) => ({
-      type: 'field-patch',
-      sheetId,
-      target:
-        target.kind === 'row'
-          ? {
-              kind: 'row',
-              rowId: template === null ? fieldId : (plainRowIdOf(template, fieldId) ?? fieldId),
-            }
-          : target,
-      fieldId,
-      value,
-    }));
-
-  switch (entry.patch.kind) {
-    case 'remove': {
-      const command: Extract<InternalPlayerEditCommand, { type: 'repeat-block-delete' }> = {
-        type: 'repeat-block-delete',
-        sheetId,
-        block: parsed,
-      };
-
-      return [command];
-    }
-
-    case 'add': {
-      const command: Extract<InternalPlayerEditCommand, { type: 'repeat-block-add' }> = {
-        type: 'repeat-block-add',
-        sheetId,
-        block: parsed,
-      };
-
-      return [command, ...fieldPatches(cellValues(entry.patch.d.cells))];
-    }
-
-    case 'fields':
-      return fieldPatches(entry.patch.values);
-    default:
-      return unknownPatch(entry.patch);
-  }
-}
-
-function repeatTarget(block: BlockAddress): FieldPatchCommandTarget {
-  return { kind: 'rep', block };
+      return true;
+    }) && moved
+  );
 }
 
 // AD-14: where a block's values go when its sheet's template changes from its form in `before` to
@@ -714,7 +700,13 @@ function isPlayerEdit(command: Command): command is InternalPlayerEditCommand {
   );
 }
 
-// `tsc` fails here when a proposal patch has no case above.
-function unknownPatch(patch: never): never {
-  throw new Error(`Muster Roll has no case for the proposal patch ${JSON.stringify(patch)}`);
+function proposalFailure(reason: RejectionReason): ProposalFailure {
+  switch (reason) {
+    case 'too-large':
+      return 'too-large';
+    case 'unchanged':
+      return 'unchanged';
+    default:
+      return 'gone';
+  }
 }

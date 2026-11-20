@@ -9,46 +9,31 @@ import {
   sectionIdOf,
   type BlockAddress,
 } from '@/core/block-address';
-import { sameJson } from '@/core/json';
-import type { Version } from '@/core/merge';
-import type { TemplateLayout } from '@/core/preset';
-import { keptCells, templateScopes, type PresetMoves } from '@/core/preset-migrate';
-import {
-  blockDataSchema,
-  versionCells,
-  type FieldValue,
-  type RepData,
-  type Lifecycle,
-  type VersionedRecord,
-} from '@/core/records';
-import { Result } from 'better-result';
+import type { PendingCommand } from '@/core/compose';
+import type { Template } from '@/core/preset';
+import { templateScopes, type PresetMoves } from '@/core/preset-migrate';
+import type { Lifecycle, VersionedRecord } from '@/core/records';
 import { sameEditId, type EditId } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 import { ProposeDroppedFailure, type FailureReporter } from '@/replica/failures';
 import type { Schedule } from '@/platform/ports';
 
-// What a player's edit of one key does, kept so it can be applied again to a newer record. `fields`
-// sets or clears (`null`) field values of a row or a repeat block. `add` is a new repeat block with
-// its order and cells. `remove` is a repeat block's removal, `d: null`.
-export type ProposalPatch =
-  | { kind: 'fields'; values: Readonly<Record<string, FieldValue | null>> }
-  | { kind: 'add'; d: RepData }
-  | { kind: 'remove' };
+export type ProposalCommand = PendingCommand;
 
-// AD-4: one entry per key. `record` is the newest version, the only one sent, or `null` while the
-// entry waits for a `c` because it was made during catch-up (AD-7). `sent` says a version went out,
-// so an older one can still land in the room.
+// AD-4: one entry per key. `record` is the fixed newest wire version, or `null` during catch-up
+// (AD-7). `order` reserves an accepted repeat add's order across replay; `l` preserves its life.
+// `sent` says an older version can still land in the room.
 export type ProposalEntry = {
   k: string;
   l?: Lifecycle;
-  patch: ProposalPatch;
+  order?: number;
+  commands: ProposalCommand[];
   record: VersionedRecord | null;
   sent: boolean;
 };
 
-// `gone`: an edit of a repeat block that is removed or unknown. `unchanged`: the record already
-// holds what the patch sets. `too-large`: the record would not fit one message, so no GM could
-// answer it.
+// `gone`: replay was refused for a reason other than unchanged or too-large. `unchanged`: the
+// record already holds what the commands set. `too-large`: the record cannot fit one message.
 export type ProposalFailure = 'gone' | 'unchanged' | 'too-large';
 
 export type ProposalQueueOptions = {
@@ -215,152 +200,104 @@ export function createProposalQueue(options: ProposalQueueOptions): ProposalQueu
   };
 }
 
-// A newer edit of a key folds into the patch it already has. A removal replaces anything. Fields go
-// into an add's cells, so the new row keeps them, or over the older fields.
-export function combinePatches(older: ProposalPatch, newer: ProposalPatch): ProposalPatch {
-  if (newer.kind !== 'fields') {
-    return newer;
+// A newer edit of a key replaces an older command for the same field. A delete replaces everything
+// before it, and fields stay after a pending repeat-block add.
+export function combineCommands(
+  older: readonly ProposalCommand[],
+  newer: ProposalCommand,
+): ProposalCommand[] {
+  if (newer.type === 'repeat-block-delete') {
+    return [newer];
   }
 
-  if (older.kind === 'add') {
-    return {
-      kind: 'add',
-      d: { ...older.d, cells: { ...older.d.cells, ...versionCells(newer.values, 1, 'pending') } },
-    };
+  const commands =
+    newer.type === 'repeat-block-add'
+      ? [newer, ...older.filter((command) => command.type === 'field-patch')]
+      : older.filter((command) => command.type !== 'repeat-block-delete');
+
+  if (newer.type !== 'field-patch') {
+    return commands;
   }
 
-  if (older.kind === 'fields') {
-    return { kind: 'fields', values: { ...older.values, ...newer.values } };
+  const previous = commands.findIndex(
+    (command) => command.type === 'field-patch' && command.fieldId === newer.fieldId,
+  );
+
+  if (previous < 0) {
+    return [...commands, newer];
   }
 
-  return newer;
+  return commands.map((command, index) => (index === previous ? newer : command));
 }
 
-// AD-4: the record the patch makes of `base`, the newest record of its key that the player knows,
-// with a version from `mint`, which runs only on success. A patch that changes nothing fails with
-// `unchanged` unless `force` is set: a version of the entry already went out, and the base's data
-// must still win over it. An edit of a removed repeat block fails with `gone`, and the removal of
-// one with `unchanged`.
-export function proposedRecord(
+// AD-14: commands that still target fields and repeat scopes in the current template. Root field
+// commands also take the row id their field now belongs to.
+export function strippedCommands(
   key: string,
-  patch: ProposalPatch,
-  base: VersionedRecord | undefined,
-  mint: () => Version,
-  force = false,
-  lifecycle?: Lifecycle,
-): Result<VersionedRecord, ProposalFailure> {
-  if (patch.kind === 'remove') {
-    if (base !== undefined && base.d === null) return Result.err('unchanged');
-    const version = mint();
-
-    return Result.ok({
-      k: key,
-      d: null,
-      l: base?.l ?? lifecycle ?? [version.c, version.a],
-      ...version,
-    });
-  }
-
-  if (base !== undefined && base.d === null) {
-    return Result.err('gone');
-  }
-
-  const instance = blockDataSchema.safeParse(base?.d).data;
-
-  if (patch.kind === 'add') {
-    if (!force && instance !== undefined && sameJson(instance, patch.d))
-      return Result.err('unchanged');
-    const version = mint();
-
-    return Result.ok({
-      k: key,
-      ...version,
-      l: base?.l ?? lifecycle ?? [version.c, version.a],
-      d: {
-        ...patch.d,
-        cells: Object.fromEntries(
-          Object.entries(patch.d.cells).map(([id, [value]]) => [id, [value, version.c, version.a]]),
-        ),
-      },
-    });
-  }
-
-  const parsedKey = parseBlockKey(key);
-
-  if (instance === undefined && (parsedKey === null || parsedKey.path.length !== 0)) {
-    return Result.err('gone');
-  }
-
-  if (
-    !force &&
-    Object.entries(patch.values).every(
-      ([id, value]) => (instance?.cells[id]?.[0] ?? null) === value,
-    )
-  )
-    return Result.err('unchanged');
-  const version = mint();
-
-  return Result.ok({
-    k: key,
-    ...version,
-    l: base?.l ?? [version.c, version.a],
-    d: { ...(instance ?? { order: 0 }), cells: versionCells(patch.values, version.c, version.a) },
-  });
-}
-
-// AD-14: the patch with only the fields the template has in the row or repeat block of `key`, each
-// value of its field's type or a clear. The same patch when nothing goes, and `null` when nothing
-// is left: a row or repeat section the template no longer has, or field values that all went.
-export function strippedPatch(
-  key: string,
-  patch: ProposalPatch,
-  template: TemplateLayout,
-): ProposalPatch | null {
+  commands: readonly ProposalCommand[],
+  template: Template,
+): ProposalCommand[] | null {
   const parsed = parseBlockKey(key);
   const scopes = templateScopes(template);
 
-  const fields =
-    parsed === null || parsed.path.length === 0
-      ? [...scopes.rowFields.values()].map((entry) => entry.field)
-      : (scopes.sectionsByPath.get(scopePathKey(parsed)) ?? null);
+  if (parsed === null) {
+    return null;
+  }
+
+  const root = parsed.path.length === 0;
+
+  const fields = root
+    ? [...scopes.rowFields.values()].map((entry) => entry.field)
+    : (scopes.sectionsByPath.get(scopePathKey(parsed)) ?? null);
 
   if (fields === null) {
     return null;
   }
 
-  if (patch.kind === 'remove') {
-    return patch;
+  const kept: ProposalCommand[] = [];
+
+  for (const command of commands) {
+    if (command.type === 'repeat-block-add' || command.type === 'repeat-block-delete') {
+      if (blockKeyOf(command.block) === key && !root) kept.push(command);
+      continue;
+    }
+
+    if (command.type !== 'field-patch') {
+      continue;
+    }
+
+    const field = fields.find((candidate) => candidate.id === command.fieldId);
+
+    if (field === undefined || !acceptedFieldValue(field, command.value).isOk()) {
+      continue;
+    }
+
+    if (!root || command.target.kind !== 'row') {
+      kept.push(command);
+      continue;
+    }
+
+    const rowId = scopes.rowFields.get(command.fieldId)?.rowId;
+
+    if (rowId !== undefined) {
+      kept.push(
+        command.target.kind === 'row' && command.target.rowId === rowId
+          ? command
+          : { ...command, target: { kind: 'row', rowId } },
+      );
+    }
   }
 
-  if (patch.kind === 'add') {
-    const cells = keptCells(patch.d.cells, fields);
-
-    return sameJson(cells, patch.d.cells) ? patch : { kind: 'add', d: { ...patch.d, cells } };
-  }
-
-  const entries = Object.entries(patch.values).filter(([fieldId, value]) => {
-    const field = fields.find((cell) => cell.id === fieldId);
-
-    return field !== undefined && acceptedFieldValue(field, value).isOk();
-  });
-
-  if (entries.length === 0) {
-    return null;
-  }
-
-  return entries.length === Object.keys(patch.values).length
-    ? patch
-    : { kind: 'fields', values: Object.fromEntries(entries) };
+  return kept.length === 0 ? null : kept;
 }
 
-// AD-14: the patch of `key` under the keys a new preset gives it. A row's field values go to the
-// new rows that hold their ids, so one patch can split; a value with no new row goes. A repeat
-// block's patch, a removal too, goes to the new section of its section. Empty when nothing maps.
-export function movedPatches(
+// AD-14: retarget commands to the keys and rows the new template assigns them. A field removed by
+// the preset has no destination.
+export function movedCommands(
   key: string,
-  patch: ProposalPatch,
+  commands: readonly ProposalCommand[],
   moves: PresetMoves,
-): { k: string; patch: ProposalPatch }[] {
+): { k: string; commands: ProposalCommand[] }[] {
   const parsed = parseBlockKey(key);
 
   if (parsed !== null && parsed.path.length > 0) {
@@ -369,37 +306,53 @@ export function movedPatches(
     const parent = parentOf(parsed);
     const target = sectionId === null ? null : moves.sectionOf(sectionId, parsed);
 
-    return target === null || instanceId === null || parent === null
+    if (target === null || instanceId === null || parent === null) {
+      return [];
+    }
+
+    const block = childAddress(parent, target, instanceId);
+    const moved: ProposalCommand[] = [];
+
+    for (const command of commands) {
+      if (command.type === 'field-patch' && command.target.kind === 'rep') {
+        moved.push({ ...command, target: { kind: 'rep', block } });
+        continue;
+      }
+
+      if (command.type === 'repeat-block-add' || command.type === 'repeat-block-delete') {
+        moved.push({ ...command, block });
+        continue;
+      }
+
+      moved.push(command);
+    }
+
+    return moved.length === 0
       ? []
       : [
           {
-            k: blockKeyOf(childAddress(parent, target, instanceId)),
-            patch,
+            k: blockKeyOf(block),
+            commands: moved,
           },
         ];
   }
 
-  if (patch.kind !== 'fields') {
-    return [{ k: key, patch }];
-  }
+  const moved: ProposalCommand[] = [];
 
-  const byRow = new Map<string, Record<string, FieldValue | null>>();
+  for (const command of commands) {
+    if (command.type !== 'field-patch') {
+      moved.push(command);
+      continue;
+    }
 
-  for (const [fieldId, value] of Object.entries(patch.values)) {
-    const rowId = moves.rowOf(fieldId);
+    const rowId = moves.rowOf(command.fieldId);
 
     if (rowId !== null) {
-      byRow.set(rowId, { ...byRow.get(rowId), [fieldId]: value });
+      moved.push({ ...command, target: { kind: 'row', rowId } });
     }
   }
 
-  const values: Record<string, FieldValue | null> = {};
-
-  for (const fields of byRow.values()) Object.assign(values, fields);
-
-  return Object.keys(values).length === 0
-    ? []
-    : [{ k: parsed === null ? key : blockKeyOf(parsed), patch: { kind: 'fields', values } }];
+  return moved.length === 0 ? [] : [{ k: key, commands: moved }];
 }
 
 function scopePathKey(block: BlockAddress): string {

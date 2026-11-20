@@ -18,6 +18,48 @@ import {
 const PLAYER = 'player-a';
 const CONNECTION = 'player-connection';
 
+const PARITY_PRESET: Preset = {
+  v: 4,
+  templates: [
+    {
+      id: 'camp',
+      title: 'Camp',
+      players: 'edit',
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'food' },
+                    { kind: 'field', type: 'number', id: 'water' },
+                  ],
+                },
+              ],
+            },
+            {
+              repeat: { id: 'gear', nameField: 'name' },
+              rows: [
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                {
+                  repeat: { id: 'part', nameField: 'part_name' },
+                  cells: [{ kind: 'field', type: 'text', id: 'part_name' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const PARITY_RECORDS: VersionedRecord[] = [
+  { k: 'preset', d: encodePreset(PARITY_PRESET), c: 1, a: 'seed' },
+  fixtureRecord('blk:camp', { order: 0, cells: { food: 1, water: 1 } }, 1, 'seed'),
+];
+
 const PRESET: Preset = {
   v: 4,
   templates: [
@@ -128,6 +170,122 @@ type Harness = {
 };
 
 describe('pending edits', () => {
+  test('held sibling additions keep their original order after a GM sibling arrives', () => {
+    // #given
+    const harness = createHarness({ records: PARITY_RECORDS, catchingUp: true });
+
+    const first = {
+      type: 'repeat-block-add',
+      sheetId: 'camp',
+      block: { sheetId: 'camp', path: ['gear', 'a'] },
+    } satisfies PlayerEditCommand;
+
+    const second = {
+      type: 'repeat-block-add',
+      sheetId: 'camp',
+      block: { sheetId: 'camp', path: ['gear', 'b'] },
+    } satisfies PlayerEditCommand;
+
+    harness.pending.edit(first, pendingView(harness));
+    harness.pending.edit(second, pendingView(harness));
+    const view = pendingView(harness);
+    harness.records.set('blk:camp:gear:gm', {
+      k: 'blk:camp:gear:gm',
+      d: { order: 9, cells: {} },
+      c: 2,
+      a: 'gm',
+      l: [2, 'gm'],
+    });
+    harness.setCatchingUp(false);
+    // #when
+    harness.pending.caughtUp();
+    // #then
+    expect({
+      view: [view.get('blk:camp:gear:a')?.d, view.get('blk:camp:gear:b')?.d],
+      sent: harness.sent.map((record) => record.d),
+    }).toEqual({
+      view: [
+        { order: 0, cells: {} },
+        { order: 1, cells: {} },
+      ],
+      sent: [
+        { order: 0, cells: {} },
+        { order: 1, cells: {} },
+      ],
+    });
+  });
+  test('a held nested addition appears under its pending parent', () => {
+    // #given
+    const harness = createHarness({ records: PARITY_RECORDS, catchingUp: true });
+
+    const parent = {
+      type: 'repeat-block-add',
+      sheetId: 'camp',
+      block: { sheetId: 'camp', path: ['gear', 'a'] },
+    } satisfies PlayerEditCommand;
+
+    const child = {
+      type: 'repeat-block-add',
+      sheetId: 'camp',
+      block: { sheetId: 'camp', path: ['gear', 'a', 'part', 'b'] },
+    } satisfies PlayerEditCommand;
+
+    harness.pending.edit(parent, pendingView(harness));
+    harness.pending.edit(child, pendingView(harness));
+    // #when
+    const view = pendingView(harness);
+    // #then
+    expect(view.get('blk:camp:gear:a:part:b')).toEqual({
+      k: 'blk:camp:gear:a:part:b',
+      d: { order: 0, cells: {} },
+      c: 1,
+      a: CONNECTION,
+      l: [1, CONNECTION],
+    });
+  });
+  test('a preset type change resends only the still-valid pending field', () => {
+    // #given
+    const harness = createHarness({ records: PARITY_RECORDS });
+    const target = { kind: 'row', rowId: 'food' } as const;
+    harness.pending.edit(field('food', 2, 'camp', target), pendingView(harness));
+    harness.pending.edit(field('water', 2, 'camp', target), pendingView(harness));
+    const before = harness.records.get('preset');
+
+    const changed: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'camp',
+          title: 'Camp',
+          players: 'edit',
+          tabs: [
+            {
+              sections: [
+                {
+                  rows: [
+                    { cells: [{ kind: 'field', type: 'text', id: 'water' }] },
+                    { cells: [{ kind: 'field', type: 'number', id: 'food' }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    harness.records.set('preset', { k: 'preset', d: encodePreset(changed), c: 2, a: 'gm' });
+    // #when
+    harness.pending.recordsChanged(before);
+    // #then
+    expect(harness.sent.at(-1)).toEqual({
+      k: 'blk:camp',
+      d: { order: 0, cells: { food: [2, 4, CONNECTION] } },
+      c: 4,
+      a: CONNECTION,
+      l: [1, 'seed'],
+    });
+  });
   test('edit with access sends a stripped version above the known counter', () => {
     // #given
     const harness = createHarness({
@@ -230,6 +388,20 @@ describe('pending edits', () => {
       sent: [pcRecord({ str: 11 }, 3), pcRecord({ str: 11, note: 'tired' }, 4)],
       size: 1,
     });
+  });
+  test('the combined proposal sets one field and clears another', () => {
+    // #given
+    const harness = createHarness({
+      records: BASE.map((record) =>
+        record.k === STR.k ? fixturePatch(record, { str: 10, note: 'x' }, 2, 'seed') : record,
+      ),
+    });
+
+    harness.pending.edit(field('str', 11), harness.records);
+    // #when
+    harness.pending.edit(field('note', null), harness.records);
+    // #then
+    expect(harness.sent).toEqual([pcRecord({ str: 11 }, 3), pcRecord({ str: 11, note: null }, 4)]);
   });
   test('an edit during catch-up overlays at once and sends above caught-up records', () => {
     // #given
@@ -334,6 +506,15 @@ describe('pending edits', () => {
       record: STR,
       size: 0,
     });
+  });
+  test('restoring a sent edit to its base value sends the restored value at a newer counter', () => {
+    // #given
+    const harness = createHarness();
+    harness.pending.edit(field('str', 11), harness.records);
+    // #when
+    harness.pending.edit(field('str', 10), pendingView(harness));
+    // #then
+    expect(harness.sent).toEqual([pcRecord({ str: 11 }, 3), pcRecord({ str: 10 }, 4)]);
   });
   test('an answer clears only its matching edit, while an older answer leaves it', () => {
     // #given
@@ -718,6 +899,70 @@ describe('pending edits', () => {
       fixtureRecord(SWORD.k, null, 6, CONNECTION),
     ]);
   });
+  test('a pending creation and its later field edit share a lifecycle', () => {
+    // #given
+    const harness = createHarness();
+    harness.pending.edit(add('new'), harness.records);
+    // #when
+    harness.pending.edit(
+      field('item', 'Sword', 'brok', {
+        kind: 'rep',
+        block: { sheetId: 'brok', path: ['item', 'new'] },
+      }),
+      pendingView(harness),
+    );
+    const [creation, updated] = harness.sent;
+
+    if (creation === undefined || updated === undefined) throw new Error('missing proposals');
+    const merged = mergeRecords(creation, updated);
+    // #then
+    expect(merged).toEqual({
+      k: 'blk:brok:item:new',
+      d: { order: 1, cells: { item: ['Sword', 2, CONNECTION] } },
+      c: 2,
+      a: CONNECTION,
+      l: [1, CONNECTION],
+    });
+  });
+  test('deleting a pending creation defeats its delayed creation proposal', () => {
+    // #given
+    const harness = createHarness();
+    harness.pending.edit(add('new'), harness.records);
+    // #when
+    harness.pending.edit(remove('new'), pendingView(harness));
+    const [creation, removal] = harness.sent;
+
+    if (creation === undefined || removal === undefined) throw new Error('missing proposals');
+    const merged = mergeRecords(removal, creation);
+    // #then
+    expect({ lifecycle: merged.l, data: merged.d }).toEqual({
+      lifecycle: [1, CONNECTION],
+      data: null,
+    });
+  });
+  test('an unrelated commit keeps a pending creation cancellation for GM return', () => {
+    // #given
+    const harness = createHarness();
+    harness.pending.edit(add('new'), harness.records);
+    harness.pending.edit(remove('new'), pendingView(harness));
+    harness.records.set('blk:camp', {
+      k: 'blk:camp',
+      d: { order: 0, cells: { food: [3, 2, 'gm'] } },
+      c: 2,
+      a: 'gm',
+      l: [1, 'seed'],
+    });
+    const before = harness.sent.length;
+
+    // #when
+    harness.pending.recordsChanged(undefined);
+    harness.pending.gmBack();
+
+    // #then
+    expect(harness.sent.slice(before)).toEqual([
+      { k: 'blk:brok:item:new', d: null, c: 2, a: CONNECTION, l: [1, CONNECTION] },
+    ]);
+  });
   test.each<
     [
       string,
@@ -924,11 +1169,22 @@ describe('pending edits', () => {
     harness.records.set('preset', { k: 'preset', d: encodePreset(moved), c: 2, a: 'gm' });
     // #when
     const result = harness.pending.recordsChanged(before);
+    const size = harness.pending.size();
+    const drained = harness.pending.drain();
     // #then
-    expect({ result, sent: harness.sent, size: harness.pending.size() }).toEqual({
+    expect({ result, sent: harness.sent, size, drained }).toEqual({
       result: { notify: false },
       sent: [pcRecord({ note: 'tired' }, 3)],
       size: 1,
+      drained: [
+        {
+          type: 'field-patch',
+          sheetId: 'brok',
+          target: { kind: 'row', rowId: 'note' },
+          fieldId: 'note',
+          value: 'tired',
+        },
+      ],
     });
   });
   test('a preset change drops an entry with only removed fields without a notification', () => {
@@ -1216,7 +1472,7 @@ function movedPreset(): Preset {
 
 function field(
   fieldId: string,
-  value: string | number,
+  value: string | number | null,
   sheetId = 'brok',
   target:
     | {

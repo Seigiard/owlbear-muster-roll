@@ -30,7 +30,7 @@ CONSTANTS
 
 VARIABLES
   \* player client
-  entry,      \* the proposal-queue entry of the key: has, val, seq, rc (0 = record null), sent
+  entry,      \* one stored field command and its record: has, val, seq, rc (0 = no record), sent
   armed,      \* proposal-queue `resends` holds the key (a resend timer runs)
   queued,     \* proposal-queue `queued` holds the key (a `propose` waits in the send queue)
   pCell,      \* the player's replica record of the field
@@ -155,8 +155,8 @@ OutboxAdd(cell, ack, revoke) ==
 -----------------------------------------------------------------------------
 \* Player actions.
 
-\* pending-edits.ts edit: an accepted edit of the field to `v`. `big`: the entry grows
-\* too large for one message (rebuiltRecord returns too-large).
+\* pending-edits.ts edit: keep the field command with value `v`. When not catching up,
+\* rebuiltRecord calls core/compose.ts composePending. `big` means its record does not fit.
 PlayerEdits(v, big) ==
   /\ edits < MaxEdits
   /\ pAllowed                              \* playerMayEdit; a refused edit is not accepted
@@ -168,7 +168,7 @@ PlayerEdits(v, big) ==
      IN /\ edits' = s
         /\ IF catching
              THEN PutWaiting(e) /\ UNCHANGED <<lastMinted, reported, noop>>
-           ELSE IF ~e.sent /\ v = pCell.v       \* proposedRecord: unchanged, before mint
+           ELSE IF ~e.sent /\ v = pCell.v        \* composePending: unchanged, before mint
              THEN Drop /\ noop' = noop \cup {s} /\ UNCHANGED <<lastMinted, reported>>
            ELSE LET c == Mint(Max(pCell.c, e.rc)) IN
                 /\ lastMinted' = c
@@ -178,8 +178,8 @@ PlayerEdits(v, big) ==
   /\ UNCHANGED <<pCell, pAllowed, catching, pLink>>
   /\ UNCHANGED <<gmVars, toGM, toP, applyCount, proposed, budgetVars>>
 
-\* proposal-queue.ts sendNow's compose: the send queue takes the waiting `propose`
-\* and gets the entry's newest version, or nothing.
+\* proposal-queue.ts sendNow: the send queue takes the waiting `propose` and gets the
+\* entry's newest stored record, or nothing. Taking it does not compose a new record.
 QueueTakesPropose ==
   /\ queued
   /\ queued' = FALSE
