@@ -43,7 +43,7 @@ The paths in the commit choose the checks. For a normal commit, inspect `git dif
 | Formal models: `formal/<area>/` or the model's skill in `.claude/skills/` | Run that area's `formal/<area>/check.sh` and `formal/drift.sh`. |
 | Documentation: `docs/`, `_bmad-output/`, `GLOSSARY.md`, `CLAUDE.md`, or other Markdown outside source/test/config paths | Run the touched-path format check below and `git diff --cached --check`. Changes to `docs/preset-format.md` or `docs/example-preset.json` also require the example's parse test from the preset-format block. |
 
-`bun run test:browser` needs Chromium; run it outside the sandbox.
+`bun run test:browser` needs Chromium; run it outside the sandbox. Node comes from `.tool-versions` (Node 26), which mise and CI both read; run `mise install` if `node -v` prints another major. Playwright starts Vite with `--no-turbo-fast-api-calls`, because Node 26.13.1 and earlier abort the server mid-run (nodejs/node#66870); keep the flag until a Node 26 release carries the fix.
 
 The touched-path format check is `bunx oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern --check <paths>`, with each existing touched path as a separate, quoted argument. `.oxfmtrc.json` excludes Markdown, `backlog/` and `_bmad-output/`; report them as skipped, not format-validated.
 
