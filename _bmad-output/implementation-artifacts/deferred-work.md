@@ -731,3 +731,9 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-145-reject-shadowed-field-ids.md`
   summary: Keep Builder formula references when a conflicting manual field id is corrected (TASK-150).
   evidence: A GM renames the sheet field `bonus` to the repeat field's id `attack_bonus`, sees the warning, and types `bonus` again. The draft can export, but the repeat formula remains `1d6+attack_bonus` instead of `1d6+bonus`. Reproduced through `renameField`, `builderProblems`, and `downloadText`.
+
+## Deferred from: TASK-140 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-140-compile-repeat-content.md`
+  summary: Focus a leading select field when adding a repeat block (TASK-151).
+  evidence: In the mock browser, a new block with a `SELECT` before its name field focused the following `TEXTAREA`. The existing `input, textarea` selector skips the first field. TASK-140 preserves that behavior.
