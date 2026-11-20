@@ -1,7 +1,7 @@
 import { assembleRecords } from '@/core/merge';
 import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
-import type { Preset, PresetSection, Template, TemplateLayout } from '@/core/preset';
+import type { Preset, PresetRow, PresetSection, Template, TemplateLayout } from '@/core/preset';
 import type { JsonValue } from '@/core/json';
 import { blockAddress, type BlockAddress } from './block-address';
 import type { VersionedRecord } from '@/core/records';
@@ -393,6 +393,44 @@ describe('tokenCellPlace', () => {
             rowIndex: place.rowIndex,
           },
     ).toEqual({ tabIndex: 0, sectionIndex: 0, rowIndex: 1 });
+  });
+
+  test('finds the root row token when an earlier repeat section nests a row of the same id', () => {
+    // #given
+    const attack = { id: 'attack', nameField: 'attack_name' };
+
+    const attackRow: PresetRow = {
+      repeat: attack,
+      cells: [
+        { kind: 'field', type: 'text', id: 'attack_name' },
+        { kind: 'token', id: 'target' },
+      ],
+    };
+
+    const template: TemplateLayout = {
+      tabs: [
+        {
+          title: 'NPC',
+          sections: [
+            {
+              repeat: { id: 'npc', nameField: 'npc_name' },
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }, attackRow],
+            },
+          ],
+        },
+        { title: 'Attacks', sections: [{ rows: [attackRow] }] },
+      ],
+    };
+
+    // #when
+    const place = tokenCellPlace(template, 'target', ['attack']);
+
+    // #then
+    expect(
+      place === null
+        ? null
+        : { tabIndex: place.tabIndex, sectionIndex: place.sectionIndex, rowIndex: place.rowIndex },
+    ).toEqual({ tabIndex: 1, sectionIndex: 0, rowIndex: 0 });
   });
 });
 

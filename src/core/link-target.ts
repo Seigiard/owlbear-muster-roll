@@ -198,93 +198,39 @@ function tokenCellPlaceAtPath(
   cellId: string,
   scopePath: readonly string[],
 ): TokenCellPlace | null {
-  const [tabScopeId, childScopeId, rowScopeId] = scopePath;
+  const scope = repeatScopeByPath(template, scopePath);
 
-  for (const [tabIndex, tab] of template.tabs.entries()) {
-    if (tab.repeat?.id !== tabScopeId) {
-      if ((scopePath.length !== 1 && scopePath.length !== 2) || tab.repeat !== undefined) continue;
+  if (scope === null) return null;
 
-      for (const [sectionIndex, section] of tab.sections.entries()) {
-        if (section.repeat?.id === tabScopeId && scopePath.length === 2) {
-          const row = section.rows.find(
-            (candidate) => candidate.repeat?.id === childScopeId && rowHasToken(candidate, cellId),
-          );
+  const { tabIndex } = scope.place;
 
-          if (row !== undefined) {
-            return { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
-          }
-
-          continue;
+  if (scope.row !== null) {
+    return rowHasToken(scope.row, cellId)
+      ? {
+          tabIndex,
+          sectionIndex: scope.place.sectionIndex,
+          rowIndex: scope.section.rows.indexOf(scope.row),
+          section: scope.section,
+          row: scope.row,
         }
+      : null;
+  }
 
-        if (section.repeat?.id !== tabScopeId) {
-          const row = section.rows.find((candidate) => candidate.repeat?.id === tabScopeId);
+  const tab = template.tabs[tabIndex];
 
-          if (row !== undefined && rowHasToken(row, cellId)) {
-            return { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
-          }
+  // A repeat tab's scope spans its plain sections; a repeat section's scope is that section.
+  const sections =
+    scopePath.length === 1 && tab?.repeat !== undefined
+      ? [...tab.sections.entries()].filter(([, section]) => section.repeat === undefined)
+      : [[scope.place.sectionIndex, scope.section] as const];
 
-          continue;
-        }
+  for (const [sectionIndex, section] of sections) {
+    const row = section.rows.find(
+      (candidate) => candidate.repeat === undefined && rowHasToken(candidate, cellId),
+    );
 
-        const row = section.rows.find(
-          (candidate) => candidate.repeat === undefined && rowHasToken(candidate, cellId),
-        );
-
-        if (row !== undefined) {
-          return { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
-        }
-      }
-
-      continue;
-    }
-
-    if (scopePath.length === 1) {
-      for (const [sectionIndex, section] of tab.sections.entries()) {
-        if (section.repeat !== undefined) continue;
-
-        const row = section.rows.find(
-          (candidate) => candidate.repeat === undefined && rowHasToken(candidate, cellId),
-        );
-
-        if (row !== undefined) {
-          return { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
-        }
-      }
-
-      return null;
-    }
-
-    for (const [sectionIndex, section] of tab.sections.entries()) {
-      if (section.repeat?.id === childScopeId) {
-        if (scopePath.length === 2) {
-          const row = section.rows.find(
-            (candidate) => candidate.repeat === undefined && rowHasToken(candidate, cellId),
-          );
-
-          return row === undefined
-            ? null
-            : { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
-        }
-
-        const row = section.rows.find(
-          (candidate) => candidate.repeat?.id === rowScopeId && rowHasToken(candidate, cellId),
-        );
-
-        return row === undefined
-          ? null
-          : { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
-      }
-
-      if (childScopeId !== undefined && section.repeat === undefined && scopePath.length === 2) {
-        const row = section.rows.find(
-          (candidate) => candidate.repeat?.id === childScopeId && rowHasToken(candidate, cellId),
-        );
-
-        if (row !== undefined) {
-          return { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
-        }
-      }
+    if (row !== undefined) {
+      return { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
     }
   }
 
