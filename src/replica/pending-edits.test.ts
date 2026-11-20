@@ -5,7 +5,12 @@ import { fixturePatch } from '../../tests/support/block-fixtures';
 import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
 import { decodePreset, encodePreset, type Preset } from '@/core/preset';
-import { presetDataSchema, type FieldValue, type VersionedRecord } from '@/core/records';
+import {
+  cellValues,
+  presetDataSchema,
+  type FieldValue,
+  type VersionedRecord,
+} from '@/core/records';
 import type { RejectMessage } from '@/core/room-messages';
 import type { Command, RejectionReason } from '@/core/ui-messages';
 import { createComposers } from '@/core/compose';
@@ -243,7 +248,7 @@ describe('pending edits', () => {
       l: [1, CONNECTION],
     });
   });
-  test('a preset type change resends only the still-valid pending field', () => {
+  test('a preset type change keeps the sent valid field and removes the later invalid field', () => {
     // #given
     const harness = createHarness({ records: PARITY_RECORDS });
     const target = { kind: 'row', rowId: 'food' } as const;
@@ -280,8 +285,8 @@ describe('pending edits', () => {
     // #then
     expect(harness.sent.at(-1)).toEqual({
       k: 'blk:camp',
-      d: { order: 0, cells: { food: [2, 4, CONNECTION] } },
-      c: 4,
+      d: { order: 0, cells: { food: [2, 2, CONNECTION] } },
+      c: 2,
       a: CONNECTION,
       l: [1, 'seed'],
     });
@@ -377,21 +382,27 @@ describe('pending edits', () => {
       sent: [],
     });
   });
-  test('a second edit of one key combines its patches and replaces the sent version', () => {
+  test('a second field stays visible while the first sent version waits', () => {
     // #given
     const harness = createHarness();
     harness.pending.edit(field('str', 11), harness.records);
     // #when
     harness.pending.edit(field('note', 'tired'), harness.records);
     // #then
-    expect({ sent: harness.sent, size: harness.pending.size() }).toEqual({
-      sent: [pcRecord({ str: 11 }, 3), pcRecord({ str: 11, note: 'tired' }, 4)],
+    expect({
+      sent: harness.sent,
+      size: harness.pending.size(),
+      cells: cellValues(Object(pendingView(harness).get(STR.k)?.d).cells),
+    }).toEqual({
+      sent: [pcRecord({ str: 11 }, 3)],
       size: 1,
+      cells: { str: 11, note: 'tired' },
     });
   });
   test('the combined proposal sets one field and clears another', () => {
     // #given
     const harness = createHarness({
+      catchingUp: true,
       records: BASE.map((record) =>
         record.k === STR.k ? fixturePatch(record, { str: 10, note: 'x' }, 2, 'seed') : record,
       ),
@@ -400,8 +411,10 @@ describe('pending edits', () => {
     harness.pending.edit(field('str', 11), harness.records);
     // #when
     harness.pending.edit(field('note', null), harness.records);
+    harness.setCatchingUp(false);
+    harness.pending.caughtUp();
     // #then
-    expect(harness.sent).toEqual([pcRecord({ str: 11 }, 3), pcRecord({ str: 11, note: null }, 4)]);
+    expect(harness.sent).toEqual([pcRecord({ str: 11, note: null }, 3)]);
   });
   test('an edit during catch-up overlays at once and sends above caught-up records', () => {
     // #given
@@ -491,7 +504,7 @@ describe('pending edits', () => {
     // #when
     harness.pending.overlay(overlay);
     // #then
-    expect(overlay.get(STR.k)).toEqual(pcRecord({ str: 11, note: 'pending' }, 5));
+    expect(cellValues(Object(overlay.get(STR.k)?.d).cells)).toEqual({ str: 11, note: 'pending' });
   });
   test('overlay does not show an edit that makes no record', () => {
     // #given
@@ -1094,7 +1107,7 @@ describe('pending edits', () => {
       remaining: pcRecord({ str: 11 }, 3),
     });
   });
-  test('a preset change strips removed fields and sends the kept entry again', () => {
+  test('a preset change strips a later removed field and keeps the sent entry', () => {
     // #given
     const harness = createHarness();
     harness.pending.edit(field('str', 11), harness.records);
@@ -1127,9 +1140,9 @@ describe('pending edits', () => {
     // #when
     const result = harness.pending.recordsChanged(before);
     // #then
-    expect({ result, sent: harness.sent.slice(2), size: harness.pending.size() }).toEqual({
+    expect({ result, sent: harness.sent, size: harness.pending.size() }).toEqual({
       result: { notify: false },
-      sent: [pcRecord({ str: 11 }, 5)],
+      sent: [pcRecord({ str: 11 }, 3)],
       size: 1,
     });
   });

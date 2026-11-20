@@ -1269,6 +1269,72 @@ describe('a GM client answers a proposal', () => {
 });
 
 describe("a player's edit", () => {
+  test('a lost acknowledgement does not let a later note overwrite a GM edit', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a');
+    let dropped = 0;
+
+    const player = await startClient(room, PLAYER_ID, {
+      role: 'PLAYER',
+      seeded: [],
+      timing: { proposeResendStartMs: 500, proposeResendMaxMs: 500 },
+      platform: (platform) => ({
+        ...platform,
+        broadcast: {
+          ...platform.broadcast,
+          onMessage: (channel, callback) =>
+            platform.broadcast.onMessage(channel, (event) => {
+              const data = Object(event.data);
+
+              if (
+                dropped === 0 &&
+                data.t === 'commit' &&
+                Array.isArray(data.acks) &&
+                data.acks.some((ack: { a?: string }) => ack.a === PLAYER_ID)
+              ) {
+                dropped += 1;
+
+                return;
+              }
+
+              callback(event);
+            }),
+        },
+      }),
+    });
+
+    await waitUntil(() => shown(player, STR_ROW.k) !== undefined);
+    send(player, strEdit('str', 11));
+    await waitUntil(() => dropped === 1);
+    send(gm, strEdit('str', 15));
+    await waitUntil(
+      () => Object(player.store.$replica.get().get(STR_ROW.k)?.d).cells?.str?.[0] === 15,
+    );
+    const beforeLaterEdit = [...proposals(room)];
+
+    // #when
+    send(player, strEdit('note', 'tired'));
+    await waitUntil(() => Object(shown(player, STR_ROW.k)?.d).cells?.note?.[0] === 'tired');
+    await waitUntil(
+      () =>
+        Object(storedRecord(gm, STR_ROW.k)?.d).cells?.note?.[0] === 'tired' &&
+        Object(player.store.$replica.get().get(STR_ROW.k)?.d).cells?.note?.[0] === 'tired',
+    );
+
+    // #then
+    expect({
+      dropped,
+      beforeLaterEdit,
+      gm: Object(storedRecord(gm, STR_ROW.k)?.d).cells,
+      player: Object(player.store.$replica.get().get(STR_ROW.k)?.d).cells,
+    }).toEqual({
+      dropped: 1,
+      beforeLaterEdit: [fixturePatch(STR_ROW, { str: 11 }, 3, PLAYER_ID)],
+      gm: { str: [15, 4, 'gm-a'], note: ['tired', 5, PLAYER_ID] },
+      player: { str: [15, 4, 'gm-a'], note: ['tired', 5, PLAYER_ID] },
+    });
+  });
   test('a paced proposal cancelled while still a player sends no null record', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -1406,6 +1472,75 @@ describe("a player's edit", () => {
     expect({ shown: shown(player, STR_ROW.k), pending: pendingKeys(player) }).toEqual({
       shown: gmRecord,
       pending: [],
+    });
+  });
+  test('a later field is proposed above the newer record carried by the first acknowledgement', async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm();
+    send(player, strEdit('str', 11));
+    await waitUntil(() => proposals(room).length === 1);
+    const later = send(player, strEdit('note', 'tired'));
+    await waitUntil(() => outcome(player, later) !== undefined);
+
+    // #when
+    const gmRecord = fixturePatch(STR_ROW, { str: 15, note: 'GM' }, 7, 'gm-a');
+    answer(room, commit([gmRecord], [{ k: STR_ROW.k, c: 3, a: PLAYER_ID }]));
+    await waitUntil(
+      () => player.store.$replica.get().get(STR_ROW.k)?.c === 7 && proposals(room).length >= 2,
+    );
+
+    // #then
+    expect(proposals(room).at(-1)).toEqual(fixturePatch(STR_ROW, { note: 'tired' }, 8, PLAYER_ID));
+  });
+  test('a stale answer to the first proposal preserves both player edits', async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm();
+    send(player, strEdit('str', 11));
+    await waitUntil(() => proposals(room).length === 1);
+    const later = send(player, strEdit('note', 'tired'));
+    await waitUntil(() => outcome(player, later) !== undefined);
+
+    // #when
+    const current = fixturePatch(STR_ROW, { str: 15 }, 5, 'gm-a');
+    answer(room, { ...Object(reject({ k: STR_ROW.k, c: 3, a: PLAYER_ID }, 'stale')), current });
+    await pause(50);
+
+    // #then
+    expect({
+      replica: player.store.$replica.get().get(STR_ROW.k),
+      proposal: proposals(room).at(-1),
+    }).toEqual({
+      replica: current,
+      proposal: fixturePatch(STR_ROW, { str: 11, note: 'tired' }, 6, PLAYER_ID),
+    });
+  });
+  test('an acknowledgement during catch-up keeps the later value visible and waits to send', async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm();
+    send(player, strEdit('str', 11));
+    await waitUntil(() => proposals(room).length === 1);
+    const later = send(player, strEdit('note', 'tired'));
+    await waitUntil(() => outcome(player, later) !== undefined);
+    player.engine.catchUp();
+    await waitUntil(() => player.store.$sync.get().state === 'catching-up');
+
+    // #when
+    const gmRecord = fixturePatch(STR_ROW, { str: 15, note: 'GM' }, 7, 'gm-a');
+    answer(room, commit([gmRecord], [{ k: STR_ROW.k, c: 3, a: PLAYER_ID }]));
+    await waitUntil(() => player.store.$replica.get().get(STR_ROW.k)?.c === 7);
+
+    const during = {
+      sent: proposals(room),
+      note: Object(shown(player, STR_ROW.k)?.d).cells?.note?.[0],
+    };
+
+    await waitUntil(() => player.store.$sync.get().state === 'live');
+    await pause(20);
+
+    // #then
+    expect({ during, last: proposals(room).at(-1) }).toEqual({
+      during: { sent: [fixturePatch(STR_ROW, { str: 11 }, 3, PLAYER_ID)], note: 'tired' },
+      last: fixturePatch(STR_ROW, { note: 'tired' }, 8, PLAYER_ID),
     });
   });
   test('denied: dropped, the value returns, and "Нет прав на правку" shows', async () => {

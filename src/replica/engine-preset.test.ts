@@ -1263,26 +1263,25 @@ describe("a player's pending edit when the preset changes", () => {
       proposals: proposals(room).length,
     }).toEqual({ pending: [], notifications: [], proposals: 1 });
   });
-  test('of a removed and a kept field: the removed one goes, and the rest is proposed again', async () => {
+  test('of a later removed field: the sent kept field remains unchanged', async () => {
     // #given
     const { room, player } = await playerWithSilentGm();
     send(player, strEdit('str', 11));
-    send(player, strEdit('note', 'устал'));
-    await waitUntil(() => proposals(room).length === 2);
+    await waitUntil(() => proposals(room).length === 1);
+    const later = send(player, strEdit('note', 'устал'));
+    await waitUntil(() => outcome(player, later) !== undefined);
     // #when
     answer(room, commit([{ k: 'preset', d: encodePreset(NO_NOTE), c: 2, a: 'gm-a' }]));
-    await waitUntil(
-      () => proposals(room).length === 3 && player.store.$replica.get().get('preset')?.c === 2,
-    );
-    await waitUntil(() => shown(player, STR_ROW.k)?.c === 5);
+    await waitUntil(() => player.store.$replica.get().get('preset')?.c === 2);
+    await pause(20);
     // #then
     expect({
-      newest: proposals(room)[2],
+      newest: proposals(room).at(-1),
       shown: shown(player, STR_ROW.k)?.d,
       notifications: player.platform.shownNotifications(),
     }).toEqual({
-      newest: fixturePatch(STR_ROW, { str: 11 }, 5, PLAYER_ID),
-      shown: { set: 'pc', order: 0, cells: { str: [11, 5, PLAYER_ID] } },
+      newest: fixturePatch(STR_ROW, { str: 11 }, 3, PLAYER_ID),
+      shown: { set: 'pc', order: 0, cells: { str: [11, 3, PLAYER_ID] } },
       notifications: [],
     });
   });
@@ -1290,12 +1289,13 @@ describe("a player's pending edit when the preset changes", () => {
     // #given
     const { room, player } = await playerWithSilentGm();
     send(player, strEdit('str', 11));
-    send(player, strEdit('note', 'устал'));
-    await waitUntil(() => proposals(room).length === 2);
+    await waitUntil(() => proposals(room).length === 1);
+    const later = send(player, strEdit('note', 'устал'));
+    await waitUntil(() => outcome(player, later) !== undefined);
     answer(room, commit([{ k: 'preset', d: encodePreset(NO_NOTE), c: 2, a: 'gm-a' }]));
-    await waitUntil(() => proposals(room).length === 3);
+    await waitUntil(() => player.store.$replica.get().get('preset')?.c === 2);
     // #when
-    answer(room, reject({ k: STR_ROW.k, c: 4, a: PLAYER_ID }, 'denied'));
+    answer(room, reject({ k: STR_ROW.k, c: 2, a: PLAYER_ID }, 'denied'));
     await pause(20);
     // #then
     expect({
