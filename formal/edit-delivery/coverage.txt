@@ -2,7 +2,7 @@
 # formal/drift.sh fails when a listed file changed after the sync commit.
 # Move the sync commit only after the model describes the new code
 # (.claude/skills/edit-delivery/SKILL.md, coverage record).
-sync f7697a8f8973fe530f5e4e3edbd1e0301fb9398c
+sync 076be329bb369379465d884372ff1bae0ba33306
 src/replica/pending-edits.ts
 src/replica/proposal-queue.ts
 src/core/compose.ts

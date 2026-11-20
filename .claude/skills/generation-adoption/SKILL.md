@@ -131,7 +131,7 @@ When a config ends against expectation, read the path with `/statechart`, then r
 
 ## Coverage record
 
-Sync commit: `415f4ef` (also in `formal/generation-adoption/coverage.txt`). Move it forward only after you confirm that the model describes the covered functions at the new commit.
+The sync commit is in `formal/generation-adoption/coverage.txt`. Move it forward only after you confirm that the model describes the covered functions at the new commit.
 
 - `src/replica/generation-flow.ts`: `createGenerationFlow` (`dispatch`, `run`, `writeImport`), `importFromSnapshot`, `wipe`, `adoptFromCopy`, `seeGeneration`, `stage`, `clearStaged`, `saveAdoption`, `roleChanged`, `saveGeneration`
 - `src/replica/generation-table.ts`: `generationTable`, `importGeneration`, `importSuperseded`, `seeGeneration`, `adoptFromCopy`, `stage`, `clearStaged`, `saveAdoption`, `storeWritten`, `storeFailed`, `copyWritten`, `removeOld`, `roleChanged`, `installed`, `rememberGeneration`, `withStaging`
