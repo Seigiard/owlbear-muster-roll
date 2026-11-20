@@ -3,8 +3,7 @@
 #
 #   formal/edit-delivery/check.sh            from the repo root
 #
-# A baseline config must pass, except DoubleApply.cfg, which must break NoDoubleApply
-# while finding F1 stays in the code. Each broken/ config models a broken variant of
+# A baseline config must pass. Each broken/ config models a broken variant of
 # the code and must break its rule, or the rule cannot fail. Exit 0 when every result
 # matches; TLC's full output for each config is in $OUT (default: a temporary folder).
 set -u
@@ -39,6 +38,7 @@ done <<'EOF'
 EditDelivery.cfg pass
 Refusals.cfg pass
 Liveness.cfg pass
+TwoFields.cfg pass
 broken/MintForgets.cfg OneVersionOneEdit
 broken/GmOverwrites.cfg OwnOrderKept
 broken/ForgetsCommitted.cfg NoDoubleApply
@@ -46,6 +46,8 @@ broken/AckAny.cfg NoSilentLoss
 broken/DeniedSilent.cfg NoSilentLoss
 broken/ResendOnce.cfg NeverStranded
 broken/ResendOnceLive.cfg deadlock
+broken/FoldsUnackedCells.cfg NoOldCellReplayAfterLostAck
+broken/StaleLosesActive.cfg NoSilentLoss
 EOF
 
 echo "TLC output: $OUT"

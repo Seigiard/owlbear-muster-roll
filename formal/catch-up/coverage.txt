@@ -2,7 +2,7 @@
 # formal/drift.sh fails when a listed file changed after the sync commit.
 # Move the sync commit only after the model describes the new code
 # (.claude/skills/replica-catch-up/SKILL.md, coverage record).
-sync 415f4ef
+sync 076be329bb369379465d884372ff1bae0ba33306
 src/replica/catch-up.ts
 src/replica/catch-up-table.ts
 src/replica/catch-up-effects.ts

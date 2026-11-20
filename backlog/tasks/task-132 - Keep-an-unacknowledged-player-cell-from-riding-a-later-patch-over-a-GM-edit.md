@@ -1,9 +1,11 @@
 ---
 id: TASK-132
 title: Keep an unacknowledged player cell from riding a later patch over a GM edit
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@seigiard'
 created_date: '2026-11-19T21:21:00Z'
+updated_date: '2026-11-20T12:25:00Z'
 labels: []
 dependencies:
   - TASK-119
@@ -23,7 +25,30 @@ TASK-119 made a GM client answer a resend of a proposal it already committed wit
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A player cell whose proposal the GM committed but whose ACK was lost does not overwrite a later GM edit of that field when the player edits another field of the same key before the resend
-- [ ] #2 A player edit that really lost a race to a GM edit still gets the current behavior (rebuilt and re-proposed, or reported)
-- [ ] #3 A module or engine test reproduces the lost commit, the GM edit and the other-field player edit, and passes
+- [x] #1 A player cell whose proposal the GM committed but whose ACK was lost does not overwrite a later GM edit of that field when the player edits another field of the same key before the resend
+- [x] #2 A player edit that really lost a race to a GM edit still gets the current behavior (rebuilt and re-proposed, or reported)
+- [x] #3 A module or engine test reproduces the lost commit, the GM edit and the other-field player edit, and passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Lock a lost-ACK regression and preserve the genuine-stale case.
+2. Keep sent commands apart from later commands and promote them after the matching answer.
+3. Extend EditDelivery to two fields on one key; verify the broken variant and fixed model.
+4. Run changed-path checks, sync formal coverage, and open the PR.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+- The lost-ACK engine regression was red on both clients (`str=11` instead of the GM correction `str=15`). It is green with the fix, and the genuine stale reply still rebuilds and proposes the edits.
+- `formal/edit-delivery/check.sh` passed four gates and failed all nine broken controls as expected. The old-folding control reproduced the 11-step replay. The catch-up, generation-adoption, and room-copy suites and all four coverage checks passed.
+- Format, lint, typecheck, build, and 3,672 Bun tests passed, with one existing environment skip. Chromium passed 588 tests. The mutation suite killed all 55 mutants. The confirming review reported no findings.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+A lost acknowledgement no longer lets a later edit of another field overwrite the GM correction. A genuine stale reply still retries or reports failure. Engine and two-field model regressions cover the difference. TASK-147 tracks GM promotion, and TASK-148 tracks two-field refusal and GM-return checks.
+<!-- SECTION:FINAL_SUMMARY:END -->

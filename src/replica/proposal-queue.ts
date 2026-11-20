@@ -10,6 +10,7 @@ import {
   type BlockAddress,
 } from '@/core/block-address';
 import type { PendingCommand } from '@/core/compose';
+import type { Version } from '@/core/merge';
 import type { Template } from '@/core/preset';
 import { templateScopes, type PresetMoves } from '@/core/preset-migrate';
 import type { Lifecycle, VersionedRecord } from '@/core/records';
@@ -27,7 +28,12 @@ export type ProposalEntry = {
   k: string;
   l?: Lifecycle;
   order?: number;
+  // Commands represented by the current wire record. Once sent, later commands stay separate
+  // until this exact version is answered.
   commands: ProposalCommand[];
+  laterCommands?: ProposalCommand[];
+  // View-only identity for a staged composition under an unchanged wire version.
+  viewVersion?: Version;
   record: VersionedRecord | null;
   sent: boolean;
 };

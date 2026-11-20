@@ -1175,6 +1175,14 @@ export async function startReplicaEngine(
       }
     }
 
+    if (role !== 'GM') {
+      const advanced = pendingEdits.advance();
+
+      if (advanced.notify) {
+        notifyDenied(advanced.cause);
+      }
+    }
+
     publisher.publish();
 
     // Another GM client may link a token this client saw deleted.

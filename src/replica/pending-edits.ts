@@ -26,6 +26,8 @@ import {
 
 type InternalPlayerEditCommand = ProposalCommand;
 
+type AddedCommand = { entry: ProposalEntry; waiting: boolean };
+
 export type PlayerEditCommand = ProposalCommand;
 
 export type DenialCause = 'gone' | 'too-large' | 'denied';
@@ -58,6 +60,7 @@ export type PendingEdits = {
   ) => Result<Denial, RejectionReason>;
   overlay: (view: Map<string, VersionedRecord>) => void;
   answered: (edits: readonly EditId[]) => boolean;
+  advance: () => Denial;
   rejected: (message: RejectMessage) => (Denial & { merge: VersionedRecord | null }) | null;
   caughtUp: () => Denial;
   recordsChanged: (presetBefore: VersionedRecord | undefined) => Denial;
@@ -136,17 +139,23 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
         (command.type === 'repeat-block-add'
           ? blockDataSchema.safeParse(record.d).data?.order
           : undefined),
-      commands: existing === undefined ? [command] : combineCommands(existing.commands, command),
+      commands: existing?.commands ?? [],
+      laterCommands: existing?.laterCommands,
+      viewVersion: existing?.viewVersion,
       record: existing?.record ?? null,
       sent: existing?.sent ?? false,
     };
 
-    if (catchingUp()) {
+    const next = addCommand(entry, command, records().get(record.k));
+
+    if (next.waiting) {
+      proposals.hold(next.entry);
+    } else if (catchingUp()) {
       // AD-7: no version goes out until catch-up ends, the older one included.
-      proposals.put({ ...entry, record: null });
+      proposals.put({ ...next.entry, record: null });
     } else {
       // The row was removed by a commit the windows do not show yet, or the edit grew too large.
-      const failure = proposeEntry(entry, records().get(entry.k), entry.sent);
+      const failure = proposeEntry(next.entry, records().get(next.entry.k), next.entry.sent);
 
       return Result.ok(denial(deniesEdit(failure)));
     }
@@ -155,10 +164,14 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   }
 
   function overlay(view: Map<string, VersionedRecord>): void {
-    // Built over the newest record of its key, so a GM edit of other fields that came after the
-    // entry's version still shows. A sent version keeps its own `(c, a)`.
+    // Build over the newest record so later GM edits of other fields remain visible.
+    // Staged commands use a projection version to distinguish them from the sent record.
     for (const entry of proposals.entries()) {
-      const shown = waitingRecord(entry, view.get(entry.k));
+      const visible = entry.laterCommands?.length
+        ? { ...entry, commands: combineCommandList(entry.commands, entry.laterCommands) }
+        : entry;
+
+      const shown = waitingRecord(visible, view.get(entry.k), entry.viewVersion);
 
       if (shown !== null) {
         const base = blockDataSchema.safeParse(view.get(entry.k)?.d).data;
@@ -178,8 +191,8 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     }
   }
 
-  // AD-4: a player's entry clears on an ack or a record that names its own `(k, c, a)`. A commit of
-  // an older version of the key leaves it. Returns whether any entry cleared.
+  // AD-4: an exact ack drops the entry or promotes its staged commands. An older version leaves it
+  // alone. Returns whether any entry matched.
   function answered(edits: readonly EditId[]): boolean {
     let cleared = false;
 
@@ -187,7 +200,19 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       const entry = proposals.matching(editId);
 
       if (entry !== undefined) {
-        proposals.drop(entry.k);
+        if (entry.laterCommands?.length) {
+          proposals.put({
+            ...entry,
+            commands: entry.laterCommands,
+            laterCommands: undefined,
+            record: null,
+            sent: false,
+            viewVersion: undefined,
+          });
+        } else {
+          proposals.drop(entry.k);
+        }
+
         cleared = true;
       }
     }
@@ -195,9 +220,35 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     return cleared;
   }
 
+  function advance(): Denial {
+    if (catchingUp()) {
+      return { notify: false };
+    }
+
+    return caughtUp();
+  }
+
+  // AD-7: the edits made during catch-up take their `c` now, over the records it brought, and only
+  // then are proposed. One that the player may no longer make, or that edits a removed row, is
+  // dropped with the notification.
+  function caughtUp(): Denial {
+    let cause: DenialCause | null = null;
+
+    for (const entry of proposals.entries()) {
+      if (entry.record !== null || entry.commands.length === 0) {
+        continue;
+      }
+
+      const nextCause = activateEntry(entry, records().get(entry.k), entry.sent);
+      cause ??= nextCause;
+    }
+
+    return denial(cause);
+  }
+
   // AD-4: only a rejection of this client's newest version of a key counts. `denied` drops the
-  // entry, so the value returns. `stale` replays the commands over the GM's record, takes a `c` above
-  // it and proposes again with the backoff started over; an edit of a row the GM holds removed is
+  // entry, so the value returns. `stale` combines active and staged commands over the GM's record,
+  // takes a `c` above it and proposes again with the backoff started over; an edit of a row the GM holds removed is
   // dropped as denied, and commands the record already satisfies end there. A stale answer over a
   // record below the rejected version is about a field the GM's template lacks, not the version:
   // the GM would answer the same at once, so the new version waits for the running backoff, and the
@@ -228,13 +279,23 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     const known = records().get(entry.k);
     const base = known === undefined ? message.current : mergeRecords(known, message.current);
 
+    const resolved = entry.laterCommands?.length
+      ? {
+          ...entry,
+          commands: combineCommandList(entry.commands, entry.laterCommands),
+          laterCommands: undefined,
+          sent: false,
+          viewVersion: undefined,
+        }
+      : entry;
+
     if (catchingUp()) {
       // AD-7: no version goes out until catch-up ends, which takes the entry's `c` over what it
       // brought, the GM's record merged below included.
-      proposals.put({ ...entry, record: null });
+      proposals.put({ ...resolved, record: null });
     } else {
       const failure = proposeEntry(
-        entry,
+        resolved,
         base,
         false,
         entry.record !== null && counterAbove(entry.record, message.current),
@@ -250,32 +311,6 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     }
 
     return { notify: false, merge: message.current };
-  }
-
-  // AD-7: the edits made during catch-up take their `c` now, over the records it brought, and only
-  // then are proposed. One that the player may no longer make, or that edits a removed row, is
-  // dropped with the notification.
-  function caughtUp(): Denial {
-    let cause: DenialCause | null = null;
-
-    for (const entry of proposals.entries()) {
-      if (entry.record !== null) {
-        continue;
-      }
-
-      const base = records().get(entry.k);
-      const made = rebuiltRecord(entry, base, entry.sent);
-
-      if (made.isOk() && proposalAllowed(contextOf(records()), options.playerId, made.value)) {
-        proposals.put({ ...entry, record: made.value });
-      } else {
-        proposals.drop(entry.k);
-        const nextCause = !made.isOk() ? recheckFailureCause(entry.k, made.error) : 'denied';
-        cause ??= nextCause;
-      }
-    }
-
-    return denial(cause);
   }
 
   // UX-DR29: once the records change, an entry the player may no longer make waits for no GM: its
@@ -298,16 +333,29 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
           ? null
           : templateMoves(currentRecords, before, context.preset, found.k);
 
-      const parts = moves === null ? null : movedCommands(found.k, found.commands, moves);
+      const activeParts = moves === null ? null : movedCommands(found.k, found.commands, moves);
+
+      const laterParts =
+        moves === null || !found.laterCommands?.length
+          ? null
+          : movedCommands(found.k, found.laterCommands, moves);
 
       if (
-        parts !== null &&
-        parts.length === 1 &&
-        parts[0]?.k === found.k &&
-        onlyRowTargetsMoved(found.commands, parts[0].commands)
+        activeParts !== null &&
+        activeParts.length === 1 &&
+        activeParts[0]?.k === found.k &&
+        onlyRowTargetsMoved(found.commands, activeParts[0].commands) &&
+        (laterParts === null ||
+          (laterParts.length === 1 &&
+            laterParts[0]?.k === found.k &&
+            onlyRowTargetsMoved(found.laterCommands ?? [], laterParts[0].commands)))
       ) {
         const nextCause = recheckProposal(
-          { ...found, commands: parts[0].commands },
+          {
+            ...found,
+            commands: activeParts[0].commands,
+            laterCommands: laterParts?.[0]?.commands,
+          },
           context,
           false,
           true,
@@ -317,7 +365,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
         continue;
       }
 
-      if (parts === null || (parts.length === 1 && parts[0]?.k === found.k)) {
+      if (activeParts === null || (activeParts.length === 1 && activeParts[0]?.k === found.k)) {
         const nextCause = recheckProposal(found, context, false);
         cause ??= nextCause;
         continue;
@@ -325,7 +373,30 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
 
       proposals.drop(found.k);
 
-      for (const part of parts) {
+      for (const part of laterParts ?? []) {
+        if (activeParts.some((active) => active.k === part.k)) {
+          continue;
+        }
+
+        const existing = proposals.get(part.k);
+
+        const entry: ProposalEntry = {
+          k: part.k,
+          l: existing?.l ?? found.l,
+          order: existing?.order ?? found.order,
+          commands: combineCommandList(
+            combineCommandList(existing?.commands ?? [], existing?.laterCommands ?? []),
+            part.commands,
+          ),
+          record: null,
+          sent: existing?.sent ?? false,
+        };
+
+        const nextCause = recheckProposal(entry, context, true);
+        cause ??= nextCause;
+      }
+
+      for (const part of activeParts) {
         const existing = proposals.get(part.k);
 
         const commands =
@@ -333,14 +404,17 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
             ? part.commands
             : part.commands.reduce(
                 (combined, command) => combineCommands(combined, command),
-                existing.commands,
+                combineCommandList(existing.commands, existing.laterCommands ?? []),
               );
+
+        const laterCommands = laterParts?.find((candidate) => candidate.k === part.k)?.commands;
 
         const entry: ProposalEntry = {
           k: part.k,
           l: existing?.l ?? found.l,
           order: existing?.order ?? found.order,
           commands,
+          laterCommands,
           record: found.record === null ? null : (existing?.record ?? found.record),
           sent: existing?.sent ?? false,
         };
@@ -358,7 +432,9 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   }
 
   function drain(): PlayerEditCommand[] {
-    const commands = proposals.entries().flatMap((entry) => entry.commands);
+    const commands = proposals
+      .entries()
+      .flatMap((entry) => combineCommandList(entry.commands, entry.laterCommands ?? []));
 
     proposals.clear();
     staleRejects.clear();
@@ -432,10 +508,34 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     }
 
     if (held) {
-      proposals.hold({ ...entry, record: made.value });
+      proposals.hold({ ...entry, record: made.value, viewVersion: undefined });
     } else {
-      proposals.put({ ...entry, record: made.value });
+      proposals.put({ ...entry, record: made.value, viewVersion: undefined });
     }
+
+    return null;
+  }
+
+  function activateEntry(
+    entry: ProposalEntry,
+    base: VersionedRecord | undefined,
+    force: boolean,
+  ): DenialCause | null {
+    const made = rebuiltRecord(entry, base, force);
+
+    if (!made.isOk()) {
+      proposals.drop(entry.k);
+
+      return recheckFailureCause(entry.k, made.error);
+    }
+
+    if (!proposalAllowed(contextOf(records()), options.playerId, made.value)) {
+      proposals.drop(entry.k);
+
+      return 'denied';
+    }
+
+    proposals.put({ ...entry, record: made.value, viewVersion: undefined });
 
     return null;
   }
@@ -498,6 +598,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   function waitingRecord(
     entry: ProposalEntry,
     base: VersionedRecord | undefined,
+    viewVersion?: Version,
   ): VersionedRecord | null {
     const version = entry.record ?? {
       c: (base?.c ?? 0) + 1,
@@ -506,7 +607,11 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
 
     const made = rebuiltRecord(entry, base, true, false, version);
 
-    return made.isOk() ? made.value : null;
+    return made.isOk()
+      ? viewVersion === undefined
+        ? made.value
+        : { ...made.value, c: viewVersion.c, a: viewVersion.a }
+      : null;
   }
 
   // AD-14: the entry loses the fields its sheet's template no longer has in its row or repeat
@@ -519,6 +624,33 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     preserveRecord = false,
   ): DenialCause | null {
     const template = templateOfKey(records(), context.preset, found.k);
+
+    if (found.sent && found.laterCommands?.length) {
+      const staged =
+        template === null
+          ? found.laterCommands
+          : strippedCommands(found.k, found.laterCommands, template);
+
+      const allCommands = combineCommandList(found.commands, staged ?? []);
+      const candidate = { ...found, commands: allCommands, laterCommands: undefined };
+      const made = rebuiltRecord(candidate, records().get(found.k), true, false);
+
+      if (!made.isOk() || !proposalAllowed(context, options.playerId, made.value)) {
+        proposals.drop(found.k);
+
+        return !made.isOk() ? recheckFailureCause(found.k, made.error) : 'denied';
+      }
+
+      const changed = !sameCommandList(found.laterCommands, staged ?? undefined);
+
+      proposals.hold({
+        ...found,
+        laterCommands: staged?.length ? staged : undefined,
+        viewVersion: changed ? nextViewVersion(found, records().get(found.k)) : found.viewVersion,
+      });
+
+      return null;
+    }
 
     const commands =
       template === null ? found.commands : strippedCommands(found.k, found.commands, template);
@@ -593,6 +725,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     edit,
     overlay,
     answered,
+    advance,
     rejected,
     caughtUp,
     recordsChanged,
@@ -608,6 +741,83 @@ function proposalContext(
   presetOf: PendingEditsOptions['presetOf'],
 ): ProposalContext {
   return { records, preset: presetOf(records.get('preset')) };
+}
+
+function addCommand(
+  entry: ProposalEntry,
+  command: ProposalCommand,
+  base: VersionedRecord | undefined,
+): AddedCommand {
+  if (!entry.sent || entry.record === null) {
+    return {
+      entry: {
+        ...entry,
+        commands: combineCommandList(entry.commands, [...(entry.laterCommands ?? []), command]),
+        laterCommands: undefined,
+        viewVersion: undefined,
+      },
+      waiting: false,
+    };
+  }
+
+  const sentFields = new Set(
+    entry.commands.flatMap((current) => (current.type === 'field-patch' ? [current.fieldId] : [])),
+  );
+
+  const emptyAdd = entry.commands.every((current) => current.type === 'repeat-block-add');
+
+  const replacesSentBatch =
+    command.type === 'repeat-block-delete' ||
+    (emptyAdd && command.type === 'field-patch') ||
+    (command.type === 'field-patch' && sentFields.size === 1 && sentFields.has(command.fieldId));
+
+  if (replacesSentBatch) {
+    return {
+      entry: {
+        ...entry,
+        commands: combineCommandList(entry.commands, [...(entry.laterCommands ?? []), command]),
+        laterCommands: undefined,
+        viewVersion: undefined,
+      },
+      waiting: false,
+    };
+  }
+
+  return {
+    entry: {
+      ...entry,
+      laterCommands: combineCommandList(entry.laterCommands ?? [], [command]),
+      viewVersion: nextViewVersion(entry, base),
+    },
+    waiting: true,
+  };
+}
+
+function nextViewVersion(entry: ProposalEntry, base: VersionedRecord | undefined): Version {
+  return {
+    c: Math.max(entry.viewVersion?.c ?? 0, entry.record?.c ?? 0, base?.c ?? 0) + 1,
+    a: `${entry.record?.a ?? ''}\u0000projection`,
+  };
+}
+
+function sameCommandList(
+  first: readonly ProposalCommand[] | undefined,
+  second: readonly ProposalCommand[] | undefined,
+): boolean {
+  return (
+    first === second ||
+    (first !== undefined &&
+      second !== undefined &&
+      first.length === second.length &&
+      first.every((command, index) => command === second[index]))
+  );
+}
+
+function combineCommandList(
+  commands: readonly ProposalCommand[],
+  newer: readonly ProposalCommand[],
+): ProposalCommand[] {
+  return newer.reduce((combined, command) => combineCommands(combined, command), [...commands]);
 }
 
 // A failure that ends the edit with a notice: its edit cannot go to a GM client at all. The cause
