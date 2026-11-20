@@ -4,6 +4,7 @@ title: Stabilize the keyboard repeat-block selection e2e under full-suite load
 status: To Do
 assignee: []
 created_date: '2026-11-20T06:41:00Z'
+updated_date: '2026-11-20T13:59:00Z'
 labels:
   - flaky-test
 dependencies: []
@@ -25,3 +26,9 @@ tests/selection.e2e.ts:135 (a GM selects the token of one repeat block from the 
 - [ ] #1 The cause of the missing token selection under load is found and named in the task notes
 - [ ] #2 The test passes in repeated full bun run test:browser runs
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Archived 2026-11-20 as a duplicate of TASK-142 (owner agreed). The selection.e2e.ts:135 timeout is one of the load cases TASK-142 owns; its AC#4 covers this test.
+<!-- SECTION:NOTES:END -->
