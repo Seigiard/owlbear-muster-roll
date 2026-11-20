@@ -29,6 +29,7 @@ export type ProposalCommand = Extract<
 export type ProposalEntry = {
   k: string;
   l?: Lifecycle;
+  order?: number;
   commands: ProposalCommand[];
   record: VersionedRecord | null;
   sent: boolean;

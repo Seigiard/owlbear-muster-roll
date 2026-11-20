@@ -20,6 +20,7 @@ import {
   findPatchField,
   patchedRecord,
   patchedRecordFits,
+  sameFieldValue,
   patchRecordKey,
   type PatchedRecord,
 } from '@/core/field-patch';
@@ -133,6 +134,8 @@ export type Composers = {
     force: boolean,
     fixedVersion?: Version,
     lifecycle?: Lifecycle,
+    base?: VersionedRecord,
+    order?: number,
   ) => Result<VersionedRecord, RejectionReason>;
   // Several field patches of one record key, applied in order and minted once.
   composePatches: (context: ComposeContext, patches: readonly IdentifiedPatch[]) => ComposedPatches;
@@ -876,170 +879,87 @@ export function createComposers(connectionId: string): Composers {
     force: boolean,
     fixedVersion?: Version,
     lifecycle?: Lifecycle,
+    base?: VersionedRecord,
+    order?: number,
   ): Result<VersionedRecord, RejectionReason> {
-    if (commands.length === 0) {
-      return Result.err('unchanged');
-    }
+    if (commands.length === 0) return Result.err('unchanged');
 
-    const base = context.records.get(key);
+    const add = commands.some((command) => command.type === 'repeat-block-add');
+    const remove = commands.some((command) => command.type === 'repeat-block-delete');
 
-    if (
-      base === undefined &&
-      prior?.d === null &&
-      commands.some((command) => command.type === 'repeat-block-delete')
-    ) {
-      return fixedVersion === undefined
-        ? Result.err('unchanged')
-        : Result.ok({ ...prior, ...fixedVersion });
-    }
-
-    if (
-      base === undefined &&
-      prior === null &&
-      lifecycle !== undefined &&
-      commands.length === 1 &&
-      commands[0]?.type === 'repeat-block-delete'
-    ) {
-      const parsedKey = parseBlockKey(key);
-
-      if (parsedKey === null) {
-        return Result.err('unknown-instance');
+    if (remove) {
+      if (
+        base?.d === null ||
+        (base === undefined && prior?.d === null && fixedVersion === undefined)
+      ) {
+        return Result.err('unchanged');
       }
 
-      const version = fixedVersion ?? context.mint(key, 0);
+      const source = base ?? prior;
+
+      if (source === null || source === undefined) {
+        if (lifecycle === undefined) return Result.err('unknown-instance');
+
+        const version = fixedVersion ?? context.mint(key, 0);
+
+        return Result.ok({ k: key, d: null, ...version, l: lifecycle });
+      }
+
+      const version = fixedVersion ?? context.mint(key, Math.max(base?.c ?? 0, prior?.c ?? 0));
 
       return Result.ok({
-        k: blockKeyOf(parsedKey),
+        ...source,
         d: null,
         ...version,
-        l: lifecycle,
+        l: source.l ?? lifecycle ?? [version.c, version.a],
       });
     }
 
-    if (base?.d === null && commands.some((command) => command.type === 'repeat-block-delete')) {
-      return Result.err('unchanged');
-    }
+    if (base?.d === null) return Result.err('unknown-instance');
 
+    const baseData = blockDataSchema.safeParse(base?.d).data;
     const priorData = blockDataSchema.safeParse(prior?.d).data;
+    const values: Record<string, FieldValue | null> = {};
+    let changed = add;
 
-    const fieldIds = new Set(
-      commands.flatMap((command) => (command.type === 'field-patch' ? [command.fieldId] : [])),
-    );
+    for (const command of commands) {
+      if (command.type !== 'field-patch') continue;
 
-    const currentData = blockDataSchema.safeParse(base?.d).data;
+      const policy = sheetPolicyOf(context, command.sheetId, 'unknown-field');
 
-    const highest = Math.max(base?.c ?? 0, prior?.c ?? 0);
+      if (!policy.isOk()) return policy;
 
-    const working = new Map<string, VersionedRecord>(context.records);
+      const field = findPatchField(policy.value.template, command.target, command.fieldId);
 
-    const replayContext: ComposeContext = {
-      ...context,
-      mint: (_key, highestKnownCounter) => ({
-        c: highestKnownCounter + 1,
-        a: connectionId,
-      }),
-      allowUnchanged: force,
-    };
+      if (field === null) return Result.err('unknown-field');
 
-    const source =
-      commands.some((command) => command.type === 'repeat-block-delete') && base === undefined
-        ? (prior ?? undefined)
-        : (base ?? prior ?? undefined);
+      const value = acceptedFieldValue(field, command.value);
 
-    if (base?.d === null && commands.some((command) => command.type !== 'repeat-block-delete')) {
-      return Result.err('unknown-instance');
-    }
+      if (!value.isOk()) return value;
 
-    if (source === undefined) {
-      working.delete(key);
-    } else if (source.d === null || currentData === undefined) {
-      working.set(key, source);
-    } else {
-      const parsedKey = parseBlockKey(key);
-
-      if (parsedKey === null) {
+      if (!add && command.target.kind === 'rep' && baseData === undefined) {
         return Result.err('unknown-instance');
       }
 
-      working.set(key, {
-        k: blockKeyOf(parsedKey),
-        a: source.a,
-        l: source.l ?? [source.c, source.a],
-        c: highest,
-        d: {
-          ...currentData,
-          cells: Object.fromEntries(
-            Object.entries(currentData.cells).filter(([fieldId]) => fieldIds.has(fieldId)),
-          ),
-        },
-      });
-    }
+      values[command.fieldId] = value.value;
 
-    let latest: VersionedRecord | undefined;
-    const values: Record<string, FieldValue | null> = {};
-
-    for (const command of commands) {
-      if (command.type === 'repeat-block-add') {
-        working.delete(key);
-      }
-
-      const result = compose({ ...replayContext, records: working }, command);
-
-      if (!result.isOk()) {
-        if (result.error === 'unchanged' && command.type === 'field-patch') {
-          const current = blockDataSchema.safeParse(
-            working.get(patchRecordKey(command.sheetId, command.target))?.d,
-          ).data;
-
-          values[command.fieldId] = current?.cells[command.fieldId]?.[0] ?? null;
-          continue;
-        }
-
-        return result;
-      }
-
-      for (const record of result.value) {
-        working.set(record.k, record);
-
-        if (record.k !== key) continue;
-        latest = record;
-        const data = blockDataSchema.safeParse(record.d).data;
-
-        if (data !== undefined) {
-          Object.assign(values, cellValues(data.cells));
-        }
+      if (!sameFieldValue(add ? undefined : baseData?.cells[command.fieldId]?.[0], value.value)) {
+        changed = true;
       }
     }
 
-    if (latest === undefined) {
-      return Result.err('unchanged');
-    }
+    if (!changed && !force) return Result.err('unchanged');
 
-    const version = fixedVersion ?? context.mint(key, highest);
-
-    if (latest.d === null) {
-      return Result.ok({
-        ...latest,
-        ...version,
-        l: base?.l ?? prior?.l ?? latest.l ?? [version.c, version.a],
-      });
-    }
-
-    const data = blockDataSchema.safeParse(latest.d).data;
-
-    if (data === undefined) {
-      return Result.err('unknown-instance');
-    }
-
-    const add = commands.find((command) => command.type === 'repeat-block-add');
+    const version = fixedVersion ?? context.mint(key, Math.max(base?.c ?? 0, prior?.c ?? 0));
+    const inheritedData = add ? undefined : baseData;
 
     return Result.ok({
-      ...latest,
+      k: key,
       ...version,
-      l: base?.l ?? prior?.l ?? lifecycle ?? latest.l ?? [version.c, version.a],
+      l: base?.l ?? prior?.l ?? lifecycle ?? [version.c, version.a],
       d: {
-        ...data,
-        order: add === undefined ? data.order : (priorData?.order ?? data.order),
+        ...inheritedData,
+        order: add ? (order ?? priorData?.order ?? 0) : (baseData?.order ?? priorData?.order ?? 0),
         cells: versionCells(values, version.c, version.a),
       },
     });

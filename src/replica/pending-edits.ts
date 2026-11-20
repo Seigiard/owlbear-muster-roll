@@ -131,6 +131,11 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     const entry: ProposalEntry = {
       k: record.k,
       l: existing?.l ?? record.l,
+      order:
+        existing?.order ??
+        (command.type === 'repeat-block-add'
+          ? blockDataSchema.safeParse(record.d).data?.order
+          : undefined),
       commands: existing === undefined ? [command] : combineCommands(existing.commands, command),
       record: existing?.record ?? null,
       sent: existing?.sent ?? false,
@@ -334,6 +339,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
         const entry: ProposalEntry = {
           k: part.k,
           l: existing?.l ?? found.l,
+          order: existing?.order ?? found.order,
           commands,
           record: found.record === null ? null : (existing?.record ?? found.record),
           sent: existing?.sent ?? false,
@@ -451,23 +457,9 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       return Result.err('unchanged');
     }
 
-    const view = new Map(records());
-
-    for (const pending of proposals.entries()) {
-      if (pending.k !== entry.k && pending.record !== null) {
-        view.set(pending.k, pending.record);
-      }
-    }
-
-    if (base !== undefined) {
-      view.set(entry.k, base);
-    } else {
-      view.delete(entry.k);
-    }
-
     const made = proposalComposers.composePending(
       {
-        records: view,
+        records: records(),
         mint: mintVersion
           ? mint
           : (_key, highestKnownCounter) => ({
@@ -484,6 +476,8 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       force,
       fixedVersion,
       entry.l,
+      base,
+      entry.order,
     );
 
     if (!made.isOk()) {
@@ -564,7 +558,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       return null;
     }
 
-    if (preserveRecord && entry.record !== null) {
+    if (preserveRecord && entry.record !== null && commands.length === found.commands.length) {
       proposals.hold(entry);
 
       return null;
