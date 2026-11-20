@@ -1,7 +1,7 @@
 import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import { TestFileAccessFake } from '../../tests/support/file-access';
-import { createBrowserFileAccess } from '../builder/file-access';
+import { createBrowserFileAccess } from './file-access';
 
 describe('file-access port fake', () => {
   test('returns queued open and read results without consulting browser globals', async () => {
