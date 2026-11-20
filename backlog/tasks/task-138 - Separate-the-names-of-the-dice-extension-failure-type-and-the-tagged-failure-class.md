@@ -3,9 +3,11 @@ id: TASK-138
 title: >-
   Separate the names of the dice extension failure type and the tagged failure
   class
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@seigiard'
 created_date: '2026-11-20T06:31:00Z'
+updated_date: '2026-11-20T14:00:00Z'
 labels:
   - replica
 dependencies: []
@@ -24,3 +26,9 @@ Two exported names collide: `src/replica/dice-extension.ts:53` exports `type Dic
 - [ ] #1 `grep -rn 'type DiceExtensionFailure' src` is empty and the union has one name distinct from the class
 - [ ] #2 Full check passes with no behaviour change
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Rename the replica roll failure union to DiceExtensionRollFailure and update its type references. Keep the tagged class and runtime behavior unchanged. Run the full changed-path checks and formal drift check.
+<!-- SECTION:PLAN:END -->
