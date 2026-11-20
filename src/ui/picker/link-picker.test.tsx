@@ -977,7 +977,8 @@ describe('ported reverse-picker and command outcome contracts', () => {
       closed,
       live: picker.querySelector('[aria-live]')?.textContent,
       selected: [...picker.querySelectorAll<HTMLInputElement>('input:checked')].length,
-    }).toEqual({ closed: [], live: copy.linkFailed, selected: 2 });
+      linkDisabled: linkDisabled(picker),
+    }).toEqual({ closed: [], live: copy.linkFailed, selected: 2, linkDisabled: false });
   });
 
   test('keeps the reverse picker open and announces a timed-out real command', async () => {
@@ -1010,7 +1011,8 @@ describe('ported reverse-picker and command outcome contracts', () => {
       closed,
       live: picker.querySelector('[aria-live]')?.textContent,
       selected: [...picker.querySelectorAll<HTMLInputElement>('input:checked')].length,
-    }).toEqual({ closed: [], live: copy.linkFailed, selected: 1 });
+      linkDisabled: linkDisabled(picker),
+    }).toEqual({ closed: [], live: copy.linkFailed, selected: 1, linkDisabled: false });
   });
 
   test('marks current-cell and elsewhere links separately and unlinks only current-cell selections', async () => {
@@ -1090,6 +1092,28 @@ describe('ported reverse-picker and command outcome contracts', () => {
       live: picker.querySelector('[aria-live]')?.textContent,
       selected: [...picker.querySelectorAll<HTMLInputElement>('input:checked')].length,
     }).toEqual({ closed: [], live: copy.linkFailed, selected: 1 });
+  });
+
+  test('keeps the reverse picker open, announces the failure and allows a retry when closing fails', async () => {
+    // #given
+    const picker = await reversePicker(
+      async () => ({ kind: 'answered', answer: undefined }),
+      async () => {
+        throw new Error('the picker could not close');
+      },
+    );
+
+    await choose(picker, 'free');
+
+    // #when
+    await press(picker, copy.command.linkSheet);
+    await settle(20);
+
+    // #then
+    expect({
+      live: picker.querySelector('[aria-live]')?.textContent,
+      linkDisabled: linkDisabled(picker),
+    }).toEqual({ live: copy.linkFailed, linkDisabled: false });
   });
 
   async function reversePicker(
@@ -1188,6 +1212,18 @@ describe('ported reverse-picker and command outcome contracts', () => {
 
     await act(async () => button.click());
     await settle();
+  }
+
+  function linkDisabled(container: HTMLElement): boolean {
+    const button = [...container.querySelectorAll('button')].find(
+      (node) => node.textContent === copy.command.linkSheet,
+    );
+
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`No button ${copy.command.linkSheet}`);
+    }
+
+    return button.disabled;
   }
 
   async function settle(milliseconds = 0): Promise<void> {

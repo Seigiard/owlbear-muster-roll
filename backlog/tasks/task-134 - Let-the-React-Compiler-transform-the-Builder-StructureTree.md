@@ -1,9 +1,10 @@
 ---
 id: TASK-134
 title: Let the React Compiler transform the Builder StructureTree
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-20T06:18:00Z'
+updated_date: '2026-11-20T07:06:00Z'
 labels: []
 dependencies: []
 priority: low
@@ -23,7 +24,19 @@ Reproduce with the compiler probe: run `babel-plugin-react-compiler` 1.0.0 throu
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The compiler probe reports no `CompileError` for `src/builder/structure-tree.tsx`
-- [ ] #2 Dragging an item in the Builder structure tree carries the same drag types and values as before; `tests/builder.e2e.ts` passes
-- [ ] #3 The full check from CLAUDE.md passes
+- [x] #1 The compiler probe reports no `CompileError` for `src/builder/structure-tree.tsx`
+- [x] #2 Dragging an item in the Builder structure tree carries the same drag types and values as before; `tests/builder.e2e.ts` passes
+- [x] #3 The full check from CLAUDE.md passes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Full check on the branch tip 05239ad (after merging origin/master): `oxfmt --check .`, `bun run lint`, `bun run typecheck`, `bun test` (3633 pass, 0 fail, 1 skip), `bun run mutants` (55/55 killed), `bun run build` pass. `bun run test:browser`: run 1 had 586 passed and 1 failed (`tests/room-copy.e2e.ts:73`, not in this change, 15/15 in isolation); run 2 was void (the Vite dev server died on a V8 abort); run 3 passed 587/587.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+React Compiler 1.0 skipped `StructureTree` because `getItems` used a call as a computed object key. The drag type now goes into a local first: `const type = dragTypeOf(current, id); return { [type]: id }`, so each drag item keeps the same type and value. Probe: nothing for `src/builder/structure-tree.tsx` (was `structure-tree.tsx:80 Expected Identifier, got CallExpression key`). `tests/builder.e2e.ts` 31/31; with a wrong drag type, both drag tests fail. Full check passes (see notes). A repository check that would catch a returning bailout is recorded in `deferred-work.md`. Commit e58aa27.
+<!-- SECTION:FINAL_SUMMARY:END -->
