@@ -57,6 +57,12 @@ const LABEL_CLASS = 'text-label-sm text-text-muted';
 
 const HINT_CLASS = 'text-label-sm text-text-muted';
 
+const WARNING_PROBLEMS = new Set<BuilderProblem['failure']['code']>([
+  'shadowed-field-id',
+  'shadowed-repeat-id',
+  'unresolved-formula-field',
+]);
+
 // CAP-22: the form of the selected item. A change applies at once, through the store, and the
 // preview redraws at once. "Удалить" ends each form and asks nothing, as undo restores the item.
 // Typing in one input is one undo step, keyed by the item and the property.
@@ -96,7 +102,7 @@ export function ItemForm({
           {messages.map((message, index) => (
             <li
               key={`${message.failure.code}-${index}`}
-              className={clsx(message.failure.code === 'shadowed-field-id' && 'text-warning-text')}
+              className={clsx(WARNING_PROBLEMS.has(message.failure.code) && 'text-warning-text')}
             >
               {problemReason(message.failure)}
             </li>
@@ -522,6 +528,9 @@ function TabForm({
             label={form.id}
             id={tab.repeat.id}
             hint={null}
+            validate={(next) =>
+              repeatIdsAt(template, path).has(next) ? copy.builder.repeatIdTaken(next) : null
+            }
             onCommit={(id) => {
               update((current) =>
                 current.repeat === undefined
@@ -651,6 +660,9 @@ function SectionForm({
             label={form.id}
             id={section.repeat.id}
             hint={null}
+            validate={(next) =>
+              repeatIdsAt(template, path).has(next) ? copy.builder.repeatIdTaken(next) : null
+            }
             onCommit={(id) => {
               update((current) =>
                 current.repeat === undefined
@@ -738,6 +750,9 @@ function RowForm({
             label={form.id}
             id={row.repeat.id}
             hint={null}
+            validate={(next) =>
+              repeatIdsAt(template, path).has(next) ? copy.builder.repeatIdTaken(next) : null
+            }
             onCommit={(id) => {
               update((current) =>
                 current.repeat === undefined

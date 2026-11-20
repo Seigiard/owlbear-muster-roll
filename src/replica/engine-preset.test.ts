@@ -5,6 +5,7 @@ import { deflateToBase64 } from '@/core/deflate';
 import type { JsonValue } from '@/core/json';
 import { Result } from 'better-result';
 import {
+  decodePreset,
   encodePreset,
   type Preset,
   type PresetRow,
@@ -305,7 +306,116 @@ describe('a preset diff', () => {
   });
 });
 
+function encounterPreset({
+  sectionId = 'attack',
+  formula = '1d6+bonus',
+}: {
+  sectionId?: string;
+  formula?: string;
+}): Preset {
+  return {
+    v: 4,
+    templates: [
+      {
+        id: 'encounter',
+        title: 'Encounter',
+        tabs: [
+          {
+            repeat: { id: 'npc', nameField: 'npc_name' },
+            sections: [
+              {
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'npc_name' },
+                      { kind: 'field', type: 'number', id: 'bonus' },
+                    ],
+                  },
+                ],
+              },
+              {
+                repeat: { id: sectionId, nameField: 'attack_name' },
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'attack_name' },
+                      { kind: 'dice', formula },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
 describe('a preset upload', () => {
+  const corrected = encounterPreset({});
+
+  for (const { name, problem, code } of [
+    { name: 'a repeated ancestor id', problem: { sectionId: 'npc' }, code: 'shadowed-repeat-id' },
+    {
+      name: 'a dangling formula reference',
+      problem: { formula: '1d6+missing' },
+      code: 'unresolved-formula-field',
+    },
+  ]) {
+    test(`refuses a replacement when the installed preset has ${name}`, async () => {
+      // #given
+      const data = deflateToBase64(JSON.stringify(encounterPreset(problem)));
+      const installed = { ...PRESET_RECORD, d: data };
+      const gm = await startClient(roomRig.openRoom(), 'gm-a', { seeded: [installed] });
+
+      // #when
+      const read = decodePreset(data);
+      const diff = requestDiff(gm, corrected);
+      const upload = send(gm, uploadOf(corrected, 0));
+      await waitUntil(() => outcome(gm, diff) !== undefined && outcome(gm, upload) !== undefined);
+
+      // #then
+      expect({
+        read,
+        diff: rejection(gm, diff),
+        upload: rejection(gm, upload),
+        stored: storedRecord(gm, 'preset'),
+      }).toEqual({
+        read: expect.objectContaining({
+          status: 'error',
+          error: expect.objectContaining({ code }),
+        }),
+        diff: 'preset-unreadable',
+        upload: 'preset-unreadable',
+        stored: installed,
+      });
+    });
+
+    test(`refuses an encoded incoming preset with ${name}`, async () => {
+      // #given
+      const invalid = encounterPreset(problem);
+      const gm = await startClient(roomRig.openRoom(), 'gm-a', { seeded: [PRESET_RECORD] });
+
+      // #when
+      const incoming = send(gm, {
+        type: 'preset-upload',
+        data: deflateToBase64(JSON.stringify(invalid)),
+        expectedCount: 0,
+        expectedSheets: 0,
+        expectedDigest: digestOf(corrected),
+      });
+
+      await waitUntil(() => outcome(gm, incoming) !== undefined);
+
+      // #then
+      expect({
+        rejection: rejection(gm, incoming),
+        stored: storedRecord(gm, 'preset'),
+      }).toEqual({ rejection: 'invalid-preset', stored: PRESET_RECORD });
+    });
+  }
+
   test('keeps GM B’s hp tuple when GM A removes armor after confirming the diff', async () => {
     // #given
     const withArmor = pcTemplate([

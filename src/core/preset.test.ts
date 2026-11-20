@@ -950,14 +950,6 @@ describe('parsePresetFile', () => {
     // #then
     expect(actual).toEqual(Result.err(error));
   });
-  test('accepts an unknown id in a dice-choice slot for a roll-time field error', () => {
-    // #given
-    const text = fileOf([{ rows: [{ cells: [{ kind: 'dice', formula: '1d(nothing)' }] }] }]);
-    // #when
-    const parsed = parsePresetFile(text);
-    // #then
-    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
-  });
   test.each<[string, string]>([
     ['two words', 'two words'],
     ['1st', '1st'],
@@ -1273,13 +1265,153 @@ describe('parsePresetFile', () => {
     // #then
     expect(parsed).toEqual(Result.err({ code: 'duplicate-id', detail: `a${'b'.repeat(39)}…` }));
   });
-  test('accepts a formula that names an id absent from the sheet', () => {
+});
+
+describe('parsePresetFile with scoped references', () => {
+  const repeatCases: { kind: string; inner: JsonObject; path: number[] }[] = [
+    {
+      kind: 'section',
+      inner: {
+        repeat: { id: 'npc', nameField: 'attack' },
+        rows: [{ cells: [TEXT_FIELD('attack')] }],
+      },
+      path: [0, 0, 1],
+    },
+    {
+      kind: 'row',
+      inner: {
+        rows: [{ repeat: { id: 'npc', nameField: 'attack' }, cells: [TEXT_FIELD('attack')] }],
+      },
+      path: [0, 0, 1, 0],
+    },
+  ];
+
+  test.each(repeatCases)(
+    'refuses an inner repeat $kind that reuses the tab id',
+    ({ inner, path }) => {
+      // #given
+      const text = presetOf({
+        id: 'encounter',
+        title: 'Encounter',
+        tabs: [
+          {
+            repeat: { id: 'npc', nameField: 'npc_name' },
+            sections: [{ rows: [{ cells: [TEXT_FIELD('npc_name')] }] }, inner],
+          },
+        ],
+      });
+
+      // #when
+      const parsed = parsePresetFile(text);
+
+      // #then
+      expect(parsed).toMatchObject({
+        status: 'error',
+        error: { code: 'shadowed-repeat-id', detail: 'npc', path },
+      });
+    },
+  );
+
+  test.each([
+    ['1d20 <= missing', 'missing'],
+    ['1d(nothing)', 'nothing'],
+    ['1d6+weight', 'weight'],
+  ])('refuses a dice formula %s that cannot read its reference', (formula, field) => {
     // #given
-    const text = fileOf([{ rows: [{ cells: [{ kind: 'dice', formula: '1d20 <= missing' }] }] }]);
+    const text = fileOf([
+      {
+        repeat: { id: 'attack', nameField: 'attack_name' },
+        rows: [{ cells: [TEXT_FIELD('attack_name'), { kind: 'dice', formula }] }],
+      },
+      {
+        repeat: { id: 'item', nameField: 'item_name' },
+        rows: [{ cells: [TEXT_FIELD('item_name'), NUMBER_FIELD('weight')] }],
+      },
+    ]);
+
     // #when
     const parsed = parsePresetFile(text);
+
     // #then
-    expect(parsed.isOk()).toBe(true);
+    expect(parsed).toMatchObject({
+      status: 'error',
+      error: {
+        code: 'unresolved-formula-field',
+        detail: formula,
+        field,
+        path: [0, 0, 0, 0, 1],
+      },
+    });
+  });
+
+  test('refuses a formula whose field is inside a repeat row of the same plain section', () => {
+    // #given
+    const text = fileOf([
+      {
+        rows: [
+          {
+            repeat: { id: 'attack', nameField: 'attack_name' },
+            cells: [TEXT_FIELD('attack_name'), NUMBER_FIELD('row_bonus')],
+          },
+          { cells: [{ kind: 'dice', formula: '1d6+row_bonus' }] },
+        ],
+      },
+    ]);
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toMatchObject({
+      status: 'error',
+      error: {
+        code: 'unresolved-formula-field',
+        detail: '1d6+row_bonus',
+        field: 'row_bonus',
+        path: [0, 0, 0, 1, 0],
+      },
+    });
+  });
+
+  test('accepts a dice formula that reads its block, its enclosing block and its sheet', () => {
+    // #given
+    const text = presetOf({
+      id: 'encounter',
+      title: 'Encounter',
+      tabs: [
+        {
+          title: 'Sheet',
+          sections: [{ rows: [{ cells: [NUMBER_FIELD('sheet_bonus')] }] }],
+        },
+        {
+          title: 'NPC',
+          repeat: { id: 'npc', nameField: 'npc_name' },
+          sections: [
+            {
+              rows: [{ cells: [TEXT_FIELD('npc_name'), DICE_CHOICE_FIELD('weapon_die', ['d8'])] }],
+            },
+            {
+              repeat: { id: 'attack', nameField: 'attack_name' },
+              rows: [
+                {
+                  cells: [
+                    TEXT_FIELD('attack_name'),
+                    NUMBER_FIELD('damage'),
+                    { kind: 'dice', formula: '1d(weapon_die)+damage+sheet_bonus' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
   });
 });
 
@@ -2012,7 +2144,6 @@ describe('the preset files in presets/', () => {
       // #then
       expect(parsed).toEqual(Result.ok(JSON.parse(text)));
     });
-    // The parse accepts any valid id in a formula, so a misspelt one shows only when it is rolled.
     test(`${name} names in each formula only fields its dice cell can read`, () => {
       // #given
       const preset = structureOf(readFileSync(join(PRESET_DIR, name), 'utf8'));
@@ -2096,6 +2227,38 @@ describe('presetProblems', () => {
     const problems = presetProblems(structureOf(EXAMPLE_TEXT));
     // #then
     expect(problems).toEqual([]);
+  });
+  test('locates each missing reference in one formula at the same dice cell', () => {
+    // #given
+    const preset = structureOf(
+      fileOf([{ rows: [{ cells: [LABEL, { kind: 'dice', formula: '1d(weapon_die)+bonus' }] }] }]),
+    );
+
+    // #when
+    const problems: readonly unknown[] = presetProblems(preset);
+
+    // #then
+    expect({ count: problems.length, problems }).toEqual({
+      count: 2,
+      problems: expect.arrayContaining([
+        {
+          failure: expect.objectContaining({
+            code: 'unresolved-formula-field',
+            detail: '1d(weapon_die)+bonus',
+            field: 'weapon_die',
+          }),
+          path: [0, 0, 0, 0, 1],
+        },
+        {
+          failure: expect.objectContaining({
+            code: 'unresolved-formula-field',
+            detail: '1d(weapon_die)+bonus',
+            field: 'bonus',
+          }),
+          path: [0, 0, 0, 0, 1],
+        },
+      ]),
+    });
   });
   test('points dice-choice option and formula type failures at their owning cells', () => {
     // #given

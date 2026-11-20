@@ -610,7 +610,7 @@ describe('rollDiceCell', () => {
     ['the enclosing number field', 2, '1d6+bonus', 7],
     ['the local field', 3, '1d6+attack_power', 9],
     ['the enclosing dice-choice field', 4, '1d8', 4],
-  ])('reads %s when the tab and section repeat ids match', (_name, cellIndex, cell, total) => {
+  ])('reads %s by the full address of a nested repeat block', (_name, cellIndex, cell, total) => {
     // #given
     const preset = parsePresetFile(
       JSON.stringify({
@@ -637,7 +637,7 @@ describe('rollDiceCell', () => {
                     ],
                   },
                   {
-                    repeat: { id: 'npc', nameField: 'attack_name' },
+                    repeat: { id: 'attack', nameField: 'attack_name' },
                     rows: [
                       {
                         cells: [
@@ -665,14 +665,14 @@ describe('rollDiceCell', () => {
 
     const records = assembleRecords([
       fixtureRecord('blk:encounter:npc:n0', { npc_name: 'Orc', bonus: 8, weapon_die: 'd6' }),
-      fixtureRecord('blk:encounter:npc:n0:npc:a1', { attack_name: 'Bash', attack_power: 1 }),
+      fixtureRecord('blk:encounter:npc:n0:attack:a1', { attack_name: 'Bash', attack_power: 1 }),
       fixtureRecord('blk:encounter:npc:n1', {
         npc_name: 'Goblin',
         bonus: 3,
         npc_power: 1,
         weapon_die: 'd8',
       }),
-      fixtureRecord('blk:encounter:npc:n1:npc:a1', { attack_name: 'Slash', attack_power: 5 }),
+      fixtureRecord('blk:encounter:npc:n1:attack:a1', { attack_name: 'Slash', attack_power: 5 }),
     ]);
 
     const place: DicePlace = {
@@ -681,7 +681,7 @@ describe('rollDiceCell', () => {
       rowIndex: 0,
       cellIndex,
       instanceId: 'a1',
-      path: ['npc', 'n1', 'npc', 'a1'],
+      path: ['npc', 'n1', 'attack', 'a1'],
     };
 
     // #when

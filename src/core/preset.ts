@@ -206,6 +206,13 @@ export type PresetFailure =
       path: readonly number[];
       enclosingPath: readonly number[];
     }
+  | {
+      code: 'shadowed-repeat-id';
+      detail: string;
+      path: readonly number[];
+      enclosingPath: readonly number[];
+    }
+  | { code: 'unresolved-formula-field'; detail: string; field: string; path: readonly number[] }
   | { code: 'bad-repeat' }
   | { code: 'duplicate-section'; detail: string }
   | { code: 'row-too-wide' }
@@ -227,6 +234,8 @@ type FieldScope = {
   fields: Map<string, number[]>;
   parent: FieldScope | null;
 };
+
+type RepeatLocation = { id: string; path: readonly number[] };
 
 const encoder = new TextEncoder();
 
@@ -544,7 +553,10 @@ export function plainRow(layout: TemplateLayout, rowId: string): readonly Preset
     if (layout.tabs[place.tabIndex]?.repeat !== undefined) continue;
 
     if (repeatSectionId(section) !== null) continue;
-    const row = section.rows.find((item) => firstFieldId(item) === rowId);
+
+    const row = section.rows.find(
+      (item) => item.repeat === undefined && firstFieldId(item) === rowId,
+    );
 
     if (row !== undefined) return rowCells(row);
   }
@@ -558,8 +570,10 @@ export function plainRowIdOf(layout: TemplateLayout, fieldId: string): string | 
 
     if (repeatSectionId(section) !== null) continue;
 
-    const row = section.rows.find((item) =>
-      rowCells(item).some((candidate) => candidate.kind === 'field' && candidate.id === fieldId),
+    const row = section.rows.find(
+      (item) =>
+        item.repeat === undefined &&
+        rowCells(item).some((candidate) => candidate.kind === 'field' && candidate.id === fieldId),
     );
 
     if (row !== undefined) return firstFieldId(row);
@@ -768,21 +782,69 @@ function formulaTypeProblems(template: Template, templatePath: number[]): Preset
         if (candidate.kind !== 'dice') return;
         const parsed = parseFormula(candidate.formula);
 
-        const failure = parsed.isOk()
-          ? formulaTypeFailure(template, { ...place, rowIndex }, parsed.value, candidate.formula)
-          : null;
+        if (!parsed.isOk()) return;
 
-        if (failure !== null) {
-          problems.push({
-            failure,
-            path: [...templatePath, place.tabIndex, place.sectionIndex, rowIndex, cellIndex],
-          });
-        }
+        const from = { ...place, rowIndex };
+        const path = [...templatePath, place.tabIndex, place.sectionIndex, rowIndex, cellIndex];
+
+        problems.push(
+          ...unresolvedFormulaProblems(template, from, parsed.value, candidate.formula, path),
+        );
+
+        const failure = formulaTypeFailure(template, from, parsed.value, candidate.formula);
+
+        if (failure !== null) problems.push({ failure, path });
       });
     });
   });
 
   return problems;
+}
+
+function unresolvedFormulaProblems(
+  template: Template,
+  from: TemplateRowPlace,
+  tree: FormulaTree,
+  formula: string,
+  path: readonly number[],
+): PresetProblem[] {
+  const missing = new Set<string>();
+
+  const walk = (expression: FormulaExpression): void => {
+    if (expression.kind === 'field' || expression.kind === 'dice-field') {
+      if (resolveFieldReference(template, from, expression.id) === null) missing.add(expression.id);
+
+      return;
+    }
+
+    if (expression.kind === 'integer' || expression.kind === 'dice') return;
+
+    if (expression.kind === 'call') {
+      walk(expression.argument);
+
+      return;
+    }
+
+    walk(expression.left);
+    walk(expression.right);
+  };
+
+  if (tree.kind === 'comparison') {
+    walk(tree.left);
+    walk(tree.right);
+  } else {
+    walk(tree);
+  }
+
+  return [...missing].map((field) => ({
+    failure: {
+      code: 'unresolved-formula-field',
+      detail: short(formula),
+      field: short(field),
+      path,
+    },
+    path,
+  }));
 }
 
 function formulaTypeFailure(
@@ -867,10 +929,24 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
 
   const addRepeat = (
     repeatValue: { id: string; nameField: string },
-    parentPath: readonly string[],
+    parentRepeats: readonly RepeatLocation[],
     path: readonly number[],
-  ): string[] => {
-    const parentKey = parentPath.join(':');
+  ): RepeatLocation[] => {
+    const enclosing = parentRepeats.find((repeatScope) => repeatScope.id === repeatValue.id);
+
+    if (enclosing !== undefined) {
+      problems.push({
+        failure: {
+          code: 'shadowed-repeat-id',
+          detail: short(repeatValue.id),
+          path,
+          enclosingPath: enclosing.path,
+        },
+        path,
+      });
+    }
+
+    const parentKey = parentRepeats.map((repeatScope) => repeatScope.path.join('.')).join('/');
     const ids = repeatIdsByParent.get(parentKey) ?? new Set<string>();
 
     if (ids.has(repeatValue.id)) {
@@ -883,17 +959,17 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
     ids.add(repeatValue.id);
     repeatIdsByParent.set(parentKey, ids);
 
-    return [...parentPath, repeatValue.id];
+    return [...parentRepeats, { id: repeatValue.id, path }];
   };
 
   template.tabs.forEach((tab, ti) => {
     const tabScope = tab.repeat === undefined ? rootScope : newRepeatScope(rootScope);
-    let tabRepeatPath: readonly string[] = [];
+    let tabRepeatAncestors: readonly RepeatLocation[] = [];
 
     if (tab.repeat !== undefined) {
       if (!validRepeat(tab.repeat))
         problems.push({ failure: { code: 'bad-repeat' }, path: [...templatePath, ti] });
-      tabRepeatPath = addRepeat(tab.repeat, [], [...templatePath, ti]);
+      tabRepeatAncestors = addRepeat(tab.repeat, [], [...templatePath, ti]);
 
       if (!hasTextFieldInScope(tab, tab.repeat.nameField, true)) {
         problems.push({
@@ -909,12 +985,12 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
 
     tab.sections.forEach((section, si) => {
       const sectionPath = [...templatePath, ti, si];
-      let sectionRepeatPath = tabRepeatPath;
+      let sectionRepeatAncestors = tabRepeatAncestors;
 
       if (section.repeat !== undefined) {
         if (!validRepeat(section.repeat))
           problems.push({ failure: { code: 'bad-repeat' }, path: sectionPath });
-        sectionRepeatPath = addRepeat(section.repeat, tabRepeatPath, sectionPath);
+        sectionRepeatAncestors = addRepeat(section.repeat, tabRepeatAncestors, sectionPath);
       }
 
       const sectionScope = section.repeat === undefined ? tabScope : newRepeatScope(tabScope);
@@ -925,7 +1001,7 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
           problems.push({ failure: { code: 'bad-repeat' }, path: rowPath });
 
         if (item.repeat !== undefined) {
-          addRepeat(item.repeat, sectionRepeatPath, rowPath);
+          addRepeat(item.repeat, sectionRepeatAncestors, rowPath);
         }
 
         if (section.columns !== undefined && item.cells.length > section.columns)

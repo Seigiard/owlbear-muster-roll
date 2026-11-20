@@ -79,7 +79,7 @@ A titled block of a tab that holds rows.
 _Avoid_: group, panel
 
 **Repeat scope**:
-A template, tab, section or row marked with `repeat`, which can hold one block per instance. Its `id` identifies the scope and its `nameField` names each block.
+A template, tab, section or row marked with `repeat`, which can hold one block per instance. Its `id` identifies the scope and its `nameField` names each block. A repeat id is unique among scopes with the same parent and cannot match an enclosing repeat id.
 _Avoid_: repeating container, list scope
 
 **Repeat section**:
@@ -119,7 +119,7 @@ The name of a field. Values are kept under it, and formulas refer to the field b
 _Avoid_: key, name, variable
 
 **Scope**:
-  The set of fields in which a field id must be unique. Fields outside repeat scopes of one template form one scope; each repeat scope forms another. A field in a repeat scope cannot reuse an id from an enclosing repeat scope or the sheet scope. A formula resolves its own block first, then enclosing blocks, then the sheet scope.
+  The set of fields in which a field id must be unique. Fields outside repeat scopes of one template form one scope; each repeat scope forms another. A field in a repeat scope cannot reuse an id from an enclosing repeat scope or the sheet scope. A formula resolves its own block first, then enclosing blocks, then the sheet scope. The preset refuses a formula when any field id has no match in those scopes.
 _Avoid_: namespace, context
 
 **Dice cell**:
