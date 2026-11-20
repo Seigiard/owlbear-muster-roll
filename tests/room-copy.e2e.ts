@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { inflateSync, strFromU8 } from 'fflate';
+import { z } from 'zod';
 import type { JsonValue } from '@/core/json';
 import {
   connectionIdOf,
@@ -21,6 +22,14 @@ const METADATA_STORAGE_KEY = 'mock-metadata:mock-room';
 const NOT_SAVED = 'Копия в комнате не сохранена. Игра идёт дальше, но скачайте снимок.';
 const SETTINGS = 'Настройки';
 const ROOM_COPY = 'Копия в комнате';
+
+const copyRecordsSchema = z.object({
+  records: z.array(z.object({ k: z.string(), d: z.json() })),
+});
+
+const strengthRecordSchema = z.object({
+  cells: z.object({ str: z.tuple([z.number(), z.number(), z.string()]) }),
+});
 
 // A short pause, so a test sees the write; a long one, so only the hidden page writes.
 const QUICK: Partial<ClientParams> = { snapshotPauseMs: 100, snapshotJitterMs: 0 };
@@ -75,9 +84,10 @@ test('a GM writes the room copy after an edit, and a GM on a new device with no 
 }) => {
   // #given
   const a = await openClient(context, { client: 'a', device: 'a', ...QUICK }, RECORDS);
+  await expect.poll(() => roomCopyStrength(a.window)).toBe(14);
   await strength(a.window).fill('17');
   await strength(a.window).press('Tab');
-  await expect.poll(() => roomCopyRecordKeys(a.window)).toContain('blk:brok');
+  await expect.poll(() => roomCopyStrength(a.window)).toBe(17);
   await a.background.close({ runBeforeUnload: true });
   await a.window.close();
   // #when
@@ -180,8 +190,18 @@ async function metadataBytes(page: Page): Promise<number> {
   return new TextEncoder().encode(JSON.stringify(await readMetadata(page))).length;
 }
 
-// The record keys of the room copy, decoded by hand with fflate.
 async function roomCopyRecordKeys(page: Page): Promise<string[]> {
+  return (await roomCopyRecords(page)).map(({ k }) => k);
+}
+
+async function roomCopyStrength(page: Page): Promise<number | undefined> {
+  const block = (await roomCopyRecords(page)).find(({ k }) => k === 'blk:brok');
+
+  return strengthRecordSchema.safeParse(block?.d).data?.cells.str[0];
+}
+
+// Decode the metadata independently of the app's room-copy reader.
+async function roomCopyRecords(page: Page): Promise<z.infer<typeof copyRecordsSchema>['records']> {
   const value = (await readMetadata(page))[KEY];
 
   if (value === undefined) {
@@ -189,9 +209,8 @@ async function roomCopyRecordKeys(page: Page): Promise<string[]> {
   }
 
   const data = Buffer.from(String(Object(value).data), 'base64');
-  const content = JSON.parse(strFromU8(inflateSync(new Uint8Array(data))));
 
-  return Array.from(content.records, (one) => String(Object(one).k));
+  return copyRecordsSchema.parse(JSON.parse(strFromU8(inflateSync(new Uint8Array(data))))).records;
 }
 
 function kilobytes(bytes: number): string {
