@@ -552,7 +552,7 @@ test('a refused save returns the record value to the field', async ({ page, cont
   await expect(field(page, 'Сила')).toHaveValue('14');
 });
 
-test('a save the background finds too long returns the typed text with the message', async ({
+test('a save the background finds too long returns the typed text with the message and does not retry', async ({
   page,
   context,
 }) => {
@@ -566,9 +566,14 @@ test('a save the background finds too long returns the typed text with the messa
   const [sent] = await fieldPatches(page);
   // #when
   await postToWindow(page, { t: 'command-rejected', id: sent?.id ?? '', reason: 'too-large' });
-  // #then
   await expect(field(page, 'Заметки')).toHaveAccessibleDescription(TOO_LONG);
   await expect(field(page, 'Заметки')).toHaveValue('Длинный текст');
+  await page.clock.runFor(PAST_PAUSE_MS);
+  // #then
+  expect((await fieldPatches(page)).map(({ command }) => command)).toEqual([
+    { type: 'field-patch', fieldId: 'notes', value: 'Длинный текст' },
+  ]);
+  await expect(field(page, 'Заметки')).toHaveAccessibleDescription(TOO_LONG);
 });
 
 test('passing through a number field that holds a string or an exponent form changes nothing', async ({
