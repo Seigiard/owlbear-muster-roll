@@ -490,7 +490,17 @@ export function createComposers(connectionId: string): Composers {
       return Result.err('unknown-instance');
     }
 
-    return Result.ok([tombstone(context, current), ...blockLinkTombstones(context, command.block)]);
+    const descendants = [...context.records.values()].filter((record) => {
+      const address = parseBlockKey(record.k);
+
+      return record.d !== null && address !== null && isDescendantOf(address, command.block);
+    });
+
+    return Result.ok([
+      tombstone(context, current),
+      ...descendants.map((record) => tombstone(context, record)),
+      ...blockLinkTombstones(context, command.block),
+    ]);
   }
 
   // CAP-30: `count` new repeat blocks of the same sheet and section after its last one, at `c: 1`,
