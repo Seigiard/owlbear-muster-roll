@@ -116,7 +116,13 @@ export function StructureTree({
     getItems: (keys) => {
       const current = store.$state.get().step.document;
 
-      return [...keys].map((key) => ({ [dragTypeOf(current, String(key))]: String(key) }));
+      return [...keys].map((key) => {
+        const id = String(key);
+        // React Compiler 1.0 cannot lower a call as a computed object key.
+        const type = dragTypeOf(current, id);
+
+        return { [type]: id };
+      });
     },
     getDropOperation: (target, types) => {
       const kind = draggedKind(types);

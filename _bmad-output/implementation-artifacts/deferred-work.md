@@ -653,3 +653,9 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 ## Deferred from: TASK-131 (2026-11-20)
 
 - `tests/pending.e2e.ts:168-177` ("a player's edit shows at once, and "Ожидает" only after the delay"): `clock.runFor` advances every page of the context; if the edit command reaches the background only after the background's `runFor` finished, the spaced second send waits on a fake 50 ms timer that nothing advances, and the poll times out. Load-only race found in review, not observed (25 green runs, full suite green). Fix shape: advance the clock inside the polls (`runFor(TIMING.sendSpacingMs)` per poll), then advance only the rest of the inside-delay time before the zero-mark check.
+
+## Deferred from: TASK-134 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-134-compiler-structure-tree.md`
+  summary: Add a repository check that fails when the React Compiler bails out on a component, so a fixed bailout (TASK-133, TASK-134, TASK-135) cannot come back unnoticed.
+  evidence: The build does not report bailouts; the compiler probe (`@babel/core` 7 with `babel-plugin-react-compiler` and a `logger` that prints `CompileError` events) is a scratch script outside git. Blind Hunter on TASK-134 found that `StructureTree` returns to a silent bailout if a call comes back as a computed key, and no check would fail.
