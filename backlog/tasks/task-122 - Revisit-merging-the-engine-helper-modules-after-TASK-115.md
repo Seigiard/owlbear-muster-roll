@@ -4,6 +4,7 @@ title: Revisit merging the engine helper modules after TASK-115
 status: To Do
 assignee: []
 created_date: '2026-11-19T08:22:00Z'
+updated_date: '2026-11-20T06:15:00Z'
 labels:
   - architecture
   - replica
@@ -24,3 +25,9 @@ Architecture review 2026-11-18, candidate 2: `command-routing`, `room-protocol`,
 - [ ] #1 Every `*Ports` type in `src/replica` is measured at the TASK-115 epic tip and the numbers are in this task
 - [ ] #2 For each module with a fan wider than about 10 fields and one adapter, the owner has decided merge or keep, and ADR-0004 carries the decision
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Measured 2026-11-20 at 34131dc, after TASK-115 closed (all dependencies done). Fields per *Ports type in src/replica: RoomProtocolPorts 25, CommandRoutingPorts 24, GenerationFlowPorts 23, RollFlowPorts 17, CatchUpEffectsPorts 0 (type is not an object literal of fields). All four fans stay wider than the ~10-field threshold with one adapter each (startReplicaEngine), so all four are merge candidates for the AC#2 grilling. Task is unblocked.
+<!-- SECTION:NOTES:END -->
