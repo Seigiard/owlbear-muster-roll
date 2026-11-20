@@ -20,4 +20,5 @@ baseline_commit: '9f53a4917a78e0484be631b958afd0326d5638a0'
 ## Implementation Notes
 
 - The baseline Babel probe reports two `CompileError` events on `RepeatContent`. The same probe must emit `CompileSuccess` for `RepeatContent` and no `CompileError` for `src/ui/sheet/preset-section.tsx`.
-- Existing browser tests cover focus after add and delete in `tests/repeat-blocks.e2e.ts`, nested duplicate focus in `tests/nested-repeat.e2e.ts`, and duplicate form focus and Escape in `tests/duplicate.e2e.ts`.
+- `tests/repeat-blocks.e2e.ts` checks focus after add and delete. `tests/duplicate.e2e.ts` checks focus on open, after confirmation, and on Escape.
+- `tests/nested-repeat.e2e.ts` checks focus when opening a pre-existing duplicate through its token link. A separate test checks the name of a newly created duplicate.
