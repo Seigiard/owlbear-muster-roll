@@ -515,14 +515,21 @@ GmRevokes ==
   /\ UNCHANGED <<playerVars, gLive, gCell, committed, toGM, toP, ghostVars>>
   /\ UNCHANGED <<gmEdits, gmFlips, catchUps, losses>>
 
-\* The GM client leaves `live` (catch-up) or comes back. It keeps its memory, as
-\* room-protocol.ts does; a closed tab (`stop`) and a reload are left out.
-GmFlips ==
+\* GmFlips models an interruption with memory intact. GmReload also clears the
+\* in-memory committed-proposal history and transient outbox/queue, while saved
+\* records remain. Flush, startup and persistence failures are outside the model.
+GmChanges(reload) ==
   /\ gmFlips < MaxGmFlips
   /\ gmFlips' = gmFlips + 1
   /\ gLive' = ~gLive
-  /\ UNCHANGED <<playerVars, gCell, gAllowed, outbox, gQueue, committed, toGM, toP, ghostVars>>
+  /\ IF reload /\ gLive
+       THEN /\ outbox' = NoOutbox /\ gQueue' = <<>> /\ committed' = {}
+       ELSE UNCHANGED <<outbox, gQueue, committed>>
+  /\ UNCHANGED <<playerVars, gCell, gAllowed, toGM, toP, ghostVars>>
   /\ UNCHANGED <<gmEdits, revokes, catchUps, losses>>
+
+GmFlips == GmChanges(FALSE)
+GmReload == GmChanges(TRUE)
 
 \* send-queue.ts drain takes the oldest item. The outbox's slot composes its commit now
 \* (commit-outbox.ts take), with what is held at this moment.
