@@ -99,7 +99,7 @@ const PRESET: Preset = {
           title: 'Заметки мастера',
           visibility: 'gm',
           sections: [
-            { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'secret' }] }] },
+            { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'sheet_secret' }] }] },
             {
               repeat: { id: 'secret_item', nameField: 'secret_item' },
               rows: [{ cells: [{ kind: 'field', type: 'text', id: 'secret_item' }] }],
@@ -389,7 +389,7 @@ describe('a GM client answers a proposal', () => {
       'a row field on a hidden tab of a visible sheet with access',
       {
         k: 'blk:brok',
-        d: { order: 0, cells: { secret: ['Лич', 1, S] } },
+        d: { order: 0, cells: { sheet_secret: ['Лич', 1, S] } },
         c: 1,
         a: S,
         l: [1, 'seed'],
@@ -969,7 +969,7 @@ describe('a GM client answers a proposal', () => {
     const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const edit = fixturePatch(STR_ROW, { str: 11 }, 3, PLAYER_SOCKET);
-    const forbidden = fixturePatch(STR_ROW, { secret: 'Лич' }, edit.c, edit.a);
+    const forbidden = fixturePatch(STR_ROW, { sheet_secret: 'Лич' }, edit.c, edit.a);
     const control = fixturePatch(SWORD, { qty: 2 }, 2, PLAYER_SOCKET);
     const acceptedControl = fixturePatch(SWORD, { item: 'Меч', qty: 2 }, 2, PLAYER_SOCKET);
     joinPlayerSocket(room);

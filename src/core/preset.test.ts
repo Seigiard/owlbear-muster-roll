@@ -2171,8 +2171,8 @@ describe('presetProblems', () => {
           ],
         },
         {
-          repeat: { id: 'd20', nameField: 'name' },
-          rows: [{ cells: [LABEL, TEXT_FIELD('name')] }],
+          repeat: { id: 'd20', nameField: 'repeat_name' },
+          rows: [{ cells: [LABEL, TEXT_FIELD('repeat_name')] }],
         },
       ]),
       setOf('pc', [{ rows: [{ cells: [NUMBER_FIELD('name')] }] }], 'nope'),
