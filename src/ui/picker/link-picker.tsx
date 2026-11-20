@@ -558,22 +558,17 @@ export function TokenCellPicker({
         }),
       );
 
-      if (!outcomes.every((outcome) => outcome.kind === 'answered')) {
-        setFailed(true);
-
-        return;
-      }
-
-      try {
+      if (outcomes.every((outcome) => outcome.kind === 'answered')) {
         await onLinked();
-      } catch {
+      } else {
         setFailed(true);
       }
     } catch {
       setFailed(true);
-    } finally {
-      setBusy(false);
     }
+
+    // No `finally`: React Compiler 1.0 cannot lower it, and the catch above swallows every failure.
+    setBusy(false);
   }
 
   return (
