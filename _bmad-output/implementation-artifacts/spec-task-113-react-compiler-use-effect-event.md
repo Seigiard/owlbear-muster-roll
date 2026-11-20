@@ -79,7 +79,7 @@ context:
 - Built through `implement`/`tdd` (run dir `~/.claude/artifacts/tdd-20261120-042349/task-113-react-compiler-use-effect-event/`). Babel 7, not 8: with Babel 8 the compiler bails out on every destructuring default.
 - `stateRef` stays (spec Decision). `latest` is gone. The pause timer is armed by an effect on the draft, only for drafts typed in `onChange` (`Draft.typed`), so a too-large refusal is not re-sent.
 - The reveal effect in `sheet-body.tsx` keeps `onRevealed` as a dependency: moving it to an effect event lost the token-cell focus (`tests/open.e2e.ts:253`).
-- Remaining compiler bailouts and the `tests/open.e2e.ts:253` load flake are in `deferred-work.md`.
+- Remaining compiler bailouts are in `deferred-work.md`. The `tests/open.e2e.ts:253` focus flake came from react-aria's 80 ms fallback click on the sidebar entry; the test now waits for it.
 
 ## Spec Change Log
 
