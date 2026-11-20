@@ -232,6 +232,8 @@ export function BuilderPage({
     if (!samePreset) {
       store.open(next.preset, next.origin, next.name);
       dispatchFiles({ type: 'detach', kind: 'snapshot' });
+    } else if (next.origin !== null) {
+      store.adoptOrigin(next.origin);
     }
 
     if (next.fileName === null) {

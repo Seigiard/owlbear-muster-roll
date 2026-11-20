@@ -124,6 +124,36 @@ describe('targetFields', () => {
     // #then
     expect(targetFields(TEMPLATE, repeatTarget(['range', 'i1']))).toBeNull();
   });
+  test('lists the root row fields when an earlier repeat section nests a row of the same id', () => {
+    // #given
+    const name: PresetFieldCell = { kind: 'field', type: 'text', id: 'attack_name' };
+    const dmg: PresetFieldCell = { kind: 'field', type: 'number', id: 'dmg' };
+    const hit: PresetFieldCell = { kind: 'field', type: 'number', id: 'hit' };
+    const attack = { id: 'attack', nameField: 'attack_name' };
+
+    const layout: TemplateLayout = {
+      tabs: [
+        {
+          sections: [
+            {
+              repeat: { id: 'npc', nameField: 'npc_name' },
+              rows: [
+                { cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] },
+                { repeat: attack, cells: [name, hit] },
+              ],
+            },
+            { rows: [{ repeat: attack, cells: [name, dmg] }] },
+          ],
+        },
+      ],
+    };
+
+    // #when
+    const fields = targetFields(layout, repeatTarget(['attack', 'i1']));
+
+    // #then
+    expect(fields).toEqual([name, dmg]);
+  });
 });
 
 describe('acceptedFieldValue', () => {

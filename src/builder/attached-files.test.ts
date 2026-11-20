@@ -13,7 +13,7 @@ import {
 } from '../../tests/support/file-access';
 import { BuilderPage } from './builder-page';
 import { createBuilderStore, type BuilderStore } from './builder-store';
-import { toPreset, uidAt, updateTemplate } from './document';
+import { toPreset, uidAt, updateSection, updateTemplate, withRepeat } from './document';
 import { builderProblems } from './problems';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -23,6 +23,7 @@ const DISK_PRESET = createCrewPreset('С диска');
 const LATER_DISK_PRESET = createCrewPreset('Поздняя версия с диска');
 const LOCAL_PRESET = createCrewPreset('Моя версия');
 const NEWER_LOCAL_PRESET = createCrewPreset('Новая версия');
+const REPEAT_CREW_PRESET = createRepeatCrewPreset();
 
 const SNAPSHOT_TEXT = JSON.stringify({
   v: 4,
@@ -1054,6 +1055,38 @@ describe('attached Builder files', () => {
       secondPresetIsFollowed: true,
     });
   });
+  test.each([
+    ['changes its id', 'id'],
+    ['turns repeat off', 'off'],
+  ] as const)(
+    'opening the identical file of an origin-less draft warns when a loaded repeat %s',
+    async (_name, edit) => {
+      // #given
+      const access = new TestFileAccessFake();
+      const file = access.addFile('preset', 'crew.json', JSON.stringify(REPEAT_CREW_PRESET));
+      const store = createBuilderStore(memoryStorage());
+      store.open(REPEAT_CREW_PRESET, null, 'crew');
+      store.setSnapshot(snapshotRecords(SNAPSHOT_TEXT));
+      const recordsBefore = store.$state.get().step.records;
+      await mount(store, access);
+      // #when
+      await openAttachedFile(access, file, 'Пресет');
+
+      const afterOpen = {
+        origin: store.$state.get().step.origin,
+        recordsPreserved: store.$state.get().step.records === recordsBefore,
+        snapshotValue: previewValue('Сила'),
+      };
+
+      editSectionRepeat(store, [0, 0, 2], edit);
+      await settle();
+      // #then
+      expect({ afterOpen, warnings: repeatWarnings() }).toEqual({
+        afterOpen: { origin: REPEAT_CREW_PRESET, recordsPreserved: true, snapshotValue: '12' },
+        warnings: ['Блоки «attacks» в комнате будут стёрты при загрузке пресета.'],
+      });
+    },
+  );
   test('keeps open and download without write or follow claims in an unsupported browser', async () => {
     // #given
     const access = new TestFileAccessFake('open-only');
@@ -1128,6 +1161,43 @@ function createCrewPreset(title = 'Экипаж'): Preset {
                     ],
                   },
                 ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function createRepeatCrewPreset(): Preset {
+  const crew = createCrewPreset();
+  const template = crew.templates[0];
+  const tab = template?.tabs[0];
+
+  if (template === undefined || tab === undefined) {
+    throw new Error('The crew preset fixture has no tab');
+  }
+
+  return {
+    ...crew,
+    templates: [
+      {
+        ...template,
+        tabs: [
+          {
+            ...tab,
+            sections: [
+              ...tab.sections,
+              {
+                title: 'Заметки',
+                repeat: { id: 'notes', nameField: 'note' },
+                rows: [{ cells: [{ kind: 'field', type: 'text', id: 'note' }] }],
+              },
+              {
+                title: 'Атаки',
+                repeat: { id: 'attacks', nameField: 'attack' },
+                rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack' }] }],
               },
             ],
           },
@@ -1445,6 +1515,36 @@ function editTemplateId(store: BuilderStore, id: string): void {
     store.edit((document) =>
       updateTemplate(document, templateUid, (template) => ({ ...template, id })),
     );
+  });
+}
+
+function editSectionRepeat(store: BuilderStore, path: readonly number[], edit: 'id' | 'off'): void {
+  const sectionUid = uidAt(store.$state.get().step.document, path);
+
+  if (sectionUid === null) {
+    throw new Error('The preset fixture has no section there');
+  }
+
+  act(() => {
+    store.edit((document) =>
+      updateSection(document, sectionUid, (section) => {
+        if (section.repeat === undefined) {
+          throw new Error('The preset fixture has no repeat section there');
+        }
+
+        return edit === 'off'
+          ? withRepeat(section, false)
+          : { ...section, repeat: { ...section.repeat, id: 'moves' } };
+      }),
+    );
+  });
+}
+
+function repeatWarnings(): string[] {
+  return [...document.querySelectorAll<HTMLElement>('[aria-live]')].flatMap((region) => {
+    const message = region.textContent?.trim() ?? '';
+
+    return message.startsWith('Блоки') ? [message] : [];
   });
 }
 
