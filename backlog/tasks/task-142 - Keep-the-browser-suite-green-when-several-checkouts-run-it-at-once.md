@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@seigiard'
 created_date: '2026-11-20T06:52:00Z'
-updated_date: '2026-11-20T15:11:00Z'
+updated_date: '2026-11-20T15:12:00Z'
 labels:
   - flaky-test
 dependencies: []
@@ -60,4 +60,6 @@ The documented --last-failed command selected exactly one red player test, passe
 Full runs with one worker per checkout: a mixed-load run at 7711fd3c942fd9c2374cd9c7350ca014aae2b0cd overlapped up to ten more sibling workers. Two checkouts passed 588/588; one passed 587/588, timing out on the Builder clear-preset menu at tests/builder.e2e.ts:542. The exact test passed on the focused retry. At 08f15404296c961273967f5900962a60baec0a46 two controlled rounds each had two green checkouts (589/589) and one red (588/589). The red cases were tests/snapshot.e2e.ts:458 (confirmation did not reopen after another GM window changed the preset) and tests/room-copy.e2e.ts:73 (the next GM device loaded value 14 instead of 17). Those files passed 13/13 and 4/4 when run separately at the same revision. The corrected TASK-139 test passed all its focused comparison repeats and all nine capped full runs. The two newly observed red cases are outside the approved one-GM, one-window scope. Leave AC #2 open; do not turn either red run green with a focused retry.
 
 Non-browser local checks at 08f15404296c961273967f5900962a60baec0a46 passed: full format, lint (354 warnings and no errors), typecheck, Bun unit tests (3672 pass, one skip, no failures), mutation tests (55 killed), and build. No retry, timeout, Vite flag, app code, or formal-model changes are included in the TASK-142 diff.
+
+Open hypotheses, not fixes: snapshot.e2e.ts:458 waits for the second window’s preset confirmation to close, but does not wait for the updated preset to reach the first window before confirming the import. That can let the old confirmation proceed instead of reopening with the new count. room-copy.e2e.ts:73 waits for blk:brok to exist in the room copy. The key exists with the original value 14, so the wait does not prove that 17 was copied before the first device closes. Neither mechanism was confirmed with a failing trace. The orchestrator approved shipping the two proven fixes separately. Keep TASK-142 in progress and AC #2 unchecked.
 <!-- SECTION:NOTES:END -->
