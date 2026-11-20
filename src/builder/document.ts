@@ -1,6 +1,6 @@
 import { suggestFieldId, suggestTemplateId } from '@/core/field-id-suggest';
 import { PRESET_FORMAT_VERSION as FORMAT_VERSION } from '@/core/format-version';
-import { relatedScopeFieldIds, renameFieldId } from '@/core/formula-rename';
+import { renameFieldId } from '@/core/formula-rename';
 import type {
   Preset,
   PresetCell,
@@ -419,6 +419,64 @@ export function scopeFieldIds(
   return new Set(sections.flatMap((section) => sectionFieldIds(section, except)));
 }
 
+type RelatedScopeField = { id: string; scope: string };
+
+function relatedScopeFields(
+  template: DocTemplate,
+  spot: SectionSpot,
+  row: DocRow,
+): RelatedScopeField[] {
+  const ownRepeatPath = physicalRepeatPath(template, spot, row);
+  const related: RelatedScopeField[] = [];
+
+  template.tabs.forEach((tab, tabIndex) => {
+    tab.sections.forEach((section, sectionIndex) => {
+      section.rows.forEach((candidateRow) => {
+        const candidatePath = physicalRepeatPath(
+          template,
+          { tab: tabIndex, section: sectionIndex },
+          candidateRow,
+        );
+
+        const overlaps =
+          candidatePath.every((part, index) => ownRepeatPath[index] === part) ||
+          ownRepeatPath.every((part, index) => candidatePath[index] === part);
+
+        if (!overlaps) return;
+
+        const scope =
+          candidateRow.repeat?.id ??
+          (section.repeat === undefined
+            ? tab.repeat === undefined
+              ? section.title?.trim() || tab.title?.trim() || template.title
+              : tab.title?.trim() || tab.repeat.id
+            : section.title?.trim() || section.repeat.id);
+
+        candidateRow.cells.forEach((cell) => {
+          if (cell.kind === 'field') related.push({ id: cell.id, scope });
+        });
+      });
+    });
+  });
+
+  return related;
+}
+
+function physicalRepeatPath(
+  template: DocTemplate,
+  spot: SectionSpot,
+  row: DocRow,
+): (number | string)[] {
+  const tab = template.tabs[spot.tab];
+  const section = sectionOf(template, spot);
+
+  return [
+    ...(tab?.repeat === undefined ? [] : [spot.tab]),
+    ...(section?.repeat === undefined ? [] : [spot.tab, spot.section]),
+    ...(row.repeat === undefined ? [] : [spot.tab, spot.section, row.uid]),
+  ];
+}
+
 // The ids that share a scope with a token cell. Token and repeat ids are not formula fields, but
 // they still need distinct suggestions in the builder.
 export function scopeIds(template: DocTemplate, spot: SectionSpot): Set<string> {
@@ -591,11 +649,7 @@ export function addCell(
       type: 'number',
       id: suggestFieldId(
         text,
-        relatedScopeFieldIds(templateToPreset(template), {
-          tabIndex: path.tab,
-          sectionIndex: path.section,
-          rowIndex: path.row,
-        }),
+        new Set(relatedScopeFields(template, path, row).map(({ id }) => id)),
       ),
       uid,
     };
@@ -968,6 +1022,23 @@ export function renameField(
   const next = mapTemplate(document, template.uid, () => withContent(template, renamed.template));
 
   return next === null ? null : { document: next, changed: uid, formulas: renamed.formulas };
+}
+
+export function relatedScopeFieldConflict(
+  document: BuilderDocument,
+  uid: string,
+  id: string,
+): string | null {
+  const path = locate(document, uid);
+
+  if (path?.kind !== 'cell') return null;
+
+  const template = document.templates[path.template];
+  const row = sectionOf(template, path)?.rows[path.row];
+
+  if (template === undefined || row === undefined) return null;
+
+  return relatedScopeFields(template, path, row).find((field) => field.id === id)?.scope ?? null;
 }
 
 // The preset template's content in the document template, which has the same items in the same

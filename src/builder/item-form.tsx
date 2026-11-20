@@ -3,6 +3,7 @@ import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { fieldFormulaCount } from '@/core/formula-rename';
+import { isFieldId } from '@/core/field-id';
 import { DEFAULT_WINDOW_SIZE, type Preset, type PresetSection } from '@/core/preset';
 import { isSheetSet } from '@/core/sheets';
 import { copy } from '@/copy';
@@ -12,6 +13,7 @@ import type { BuilderStore } from './builder-store';
 import {
   formulaFieldIds,
   locate,
+  relatedScopeFieldConflict,
   nameFieldCandidates,
   PRESET_UID,
   repeatIdsAt,
@@ -922,6 +924,13 @@ function CellForm({ store, template, cell, path }: CellFormProps): ReactNode {
         label={form.fieldId}
         id={cell.id}
         hint={form.fieldUses(uses)}
+        validate={(next) => {
+          if (!isFieldId(next)) return null;
+
+          const scope = relatedScopeFieldConflict(store.$state.get().step.document, uid, next);
+
+          return scope === null ? null : copy.builder.fieldIdTaken(next, scope);
+        }}
         onCommit={(next) => {
           const renamed = renameField(store.$state.get().step.document, uid, next);
 
@@ -1031,19 +1040,21 @@ type IdInputProps = {
   label: string;
   id: string;
   hint: string | null;
+  validate?: (next: string) => string | null;
   // Applies the new id and returns the messages to show under the input.
   onCommit: (next: string) => readonly string[];
 };
 
 // AD-24: an id commits on `Enter` or when the focus leaves, as one rename. `Esc` returns the input
 // to the current id.
-function IdInput({ label, id, hint, onCommit }: IdInputProps): ReactNode {
+function IdInput({ label, id, hint, validate, onCommit }: IdInputProps): ReactNode {
   const inputId = useId();
   const hintId = useId();
   const messagesId = useId();
   const [text, setText] = useState(id);
   const [shownId, setShownId] = useState(id);
   const [messages, setMessages] = useState<readonly string[]>([]);
+  const [rejected, setRejected] = useState(false);
 
   // Undo, redo and the rename itself change the id under the input.
   if (shownId !== id) {
@@ -1053,7 +1064,17 @@ function IdInput({ label, id, hint, onCommit }: IdInputProps): ReactNode {
 
   function commit(): void {
     if (text !== id) {
+      const error = validate?.(text);
+
+      if (error !== null && error !== undefined) {
+        setMessages([error]);
+        setRejected(true);
+
+        return;
+      }
+
       setMessages(onCommit(text));
+      setRejected(false);
     }
   }
 
@@ -1071,9 +1092,15 @@ function IdInput({ label, id, hint, onCommit }: IdInputProps): ReactNode {
           .filter((part) => part !== null)
           .join(' ')}
         className={clsx(INPUT_CLASS, 'font-[ui-monospace,monospace]')}
+        aria-invalid={rejected || undefined}
         value={text}
         onChange={(event) => {
           setText(event.target.value);
+
+          if (event.target.value === id) {
+            setMessages([]);
+            setRejected(false);
+          }
         }}
         onKeyDown={(event) => {
           if (event.nativeEvent.isComposing || event.keyCode === 229) {
@@ -1086,6 +1113,8 @@ function IdInput({ label, id, hint, onCommit }: IdInputProps): ReactNode {
           } else if (event.key === 'Escape') {
             event.preventDefault();
             setText(id);
+            setMessages([]);
+            setRejected(false);
           }
         }}
         onBlur={commit}
@@ -1097,7 +1126,9 @@ function IdInput({ label, id, hint, onCommit }: IdInputProps): ReactNode {
       )}
       <div id={messagesId} aria-live="polite" className="flex flex-col gap-1" data-builder-rename>
         {messages.map((message) => (
-          <p key={message}>{message}</p>
+          <p key={message} className={clsx(rejected && 'text-danger-text')}>
+            {message}
+          </p>
         ))}
       </div>
     </div>
