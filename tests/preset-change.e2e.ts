@@ -91,9 +91,9 @@ const BEFORE = presetText([
 ]);
 
 // "Сила" is "Мощь" now with the same id, "Мудрость" is new, and "Ловкость" and "Усталость" go. The
-// dice still names `dex`.
+// formula reads the new field, which has no stored value.
 const REMOVES_TWO = presetText([
-  labelled('Мощь', number('str'), { kind: 'dice', formula: '1d1 + dex' }),
+  labelled('Мощь', number('str'), { kind: 'dice', formula: '1d1 + wis' }),
   labelled('Мудрость', number('wis')),
 ]);
 
@@ -274,7 +274,7 @@ test('a confirmed upload erases the removed values on every client, keeps rename
   });
 });
 
-test('a roll whose formula names a removed field shows the bad formula message and sends nothing', async ({
+test('a roll that reads a new empty field shows its label in the error and sends nothing', async ({
   context,
 }) => {
   // #given
@@ -288,7 +288,7 @@ test('a roll whose formula names a removed field shows the bad formula message a
   await diceButton(gm.window, 'Мощь').click();
   // #then
   await expect(messageUnder(gm.window, 'Мощь')).toHaveText(
-    'Нельзя бросить: поле «dex» пустое или не число',
+    'Нельзя бросить: поле «Мудрость» пустое или не число',
   );
   expect(await shownNotifications(gm)).toEqual([]);
 });
