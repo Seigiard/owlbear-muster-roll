@@ -366,7 +366,7 @@ function parseDraft(text: string, blank: BuilderStep): BuilderStep {
   const origin = draft.data.origin === null ? null : parsePresetStructure(draft.data.origin);
 
   return {
-    document: restoreOriginRepeatIds(fromPreset(preset), draft.data.originRepeatIds ?? []),
+    document: restoreOriginRepeatIds(fromPreset(preset), draft.data.originRepeatIds),
     origin,
     name: draft.data.name,
     records: draft.data.records ?? [],

@@ -695,3 +695,9 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 
 - `tests/room-copy.e2e.ts:73` ("a GM writes the room copy after an edit, and a GM on a new device with no other GM loads from it") failed once in a full `bun run test:browser` run on the `compiler-bailouts` branch: the new-device GM showed "Сила" 14 instead of 17. It passed 15/15 under `--repeat-each` and in the next full run (587/587); `origin/master` passed its one full run. The branch does not touch the room copy or the sheet window. Cause not established; a load-only race is likely.
 - One full `bun run test:browser` run was void: the Vite dev server died with the V8 message `abort: Lazy deopt after a fast API call with return value is unsupported` while serving `react-aria-components.js`, and every later test failed within about 200 ms. A Node or V8 defect on this machine, not a test failure; watch for a repeat.
+
+## Deferred from: TASK-111 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-111-legacy-repeat-warning.md`
+  summary: Prevent the local browser test server from aborting under Node 26 (TASK-144).
+  evidence: Node v26.13.1 aborted in `Buffer.byteLength` with `Lazy deopt after a fast API call with return value is unsupported` while Vite served a dependency. Playwright recorded 265 passes before the abort and 322 connection failures afterward.
