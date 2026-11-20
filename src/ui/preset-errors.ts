@@ -64,8 +64,20 @@ export function badFileReason(failure: Exclude<PresetFailure, { code: 'newer-ver
     case 'shadowed-field-id':
       return reason.shadowedFieldId(
         failure.field,
-        presetCellLocation(failure.path),
-        presetCellLocation(failure.enclosingPath),
+        presetLocation(failure.path),
+        presetLocation(failure.enclosingPath),
+      );
+    case 'shadowed-repeat-id':
+      return reason.shadowedRepeatId(
+        failure.detail,
+        presetLocation(failure.path),
+        presetLocation(failure.enclosingPath),
+      );
+    case 'unresolved-formula-field':
+      return reason.unresolvedFormulaField(
+        failure.detail,
+        failure.field,
+        presetLocation(failure.path),
       );
     case 'bad-repeat':
       return reason.badRepeat;
@@ -98,10 +110,19 @@ export function badFileReason(failure: Exclude<PresetFailure, { code: 'newer-ver
   }
 }
 
-function presetCellLocation(path: readonly number[]): string {
+function presetLocation(path: readonly number[]): string {
   const [template, tab, section, row, cell] = path;
+  let location = `templates[${template}]`;
 
-  return `templates[${template}].tabs[${tab}].sections[${section}].rows[${row}].cells[${cell}]`;
+  if (tab !== undefined) location += `.tabs[${tab}]`;
+
+  if (section !== undefined) location += `.sections[${section}]`;
+
+  if (row !== undefined) location += `.rows[${row}]`;
+
+  if (cell !== undefined) location += `.cells[${cell}]`;
+
+  return location;
 }
 
 // `tsc` fails here when a failure code has no reason above.

@@ -522,6 +522,9 @@ function TabForm({
             label={form.id}
             id={tab.repeat.id}
             hint={null}
+            validate={(next) =>
+              repeatIdsAt(template, path).has(next) ? copy.builder.repeatIdTaken(next) : null
+            }
             onCommit={(id) => {
               update((current) =>
                 current.repeat === undefined
@@ -651,6 +654,9 @@ function SectionForm({
             label={form.id}
             id={section.repeat.id}
             hint={null}
+            validate={(next) =>
+              repeatIdsAt(template, path).has(next) ? copy.builder.repeatIdTaken(next) : null
+            }
             onCommit={(id) => {
               update((current) =>
                 current.repeat === undefined
@@ -738,6 +744,9 @@ function RowForm({
             label={form.id}
             id={row.repeat.id}
             hint={null}
+            validate={(next) =>
+              repeatIdsAt(template, path).has(next) ? copy.builder.repeatIdTaken(next) : null
+            }
             onCommit={(id) => {
               update((current) =>
                 current.repeat === undefined

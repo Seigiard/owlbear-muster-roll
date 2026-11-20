@@ -762,6 +762,8 @@ export function nameFieldCandidates(template: DocTemplate): string[] {
 
 export type RepeatItemPath = Extract<ItemPath, { kind: 'template' | 'tab' | 'section' | 'row' }>;
 
+type ScopedRepeatItemPath = Exclude<RepeatItemPath, { kind: 'template' }>;
+
 export function repeatNameFieldCandidates(template: DocTemplate, path: RepeatItemPath): string[] {
   if (path.kind === 'template') {
     return template.tabs
@@ -797,25 +799,40 @@ export function repeatNameFieldCandidates(template: DocTemplate, path: RepeatIte
 export function repeatIdsAt(template: DocTemplate, path: RepeatItemPath): Set<string> {
   if (path.kind === 'template') return new Set();
 
-  const parentPath = repeatParentPath(template, path);
   const taken = new Set<string>();
+  const targetPath = indexPath(path);
+  const targetParent = repeatParentPath(template, path);
 
-  const add = (id: string, ownerPath: readonly string[]): void => {
-    if (samePath(ownerPath, parentPath)) taken.add(id);
+  const add = (id: string, ownerPath: readonly number[], ownerParent: readonly number[]): void => {
+    if (sameIndexPath(ownerPath, targetPath)) return;
+
+    if (
+      sameIndexPath(ownerParent, targetParent) ||
+      isStrictIndexPrefix(ownerPath, targetPath) ||
+      isStrictIndexPrefix(targetPath, ownerPath)
+    ) {
+      taken.add(id);
+    }
   };
 
-  for (const tab of template.tabs) {
-    if (tab.repeat !== undefined) add(tab.repeat.id, []);
+  const templatePath = [path.template] as const;
 
-    const tabPath = tab.repeat === undefined ? [] : [tab.repeat.id];
+  for (const [tabIndex, tab] of template.tabs.entries()) {
+    const tabPath = [...templatePath, tabIndex];
 
-    for (const section of tab.sections) {
-      if (section.repeat !== undefined) add(section.repeat.id, tabPath);
+    if (tab.repeat !== undefined) add(tab.repeat.id, tabPath, templatePath);
 
-      const sectionPath = section.repeat === undefined ? tabPath : [...tabPath, section.repeat.id];
+    const tabScope = tab.repeat === undefined ? templatePath : tabPath;
 
-      for (const row of section.rows) {
-        if (row.repeat !== undefined) add(row.repeat.id, sectionPath);
+    for (const [sectionIndex, section] of tab.sections.entries()) {
+      const sectionPath = [...tabPath, sectionIndex];
+
+      if (section.repeat !== undefined) add(section.repeat.id, sectionPath, tabScope);
+
+      const sectionScope = section.repeat === undefined ? tabScope : sectionPath;
+
+      for (const [rowIndex, row] of section.rows.entries()) {
+        if (row.repeat !== undefined) add(row.repeat.id, [...sectionPath, rowIndex], sectionScope);
       }
     }
   }
@@ -823,24 +840,30 @@ export function repeatIdsAt(template: DocTemplate, path: RepeatItemPath): Set<st
   return taken;
 }
 
-function repeatParentPath(
-  template: DocTemplate,
-  path: Exclude<RepeatItemPath, { kind: 'template' }>,
-): string[] {
-  if (path.kind === 'tab') return [];
+function repeatParentPath(template: DocTemplate, path: ScopedRepeatItemPath): readonly number[] {
+  const templatePath = [path.template];
+
+  if (path.kind === 'tab') return templatePath;
 
   const tab = template.tabs[path.tab];
-  const tabPath = tab?.repeat === undefined ? [] : [tab.repeat.id];
+  const tabPath = [...templatePath, path.tab];
 
-  if (path.kind === 'section') return tabPath;
+  if (path.kind === 'section') return tab?.repeat === undefined ? templatePath : tabPath;
 
   const section = tab?.sections[path.section];
+  const sectionPath = [...tabPath, path.section];
 
-  return section?.repeat === undefined ? tabPath : [...tabPath, section.repeat.id];
+  if (section?.repeat !== undefined) return sectionPath;
+
+  return tab?.repeat === undefined ? templatePath : tabPath;
 }
 
-function samePath(left: readonly string[], right: readonly string[]): boolean {
+function sameIndexPath(left: readonly number[], right: readonly number[]): boolean {
   return left.length === right.length && left.every((part, index) => part === right[index]);
+}
+
+function isStrictIndexPrefix(prefix: readonly number[], path: readonly number[]): boolean {
+  return prefix.length < path.length && prefix.every((part, index) => part === path[index]);
 }
 
 function sectionNameFieldIds(section: DocSection): string[] {

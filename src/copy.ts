@@ -156,8 +156,12 @@ export const copy = {
     duplicateFieldId: (id: string): string => `поле «${id}» повторяется`,
     shadowedFieldId: (id: string, inner: string, enclosing: string): string =>
       `поле «${id}» повторяется во вложенной области: ${inner} и ${enclosing}`,
+    shadowedRepeatId: (id: string, inner: string, enclosing: string): string =>
+      `повторяемая область «${id}» вложена в область с тем же id: ${inner} и ${enclosing}`,
     badRepeat: 'в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем',
     duplicateSection: (id: string): string => `две повторяемые секции с id «${id}»`,
+    unresolvedFormulaField: (formula: string, field: string, place: string): string =>
+      `в формуле «${formula}» нет доступного поля «${field}» (${place})`,
     rowTooWide: 'в строке больше ячеек, чем колонок',
     badFormula: (formula: string): string => `ошибка в формуле «${formula}»`,
     badWindow: (width: WindowRange, height: WindowRange): string =>
@@ -298,6 +302,8 @@ export const copy = {
     formulasChanged: (n: number): string => `Формулы изменены: ${n}.`,
     fieldIdTaken: (id: string, scope: string): string =>
       `Id «${id}» уже используется в области «${scope}».`,
+    repeatIdTaken: (id: string): string =>
+      `Id «${id}» уже используется в связанной повторяемой области.`,
     repeatBlocksErased: (id: string): string =>
       `Блоки «${id}» в комнате будут стёрты при загрузке пресета.`,
     repeatWarningsUnavailable:

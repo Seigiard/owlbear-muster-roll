@@ -59,7 +59,7 @@ A template is the root of a sheet. Its interface words stay: a template with `re
 | Section | Blocks stacked inside the section | Anyone with write access to the sheet (CAP-5) |
 | Row | Blocks stacked, each one row | Anyone with write access to the sheet (CAP-5) |
 
-- `repeat.id` is the scope's stable name; `repeat.nameField` names a `text` field inside the scope whose value names each block: in the tab title, in token labels, in rolls and in the duplicate's number. The first-field rule of version 3 is gone.
+- `repeat.id` is the scope's stable name; it is unique among repeat scopes with the same parent and cannot match an enclosing repeat id. `repeat.nameField` names a `text` field inside the scope whose value names each block: in the tab title, in token labels, in rolls and in the duplicate's number. The first-field rule of version 3 is gone.
 - A repeat scope may sit inside another repeat scope. Each block then has its own nested blocks: a repeat tab «Персонаж» with a repeat section «Атаки» gives every NPC its own attacks (CAP-42).
 - A block is addressed by the sheet and a path of `(scope id, block id)` pairs. A record and a link name a block by that path.
 - Ids resolve inside the block first, then in each enclosing block, then in the sheet across all its tabs. Fields outside every repeat scope of a template are one scope across its tabs.
@@ -159,12 +159,13 @@ Example: `1d20 <= str - 2*str_tired`.
 - A formula refers to fields by field id. An id resolves in the dice cell's block, then each enclosing block, then the sheet.
 - A check counts as 0 or 1.
 - Formulas support `floor`, `ceil` and roll-under.
-- A formula with an empty, non-numeric or removed field shows an error and does not roll.
+- A formula with an empty or non-numeric field shows an error and does not roll.
 - A preset with a formula syntax error, an unknown function or a dice term outside 1 to 100 dice and 1 to 1000 sides is refused at upload.
 - A dice cell's label is its cell name, otherwise the nearest preceding label in its row, otherwise its formula.
 - A formula holds integer literals, field ids, `+ - * /`, parentheses, `floor()`, `ceil()`, `NdM` with literal `N` and `M`, `Nd(id)` with a literal `N`, and at most one comparison from `<= < >= >`.
 - `Nd(id)` rolls `N` dice of the size chosen in the dice-choice field `id`, such as `1d(weapon_die) + bonus`. An empty dice-choice field, or a value that is not a die size, shows the field error and does not roll.
-- The preset check refuses, and names the dice cell, a formula whose id resolves to a dice-choice field outside `Nd(...)`, or whose `Nd(...)` id resolves to a field of another type. An id that resolves to no field is an error only at the roll.
+- The preset check refuses a formula when any field id does not resolve in the dice cell's block, an enclosing block or the sheet. The refusal names the formula, each missing id and the dice cell's place.
+- The preset check also refuses, and names the dice cell, a formula whose id resolves to a dice-choice field outside `Nd(...)`, or whose `Nd(...)` id resolves to a field of another type.
 - A roll names its dice cell by its label. A formula with `Nd(id)` writes out the chosen dice in that name: a dice cell named by its formula shows the formula with each `Nd(id)` as `NdM`, such as `1d8 + bonus`, and a dice cell named by a cell name or a label shows that name and the formula in parentheses, such as «Урон (1d8)».
 - Formulas run through a small parser, never `eval`.
 - Anyone who can see a sheet can roll its dice cells.

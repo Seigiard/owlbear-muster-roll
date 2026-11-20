@@ -147,7 +147,8 @@ visible button text so speech input can activate it.
   sheet scope.
 - A field inside a repeat scope cannot reuse an id from an enclosing repeat
   scope or the sheet scope.
-- `repeat.id` is unique among repeat scopes in its parent scope.
+- `repeat.id` is unique among repeat scopes in its parent scope and cannot
+  match an enclosing repeat scope.
 - `repeat.nameField` names a text field inside its own scope.
 
 ## Repeat scopes and blocks
@@ -179,7 +180,9 @@ parentheses, `floor(...)`, `ceil(...)`, dice terms `NdM`, dice-choice terms
 `N` is from 1 to 100 and `M` is from 1 to 1000. A formula is at most 200
 characters. `Nd(id)` takes the die size from a `dice-choice` field. An empty
 or non-die value shows a field error and does not roll. An unknown id is
-accepted at upload and reports an error only when rolled.
+refused at upload when it does not resolve in the dice cell's block, an
+enclosing block or the sheet. The refusal names the formula, missing id and
+dice cell location.
 
 The parser runs the formula; the product never evaluates it with `eval`.
 Anyone who can see a node can roll its dice cell. A roll from a hidden

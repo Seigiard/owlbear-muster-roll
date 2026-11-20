@@ -350,7 +350,7 @@
                     },
                     {
                       "kind": "dice",
-                      "formula": "1d20 + bonus + hp"
+                      "formula": "1d20 + (bonus + hp)"
                     }
                   ]
                 }
