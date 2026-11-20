@@ -5,7 +5,7 @@ import { inflateSync, strFromU8 } from 'fflate';
 import type { JsonValue } from '@/core/json';
 import { jsonByteLength } from '@/core/message-size';
 import { encodePreset, type Preset } from '@/core/preset';
-import { recordSchema, type VersionedRecord } from '@/core/records';
+import { blockDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
 import { encodeStateRecords } from '@/core/state-records';
 import type { Timing } from '@/core/timing';
 import { UI_CHANNEL, type WireCommand } from '@/core/ui-messages';
@@ -1491,6 +1491,56 @@ describe("a player's edit", () => {
 
     // #then
     expect(proposals(room).at(-1)).toEqual(fixturePatch(STR_ROW, { note: 'tired' }, 8, PLAYER_ID));
+  });
+  test('a replayed acknowledgement clears the old field from the player window while the note waits', async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm();
+    send(player, strEdit('str', 11));
+    await waitUntil(() => proposals(room).length === 1);
+    const gmRecord = fixturePatch(STR_ROW, { str: 15 }, 4, 'gm-a');
+    answer(room, commit([gmRecord]));
+    await waitUntil(() => player.store.$replica.get().get(STR_ROW.k)?.c === 4);
+    send(player, strEdit('note', 'tired'));
+    await waitUntil(() => Object(shown(player, STR_ROW.k)?.d).cells?.note?.[0] === 'tired');
+
+    // #when
+    answer(room, commit([gmRecord], [{ k: STR_ROW.k, c: 3, a: PLAYER_ID }]));
+    await waitUntil(() => proposals(room).length === 2);
+
+    // #then
+    const cells = Object(shown(player, STR_ROW.k)?.d).cells;
+    expect({
+      str: cells?.str?.[0],
+      note: cells?.note?.[0],
+      proposal: proposals(room).at(-1),
+    }).toEqual({
+      str: 15,
+      note: 'tired',
+      proposal: fixturePatch(STR_ROW, { note: 'tired' }, 5, PLAYER_ID),
+    });
+  });
+  test('a restored sent field stays in the proposal combined with a later catch-up edit', async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm();
+    send(player, strEdit('str', 11));
+    await waitUntil(() => proposals(room).length === 1);
+    player.engine.catchUp();
+    await waitUntil(() => player.store.$sync.get().state === 'catching-up');
+
+    // #when
+    const restored = send(player, strEdit('str', 10));
+    await waitUntil(() => outcome(player, restored) !== undefined);
+    const later = send(player, strEdit('note', 'tired'));
+    await waitUntil(() => outcome(player, later) !== undefined);
+    await waitUntil(
+      () => player.store.$sync.get().state === 'live' && proposals(room).length === 2,
+    );
+
+    // #then
+    expect(blockDataSchema.parse(proposals(room).at(-1)?.d).cells).toEqual({
+      str: [10, 4, PLAYER_ID],
+      note: ['tired', 4, PLAYER_ID],
+    });
   });
   test('a stale answer to the first proposal preserves both player edits', async () => {
     // #given
