@@ -541,10 +541,9 @@ describe('parsePresetFile', () => {
     // #then
     expect(parsed.isOk()).toBe(true);
   });
-  test('accepts one id in a repeat section and outside it', () => {
+  test('accepts one field id in unrelated repeat sections', () => {
     // #given
     const text = fileOf([
-      { rows: [{ cells: [NUMBER_FIELD('bonus')] }] },
       {
         repeat: { id: 'attack', nameField: 'attack' },
         rows: [{ cells: [TEXT_FIELD('attack'), NUMBER_FIELD('bonus')] }],
@@ -559,6 +558,98 @@ describe('parsePresetFile', () => {
     const parsed = parsePresetFile(text);
     // #then
     expect(parsed.isOk()).toBe(true);
+  });
+  test.each<[string, JsonValue[], number[], number[]]>([
+    [
+      'the sheet field comes first',
+      [
+        { rows: [{ cells: [NUMBER_FIELD('bonus')] }] },
+        {
+          repeat: { id: 'attack', nameField: 'attack' },
+          rows: [{ cells: [TEXT_FIELD('attack'), NUMBER_FIELD('bonus')] }],
+        },
+      ],
+      [0, 0, 0, 0, 0],
+      [0, 0, 1, 0, 1],
+    ],
+    [
+      'the repeat field comes first',
+      [
+        {
+          repeat: { id: 'attack', nameField: 'attack' },
+          rows: [{ cells: [TEXT_FIELD('attack'), NUMBER_FIELD('bonus')] }],
+        },
+        { rows: [{ cells: [NUMBER_FIELD('bonus')] }] },
+      ],
+      [0, 0, 1, 0, 0],
+      [0, 0, 0, 0, 1],
+    ],
+    [
+      'the enclosing repeat field comes after the nested repeat',
+      [
+        {
+          repeat: { id: 'npc', nameField: 'npc_name' },
+          rows: [
+            {
+              repeat: { id: 'attack', nameField: 'attack' },
+              cells: [TEXT_FIELD('attack'), NUMBER_FIELD('bonus')],
+            },
+            { cells: [TEXT_FIELD('npc_name'), NUMBER_FIELD('bonus')] },
+          ],
+        },
+      ],
+      [0, 0, 0, 1, 1],
+      [0, 0, 0, 0, 1],
+    ],
+  ])('refuses shadowed field ids when %s', (_name, sections, outer, inner) => {
+    // #given
+    const text = fileOf([...sections]);
+    // #when
+    const parsed = parsePresetFile(text);
+    const actual: unknown = parsed;
+    // #then
+    expect(actual).toEqual(
+      Result.err({
+        code: 'shadowed-field-id',
+        field: 'bonus',
+        path: inner,
+        enclosingPath: outer,
+      }),
+    );
+  });
+  test('refuses a field that shadows a non-immediate sheet ancestor', () => {
+    // #given
+    const text = presetOf({
+      id: 'encounter',
+      title: 'Encounter',
+      tabs: [
+        { title: 'Sheet', sections: [{ rows: [{ cells: [NUMBER_FIELD('bonus')] }] }] },
+        {
+          title: 'NPC',
+          repeat: { id: 'npc', nameField: 'npc_name' },
+          sections: [
+            { rows: [{ cells: [TEXT_FIELD('npc_name')] }] },
+            {
+              repeat: { id: 'attack', nameField: 'attack' },
+              rows: [{ cells: [TEXT_FIELD('attack'), NUMBER_FIELD('bonus')] }],
+            },
+          ],
+        },
+      ],
+    });
+
+    // #when
+    const parsed = parsePresetFile(text);
+    const actual: unknown = parsed;
+    // #then
+    expect(actual).toEqual(
+      Result.err({
+        code: 'shadowed-field-id',
+        field: 'bonus',
+        path: [0, 1, 1, 0, 1],
+        enclosingPath: [0, 0, 0, 0, 0],
+      }),
+    );
   });
   test('accepts a repeat section of several rows whose first field is in a later row', () => {
     // #given
