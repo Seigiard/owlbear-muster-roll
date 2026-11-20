@@ -1169,11 +1169,22 @@ describe('pending edits', () => {
     harness.records.set('preset', { k: 'preset', d: encodePreset(moved), c: 2, a: 'gm' });
     // #when
     const result = harness.pending.recordsChanged(before);
+    const size = harness.pending.size();
+    const drained = harness.pending.drain();
     // #then
-    expect({ result, sent: harness.sent, size: harness.pending.size() }).toEqual({
+    expect({ result, sent: harness.sent, size, drained }).toEqual({
       result: { notify: false },
       sent: [pcRecord({ note: 'tired' }, 3)],
       size: 1,
+      drained: [
+        {
+          type: 'field-patch',
+          sheetId: 'brok',
+          target: { kind: 'row', rowId: 'note' },
+          fieldId: 'note',
+          value: 'tired',
+        },
+      ],
     });
   });
   test('a preset change drops an entry with only removed fields without a notification', () => {
