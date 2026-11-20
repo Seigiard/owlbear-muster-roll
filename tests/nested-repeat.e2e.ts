@@ -132,7 +132,7 @@ const PLAIN_SECTION_ROW_RECORDS = [
   }),
 ] as const;
 
-const COPIED_PLAIN_SECTION_ROW_RECORDS = [
+const TWO_PLAIN_SECTION_ROW_RECORDS = [
   ...PLAIN_SECTION_ROW_RECORDS,
   record('blk:plain:group:g2', {
     order: 1,
@@ -142,6 +142,10 @@ const COPIED_PLAIN_SECTION_ROW_RECORDS = [
     order: 0,
     cells: { move_name: 'Jab', damage: 3 },
   }),
+] as const;
+
+const COPIED_PLAIN_SECTION_ROW_RECORDS = [
+  ...TWO_PLAIN_SECTION_ROW_RECORDS,
   record('link:t-copied-move', {
     s: 'plain',
     path: ['group', 'g2', 'move', 'm1'],
@@ -453,6 +457,57 @@ test('a copied nested child opens and focuses from its complete token path', asy
   // #then
   expect(clicked).toBe(true);
   await expect(copiedTarget).toBeFocused();
+});
+
+test('re-importing a downloaded snapshot does not report deleted descendant values as lost', async ({
+  page,
+  context,
+}, testInfo) => {
+  // #given
+  await page.goto('/index.html');
+  await seedStorage(page, TWO_PLAIN_SECTION_ROW_RECORDS, JSON.stringify(PLAIN_SECTION_ROW_PRESET));
+  await openBackground(context);
+  const parent = page.getByRole('group', { name: 'Training', exact: true });
+  const sibling = page.getByRole('group', { name: 'Training 1', exact: true });
+  const siblingMove = sibling.getByRole('textbox', { name: 'move_name', exact: true });
+  const sheet = page.getByRole('tab', { name: 'Plain row', exact: true });
+  const settings = page.getByRole('tab', { name: 'Настройки', exact: true });
+  const snapshot = page.getByRole('region', { name: 'Снимок', exact: true });
+  const upload = 'Загрузить снимок';
+  await expect(parent.getByRole('textbox', { name: 'move_name', exact: true })).toHaveValue('Jab');
+
+  // #when
+  await parent
+    .locator(':scope > [data-row]')
+    .getByRole('button', { name: 'Удалить блок 1', exact: true })
+    .click();
+  await expect(parent).toHaveCount(0);
+  await settings.click();
+  const downloading = page.waitForEvent('download');
+  await snapshot.getByRole('button', { name: 'Скачать снимок', exact: true }).click();
+  const snapshotPath = testInfo.outputPath('snapshot.json');
+  await (await downloading).saveAs(snapshotPath);
+
+  await sheet.click();
+  await siblingMove.fill('Hook');
+  await siblingMove.press('Enter');
+  await settings.click();
+  await sheet.click();
+  await expect(siblingMove).toHaveValue('Hook');
+  await settings.click();
+  const choosing = page.waitForEvent('filechooser');
+  await snapshot.getByRole('button', { name: upload, exact: true }).click();
+  await (await choosing).setFiles(snapshotPath);
+
+  // #then
+  const confirmation = page.getByRole('group', { name: /Загрузить снимок\?/ });
+  await expect(confirmation).toHaveAccessibleName(
+    'Все данные комнаты будут заменены. Игроки потеряют привязки и права. Загрузить снимок?',
+  );
+  await confirmation.getByRole('button', { name: upload, exact: true }).click();
+  await expect(confirmation).toHaveCount(0);
+  await sheet.click();
+  await expect(siblingMove).toHaveValue('Jab');
 });
 
 test('an ordinary repeat block keeps its name and numbers its duplicate', async ({

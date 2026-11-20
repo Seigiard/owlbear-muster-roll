@@ -4,6 +4,7 @@ title: Let the React Compiler transform the Builder PreviewPane
 status: To Do
 assignee: []
 created_date: '2026-11-20T06:44:00Z'
+updated_date: '2026-11-20T13:59:00Z'
 labels: []
 dependencies: []
 priority: low
@@ -24,3 +25,9 @@ React Compiler 1.0 skips the Builder `PreviewPane` (`src/builder/preview-pane.ts
 - [ ] #3 Builder unit tests, `tests/builder.e2e.ts`, `tests/builder-snapshot.e2e.ts` and `tests/repeat-tabs.e2e.ts` pass, including preset replacement, page-hide saves, and repeat-tab add and selection
 - [ ] #4 The full check from CLAUDE.md passes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Archived 2026-11-20 by the owner's decision. The TASK-137 spike measured no speedup from compiling PreviewPane, so the change has no user-visible value.
+<!-- SECTION:NOTES:END -->
