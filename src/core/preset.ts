@@ -565,18 +565,10 @@ export function plainRow(layout: TemplateLayout, rowId: string): readonly Preset
 }
 
 export function plainRowIdOf(layout: TemplateLayout, fieldId: string): string | null {
-  for (const { place, section } of placedSections(layout)) {
-    if (layout.tabs[place.tabIndex]?.repeat !== undefined) continue;
-
-    if (repeatSectionId(section) !== null) continue;
-
-    const row = section.rows.find(
-      (item) =>
-        item.repeat === undefined &&
-        rowCells(item).some((candidate) => candidate.kind === 'field' && candidate.id === fieldId),
-    );
-
-    if (row !== undefined) return firstFieldId(row);
+  for (const { row, rowId } of plainSheetFieldRows(layout)) {
+    if (row.cells.some((cell) => cell.kind === 'field' && cell.id === fieldId)) {
+      return rowId;
+    }
   }
 
   return null;
@@ -587,25 +579,73 @@ export function resolveFieldReference(
   from: TemplateRowPlace,
   id: string,
 ): FieldReference | null {
-  if (sectionAt(layout, from)?.rows[from.rowIndex] === undefined) return null;
+  for (const group of fieldReferencesAt(layout, from)) {
+    if (group.ids.includes(id)) return group.reference;
+  }
+
+  return null;
+}
+
+export function readableFieldIds(layout: TemplateLayout, from: TemplateRowPlace): string[] {
+  const ids = new Set<string>();
+
+  for (const group of fieldReferencesAt(layout, from)) {
+    for (const id of group.ids) {
+      ids.add(id);
+    }
+  }
+
+  return [...ids];
+}
+
+function* fieldReferencesAt(
+  layout: TemplateLayout,
+  from: TemplateRowPlace,
+): Generator<{ ids: string[]; reference: FieldReference }> {
+  if (sectionAt(layout, from)?.rows[from.rowIndex] === undefined) return;
 
   const scopeIds = repeatScopeIdsAt(layout, from);
 
   for (const [index, scopeId] of scopeIds.entries()) {
     const scopePath = scopeIds.slice(index).reverse();
 
-    if (scopeFieldsAt(layout, from, scopeId, scopePath).some((field) => field.id === id)) {
-      if (scopePath.length === 1 && scopeIds.length === 1) {
-        return { scope: 'block' };
-      }
+    const reference: FieldReference =
+      scopePath.length === 1 && scopeIds.length === 1
+        ? { scope: 'block' }
+        : index === 0
+          ? { scope: 'block', scopePath }
+          : { scope: 'block', scopeId, scopePath };
 
-      return index === 0 ? { scope: 'block', scopePath } : { scope: 'block', scopeId, scopePath };
-    }
+    const ids = scopeFieldsAt(layout, from, scopeId, scopePath).map(({ id }) => id);
+
+    yield { ids, reference };
   }
 
-  const rowId = plainRowIdOf(layout, id);
+  for (const { row, rowId } of plainSheetFieldRows(layout)) {
+    const ids = row.cells.flatMap((field) => (field.kind === 'field' ? [field.id] : []));
 
-  return rowId === null ? null : { scope: 'sheet', rowId };
+    yield { ids, reference: { scope: 'sheet', rowId } };
+  }
+}
+
+function* plainSheetFieldRows(
+  layout: TemplateLayout,
+): Generator<{ row: PresetRow; rowId: string }> {
+  for (const { place, section } of placedSections(layout)) {
+    if (layout.tabs[place.tabIndex]?.repeat !== undefined || section.repeat !== undefined) {
+      continue;
+    }
+
+    for (const row of section.rows) {
+      if (row.repeat !== undefined) continue;
+
+      const rowId = firstFieldId(row);
+
+      if (rowId !== null) {
+        yield { row, rowId };
+      }
+    }
+  }
 }
 
 export function repeatScopeIdsAt(layout: TemplateLayout, from: TemplateRowPlace): string[] {
@@ -668,8 +708,14 @@ export function scopeFieldsAt(
       return row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field');
     }
 
-    if (section !== null && section.repeat?.id === last && path.length === currentPath.length) {
-      return sectionFields(section);
+    const sectionPathLength = currentPath.length - (row?.repeat === undefined ? 0 : 1);
+
+    if (section !== null && section.repeat?.id === last && path.length === sectionPathLength) {
+      return section.rows.flatMap((candidateRow) =>
+        candidateRow.repeat === undefined
+          ? candidateRow.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field')
+          : [],
+      );
     }
 
     if (tab !== undefined && tab.repeat?.id === last && path.length === 1) {
