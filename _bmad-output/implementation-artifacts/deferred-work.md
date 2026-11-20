@@ -743,3 +743,9 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-150-keep-formula-references.md`
   summary: Keep a formula's reference after a free rename when its repeat tab and nested repeat section share the same repeat id (TASK-152).
   evidence: A valid preset with a repeat tab and nested section both named `npc` leaves `1d6+bonus` in the nested section after a free rename of the tab field to `damage_bonus`. The preset still validates, but the formula cannot resolve `bonus`. TASK-150 leaves formula lookup unchanged.
+
+## Deferred from: TASK-152 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-152-validate-preset-references.md`
+  summary: Keep the full block-path comparison from TASK-100 until a formula lookup change can simplify it.
+  evidence: Strict validation now rejects an id shared by an ancestor and a descendant. The comparison still distinguishes a nested block from each enclosing block in valid presets. The roll tests still exercise those paths.

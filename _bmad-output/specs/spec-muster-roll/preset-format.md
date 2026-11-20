@@ -164,7 +164,7 @@ Example: `1d20 <= str - 2*str_tired`.
 - A dice cell's label is its cell name, otherwise the nearest preceding label in its row, otherwise its formula.
 - A formula holds integer literals, field ids, `+ - * /`, parentheses, `floor()`, `ceil()`, `NdM` with literal `N` and `M`, `Nd(id)` with a literal `N`, and at most one comparison from `<= < >= >`.
 - `Nd(id)` rolls `N` dice of the size chosen in the dice-choice field `id`, such as `1d(weapon_die) + bonus`. An empty dice-choice field, or a value that is not a die size, shows the field error and does not roll.
-- The preset check refuses a formula when any field id does not resolve in the dice cell's block, an enclosing block or the sheet. The refusal names the formula, each missing id and the dice cell's place.
+- The preset check refuses a formula when any field id does not resolve in the dice cell's block, an enclosing block, or the sheet. The first problem identifies the formula, missing id, and dice cell's place. The Builder shows every missing id at the dice cell.
 - The preset check also refuses, and names the dice cell, a formula whose id resolves to a dice-choice field outside `Nd(...)`, or whose `Nd(...)` id resolves to a field of another type.
 - A roll names its dice cell by its label. A formula with `Nd(id)` writes out the chosen dice in that name: a dice cell named by its formula shows the formula with each `Nd(id)` as `NdM`, such as `1d8 + bonus`, and a dice cell named by a cell name or a label shows that name and the formula in parentheses, such as «Урон (1d8)».
 - Formulas run through a small parser, never `eval`.
@@ -195,7 +195,7 @@ The GM downloads the JSON file, edits it and uploads it. A preset change that re
 | Change `repeat.nameField` | Keeps every value |
 | Remove a token cell | Its token links are removed. Not counted in the confirmation |
 
-A formula that refers to a removed field shows the error above.
+If you remove a field, remove or change every formula that refers to it before you upload the preset.
 
 ## Older format
 
