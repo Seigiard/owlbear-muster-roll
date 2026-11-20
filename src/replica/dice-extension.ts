@@ -50,7 +50,7 @@ export type DiceAccess = 'permitted' | 'pending' | 'unknown' | 'refused';
 export type DiceExtensionReadiness = 'absent' | DiceAccess;
 
 // `stopped`: the background page stopped while the roll waited, so nothing more happens with it.
-export type DiceExtensionFailure = { code: 'failed'; reason: string } | { code: 'stopped' };
+export type DiceExtensionRollFailure = { code: 'failed'; reason: string } | { code: 'stopped' };
 
 export type DiceExtension = {
   // TASK-36: probes at once, and again a few times while nothing answers.
@@ -61,7 +61,7 @@ export type DiceExtension = {
   // The faces the extension rolled, in the tree order of the terms, or why there are none: an error
   // reply (a refusal of access too), a result that does not match the terms, a failed send, or no
   // result in time. A roll sent without access waits the access wait longer.
-  roll: (request: DiceExtensionRoll) => Promise<Result<DieFace[], DiceExtensionFailure>>;
+  roll: (request: DiceExtensionRoll) => Promise<Result<DieFace[], DiceExtensionRollFailure>>;
   // This client became a GM's: it probes, and asks for access when the answer says it has none.
   becameGm: () => void;
 };
@@ -69,7 +69,7 @@ export type DiceExtension = {
 // `gone` marks an answer that shows no extension is listening: a failed send or no result.
 type WaitingRoll = {
   terms: readonly DiceTerm[];
-  finish: (faces: Result<DieFace[], DiceExtensionFailure>, gone?: boolean) => void;
+  finish: (faces: Result<DieFace[], DiceExtensionRollFailure>, gone?: boolean) => void;
 };
 
 // The latest probe. `settle` ends the wait of a roll for it.
@@ -156,7 +156,7 @@ export function createDiceExtension(
 
     waiting.finish(
       faces.isOk()
-        ? Result.ok<DieFace[], DiceExtensionFailure>(faces.value)
+        ? Result.ok<DieFace[], DiceExtensionRollFailure>(faces.value)
         : Result.err({ code: 'failed', reason: faces.error }),
     );
   });
@@ -431,7 +431,7 @@ export function createDiceExtension(
         source: DICE_PLUS_SOURCE,
       };
 
-      const answer = new Promise<Result<DieFace[], DiceExtensionFailure>>((resolve) => {
+      const answer = new Promise<Result<DieFace[], DiceExtensionRollFailure>>((resolve) => {
         rolls.set(rollId, {
           terms: request.terms,
           finish: (faces, gone = false) => {
