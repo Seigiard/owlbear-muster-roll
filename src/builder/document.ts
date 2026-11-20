@@ -419,6 +419,50 @@ export function scopeFieldIds(
   return new Set(sections.flatMap((section) => sectionFieldIds(section, except)));
 }
 
+function relatedScopeFieldIds(template: DocTemplate, spot: SectionSpot, row: DocRow): Set<string> {
+  const ownRepeatPath = physicalRepeatPath(template, spot, row);
+  const related = new Set<string>();
+
+  template.tabs.forEach((tab, tabIndex) => {
+    tab.sections.forEach((section, sectionIndex) => {
+      section.rows.forEach((candidateRow) => {
+        const repeatPath = physicalRepeatPath(
+          template,
+          { tab: tabIndex, section: sectionIndex },
+          candidateRow,
+        );
+
+        const overlaps =
+          repeatPath.every((part, index) => ownRepeatPath[index] === part) ||
+          ownRepeatPath.every((part, index) => repeatPath[index] === part);
+
+        if (!overlaps) return;
+
+        candidateRow.cells.forEach((cell) => {
+          if (cell.kind === 'field') related.add(cell.id);
+        });
+      });
+    });
+  });
+
+  return related;
+}
+
+function physicalRepeatPath(
+  template: DocTemplate,
+  spot: SectionSpot,
+  row: DocRow,
+): (number | string)[] {
+  const tab = template.tabs[spot.tab];
+  const section = sectionOf(template, spot);
+
+  return [
+    ...(tab?.repeat === undefined ? [] : [spot.tab]),
+    ...(section?.repeat === undefined ? [] : [spot.tab, spot.section]),
+    ...(row.repeat === undefined ? [] : [spot.tab, spot.section, row.uid]),
+  ];
+}
+
 // The ids that share a scope with a token cell. Token and repeat ids are not formula fields, but
 // they still need distinct suggestions in the builder.
 export function scopeIds(template: DocTemplate, spot: SectionSpot): Set<string> {
@@ -589,7 +633,7 @@ export function addCell(
     cell = {
       kind: 'field',
       type: 'number',
-      id: suggestFieldId(text, scopeFieldIds(template, path)),
+      id: suggestFieldId(text, relatedScopeFieldIds(template, path, row)),
       uid,
     };
   }

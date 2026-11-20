@@ -2,12 +2,14 @@ import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import { parsePresetFile, PRESET_FILE_BYTE_LIMIT, type Preset } from '@/core/preset';
 import { copy } from '@/copy';
+import { presetFailureMessage } from '@/ui/preset-errors';
 import {
   addTab,
   EMPTY_DOCUMENT,
   fromPreset,
   PRESET_UID,
   removeItem,
+  toPreset,
   uidAt,
   WINDOW_UID,
   type BuilderDocument,
@@ -29,6 +31,60 @@ const VALID: Preset = {
 };
 
 describe('builderProblems', () => {
+  test('marks the inner field that reuses a sheet field id and refuses download', () => {
+    // #given
+    const document = fromPreset({
+      templates: [
+        {
+          id: 'notes',
+          title: 'Notes',
+          tabs: [
+            {
+              sections: [
+                {
+                  repeat: { id: 'attack', nameField: 'attack' },
+                  rows: [
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'attack' },
+                        { kind: 'field', type: 'number', id: 'bonus' },
+                      ],
+                    },
+                  ],
+                },
+                { rows: [{ cells: [{ kind: 'field', type: 'number', id: 'bonus' }] }] },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    // #when
+    const problems = builderProblems(document);
+    const problem = problems[0];
+    const reason = problem === undefined ? '' : problemReason(problem.failure);
+    const file = parsePresetFile(JSON.stringify(toPreset(document)));
+    const message = file.isErr() ? presetFailureMessage(file.error) : '';
+    // #then
+    expect({
+      uids: problems.map((item) => item.uid),
+      download: downloadText(document),
+      hasId: reason.includes('bonus'),
+      hasInner: reason.includes('templates[0].tabs[0].sections[0].rows[0].cells[1]'),
+      hasOuter: reason.includes('templates[0].tabs[0].sections[1].rows[0].cells[0]'),
+      uploadReason: message.includes(reason) && reason !== '',
+      russian: /[а-яё]/i.test(reason),
+    }).toEqual({
+      uids: [uidOf(document, [0, 0, 0, 0, 1])],
+      download: null,
+      hasId: true,
+      hasInner: true,
+      hasOuter: true,
+      uploadReason: true,
+      russian: true,
+    });
+  });
   test('the empty preset has one problem, at the preset, and no download', () => {
     // #when
     const problems = builderProblems(EMPTY_DOCUMENT);
