@@ -932,13 +932,15 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
           problems.push({ failure: { code: 'row-too-wide' }, path: rowPath });
         const rowScope = item.repeat === undefined ? sectionScope : newRepeatScope(sectionScope);
         item.cells.forEach((candidate, ci) => {
-          if (candidate.kind === 'field') {
-            if (!rowScope.fields.has(candidate.id)) {
-              rowScope.fields.set(candidate.id, [...rowPath, ci]);
-            }
-          }
-
           const failure = cellFailure(candidate, rowScope.ids);
+
+          if (
+            candidate.kind === 'field' &&
+            failure?.code !== 'invalid-id' &&
+            !rowScope.fields.has(candidate.id)
+          ) {
+            rowScope.fields.set(candidate.id, [...rowPath, ci]);
+          }
 
           if (failure !== null) problems.push({ failure, path: [...rowPath, ci] });
         });
