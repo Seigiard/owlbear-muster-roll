@@ -2,7 +2,7 @@
 title: 'TASK-145: Reject repeat fields that reuse an enclosing field id'
 type: 'bugfix'
 created: '2026-11-20'
-status: 'in-progress'
+status: 'done'
 route: 'oneshot'
 review_loop_iteration: 0
 context: []
@@ -28,3 +28,16 @@ Uploading or importing an invalid preset refuses the file. In the Builder form, 
 - Scope decision after review: include CAP-24 id suggestions because Builder otherwise creates a field id that the new validation rejects.
 - The shared validator indexes only valid field ids, so empty ids do not get an extra conflict warning.
 - Manual formula renaming remains separate. A single-GM reproduction is tracked in TASK-150.
+
+## Review Triage Log
+
+- Fixed: the Add field action generated ids that failed the new validation. The suggestion now checks the related scopes. Two regressions cover both directions, with an unrelated-scope control.
+- Fixed: two invalid ids no longer generate an extra scope warning.
+- Deferred: correcting a manual field id can leave a formula pointing at the wrong field. See TASK-150.
+- The confirming review returned no findings from either reviewer.
+
+## Verification
+
+- The full unit run passed 3,680 tests, with one environment skip. All 55 mutants were killed. Format, lint, typecheck, build, and formal drift passed.
+- Chromium verified the rejected upload and Builder import, warned at the editable field, blocked download for the invalid draft, and downloaded the corrected preset.
+- The full browser suite passed 587 of 589. The two timeouts (`cell-name.e2e.ts:300` and `player.e2e.ts:145`) passed when each file ran alone with one worker. TASK-142 tracks the suite-load issue.
