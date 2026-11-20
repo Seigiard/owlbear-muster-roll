@@ -5,8 +5,9 @@
 #   formal/catch-up/check.sh holds      # only the configurations that must hold
 #
 # A configuration in this folder must hold (TLC exit 0). One in findings/ or
-# mutations/ must fail on the invariant its `INVARIANT` line names. The script
-# exits non-zero when any outcome differs, and keeps each TLC log in $OUT.
+# mutations/ must fail on the invariant its `INVARIANT` line names. One in
+# fixes/ switches on a proposed code fix through `Mutation` and must hold. The
+# script exits non-zero when any outcome differs, and keeps each TLC log in $OUT.
 set -u
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -40,7 +41,21 @@ for cfg in "$here"/*.cfg; do
 done
 
 if [ "$which" = all ]; then
+  for cfg in "$here"/fixes/*.cfg; do
+    [ -f "$cfg" ] || continue
+    result=$(run "$cfg")
+    code=${result%%|*}
+    if [ "$code" = 0 ]; then
+      echo "fixes     $(basename "$cfg"): ok (${result#*|})"
+    else
+      echo "fixes     $(basename "$cfg"): FAILED, exit $code (${result#*|})"
+      grep -E 'Error:|is violated' "${result##*|}" | head -3
+      failed=1
+    fi
+  done
+
   for cfg in "$here"/findings/*.cfg "$here"/mutations/*.cfg; do
+    [ -f "$cfg" ] || continue
     inv=$(sed -n 's/^INVARIANT \([A-Za-z]*\).*/\1/p' "$cfg")
     result=$(run "$cfg")
     log=${result##*|}

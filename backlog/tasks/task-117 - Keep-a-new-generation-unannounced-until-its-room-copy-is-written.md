@@ -1,9 +1,11 @@
 ---
 id: TASK-117
 title: Keep a new generation unannounced until its room copy is written
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-19T06:19:00Z'
+updated_date: '2026-11-19T18:53:00Z'
 labels: []
 dependencies: []
 references:
@@ -22,8 +24,14 @@ AD-9 requires the importing GM to write the room copy of a new generation before
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 While a generation import waits for its room copy write, no message the importer sends (`alive`, `state`, or any other carrying a generation) names the new generation
-- [ ] #2 A client that heard the importer during the wait and then lost it (tab closed before the copy write ends) returns to `live` on the old generation, without waiting for the importer to come back
-- [ ] #3 A module or engine test reproduces the importer closing during `writeImport` and passes
-- [ ] #4 `formal/generation-adoption/check.sh` reports `finding-importer-leaves` as passing, and the config and the generation-adoption skill are updated to expect that
+- [x] #1 While a generation import waits for its room copy write, no message the importer sends (`alive`, `state`, or any other carrying a generation) names the new generation
+- [x] #2 A client that heard the importer during the wait and then lost it (tab closed before the copy write ends) returns to `live` on the old generation, without waiting for the importer to come back
+- [x] #3 A module or engine test reproduces the importer closing during `writeImport` and passes
+- [x] #4 `formal/generation-adoption/check.sh` reports `finding-importer-leaves` as passing, and the config and the generation-adoption skill are updated to expect that
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+While a generation import or wipe writes its room copy, the importing GM now sends nothing that names the new generation: it does not vouch for its records, so it answers no ping and no state request; its ping timer sends nothing; and a dice roll fails before any dice show (20de031). A client that hears the importer during the write therefore never adopts, and stays live on the old generation if the importer closes. Engine tests pin the close during the write and the answers after it; roll-flow tests pin both roll checks; removing each guard turns its test red. The generation-adoption model gives an importing GM no vouch (a93984f): the former finding-importer-leaves config passes as importer-leaves.cfg (renamed, per the skill's rule for a fixed finding), with a player-peer twin, and bug-importer-answers.cfg brings the leak back. Accepted: a request that reaches the importer is held until its next catch-up ends, and players may show the GM offline if a copy write takes over 20 s. Checks: bun test 3610 pass, test:browser 587 pass, mutants 53/53, all generation-adoption configs as expected, drift ok.
+<!-- SECTION:FINAL_SUMMARY:END -->

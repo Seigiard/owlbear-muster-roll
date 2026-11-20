@@ -8,7 +8,7 @@ import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
 import type { WireCommand, Notice, RoomCopyStatus } from '@/core/ui-messages';
-import type { MockPlatform } from '@/platform/current';
+import type { MockPlatform, MockStorageBacking } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
 import {
   copyValue,
@@ -79,6 +79,7 @@ type ClientOptions = {
   until?: 'loaded' | 'live';
   platform?: (platform: MockPlatform) => MockPlatform;
   random?: () => number;
+  backing?: MockStorageBacking;
 };
 
 type Client = RigClient;
@@ -194,6 +195,12 @@ function metadataBytes(room: Room): number {
   return new TextEncoder().encode(JSON.stringify(room.room.getMetadata())).length;
 }
 
+function copiedRecord(room: Room, k: string): JsonValue {
+  const records = roomCopyOf(room)?.records;
+
+  return (Array.isArray(records) ? records : []).find((record) => Object(record).k === k) ?? null;
+}
+
 // Lets every promise that is already settled run its handlers.
 async function settle(): Promise<void> {
   await pause(0);
@@ -204,6 +211,10 @@ describe('writer triggers', () => {
     // #given
     const room = roomRig.openRoom();
     const gate = createGate();
+    // The room copy already holds what the GM stores, so only the step under test could owe a write.
+    room.room.setMetadata({
+      [KEY]: copyValue(INITIAL, [PRESET_RECORD, brokWithStr(12, 1, 'seed'), ACL]),
+    });
 
     const client = await startClient(room, 'gm-a', {
       platform: gated(gate),
@@ -228,6 +239,8 @@ describe('writer triggers', () => {
     // #given
     const room = roomRig.openRoom();
     const gate = createGate();
+    // The room copy already holds what the GM stores, so only the step under test could owe a write.
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK]) });
 
     const client = await startClient(room, 'gm-a', {
       platform: gated(gate),
@@ -249,6 +262,8 @@ describe('writer triggers', () => {
     // #given
     const room = roomRig.openRoom();
     const gate = createGate();
+    // The room copy already holds what the GM stores, so only the step under test could owe a write.
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK]) });
 
     const client = await startClient(room, 'gm-a', {
       platform: gated(gate),
@@ -516,6 +531,35 @@ describe('size check', () => {
 });
 
 describe('interruption and rescheduling', () => {
+  test('a GM that closed the tab while its room copy read waited writes its edit once it opens the room again', async () => {
+    // #given: a GM edits, hides its page and closes the tab before the room copy read answers.
+    const room = roomRig.openRoom();
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK]) });
+    const gate = createGate();
+    const first = await startClient(room, 'gm-a', { platform: gated(gate), until: 'live' });
+    send(first, setStr(11));
+    await waitUntil(() => Object(Object(shown(first, BROK.k)).d).cells?.str?.[0] === 11);
+    const edited = shown(first, BROK.k) ?? null;
+    const read = gate.holdNextRead();
+    first.engine.pageHidden();
+    await settle();
+    first.engine.stop();
+    read.release();
+    room.room.leave('gm-a');
+    // #when: the GM opens the room again on the same storage and catches up, with no edit.
+    await startClient(room, 'gm-a-again', {
+      backing: first.backing,
+      seeded: [],
+      timing: SHORT_PAUSE,
+      until: 'live',
+    });
+    await pause(200);
+    // #then
+    expect({ writes: gate.writes, brok: copiedRecord(room, BROK.k) }).toEqual({
+      writes: 0,
+      brok: edited,
+    });
+  });
   test('a stopped GM does not merge a held equal-generation metadata read', async () => {
     // #given
     const room = roomRig.openRoom();

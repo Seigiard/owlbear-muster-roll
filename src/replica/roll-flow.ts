@@ -70,6 +70,7 @@ export type RollFlowPorts = {
   role: () => PlayerRole;
   signal: AbortSignal;
   generation: () => Generation;
+  importing: () => boolean;
   dice: RollDicePort;
   gmInParty: () => boolean;
   playerId: string;
@@ -106,6 +107,14 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     }
 
     recentRequestIds.add(message.id);
+
+    // AD-9: an importer sends nothing to the room until its room copy is written, so no dice show
+    // for a roll it cannot send. `sendRoll` checks again for an import that starts mid-roll.
+    if (ports.importing()) {
+      ports.replyOutcome(message.id, { code: 'failed' });
+
+      return;
+    }
 
     const prepared = prepareRoll(message);
 
@@ -282,6 +291,13 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     // The role can change while the name is read or the dice roll.
     if (!rollShownTo(ports.role(), evaluated.hidden)) {
       ports.replyOutcome(requestId, { code: 'refused' });
+
+      return;
+    }
+
+    // AD-9: a roll would name the importer's new generation before its room copy is written.
+    if (ports.importing()) {
+      ports.replyOutcome(requestId, { code: 'failed' });
 
       return;
     }

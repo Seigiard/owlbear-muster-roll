@@ -1,19 +1,22 @@
 ------------------------------- MODULE RoomCopy -------------------------------
 (***************************************************************************)
-(* The AD-8 room copy write loop of src/replica/room-copy.ts, as wired by   *)
-(* src/replica/engine.ts and src/replica/background-main.ts, for several    *)
-(* GM clients that share one room metadata key.                             *)
+(* The AD-8 room copy write loop of src/replica/room-copy-table.ts and its *)
+(* shell src/replica/room-copy.ts, as wired by src/replica/engine.ts and    *)
+(* src/replica/background-main.ts, for several GM clients that share one    *)
+(* room metadata key.                                                       *)
 (*                                                                          *)
 (* A record is an edit id. Merging is set union, because records carry      *)
 (* versions and the merge keeps the newer one. The room copy is the set of  *)
 (* edits under `app.muster-roll/snapshot`. Owlbear room metadata has no     *)
 (* compare-and-set: the last write that lands wins.                         *)
 (*                                                                          *)
-(* Each GM client keeps the room-copy closure state of createRoomCopy:      *)
-(* the lifecycle phase, `deferred.scheduled`, `deferred.owed`,              *)
-(* `deferred.rerun`, `notSaved`, and the `pageChanges` test of step 2. The  *)
-(* engine gate `canWriteRoomCopy` is `~stopped /\ live`: the role is GM and *)
-(* persistence is present in the whole model.                               *)
+(* Each GM client keeps the room-copy state of its page: the table Phase   *)
+(* (`kind`, `owed`, `rerun`, and the `pageChanges` test of an ordinary      *)
+(* read), plus the shell's `cancelPause` and `notSaved`. A `stopped` phase  *)
+(* keeps the active write as `active`; here `stopped` is a flag beside the  *)
+(* phase. One dispatch of the table, with every effect it runs at once, is  *)
+(* one step. The engine gate `canWriteRoomCopy` is `~stopped /\ live`: the *)
+(* role is GM and persistence is present in the whole model.                *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -67,14 +70,16 @@ Init ==
 -----------------------------------------------------------------------------
 (* Helpers. Each takes one GM's state record and returns the new one.     *)
 
-\* engine.ts canWriteRoomCopy
+\* engine.ts canWriteRoomCopy: `!signal.aborted` is `~stopped`.
 Writable(s) == ~s.stopped /\ s.live
 
-\* room-copy.ts scheduleRoomCopy: cancel, then arm unless stopped.
+\* room-copy-table.ts `pause` (the `edited` row and `caughtUp`): disarm, then arm.
+\* The stopped row ignores `edited` and `caught-up`, so it arms nothing.
 Schedule(s) == [s EXCEPT !.scheduled = ~s.stopped]
 
-\* room-copy.ts writeRoomCopy, up to beginWrite. A write that starts takes a new
-\* `changesAtRead`, so `pageMoved` resets.
+\* room-copy-table.ts `trigger` (the `fired` and `page-hidden` rows): disarm,
+\* `owed`, then `rerun` or a read. The stopped row ignores both events. A read that
+\* starts takes the current `pageChanges`, so `pageMoved` resets.
 WriteRoomCopy(s) ==
   IF s.stopped THEN s
   ELSE LET t == [s EXCEPT !.scheduled = FALSE, !.owed = TRUE] IN
@@ -83,11 +88,15 @@ WriteRoomCopy(s) ==
             THEN [t EXCEPT !.phase = "reading", !.run = ~t.run, !.pageMoved = FALSE]
             ELSE t
 
-\* room-copy.ts failRoomCopy
+\* room-copy-table.ts `failed` (or a read-back that does not hold) with the
+\* gate open: `publish-status` failed, which sets the shell's `notSaved`, and
+\* `owed: true`.
 Fail(s) == [s EXCEPT !.notSaved = TRUE, !.owed = TRUE]
 
-\* room-copy.ts finishWrite, then the rerun tail of writeRoomCopy. An idle page
-\* keeps no `encoded`, `pageMoved` or `run`, so equal pages are one state.
+\* room-copy-table.ts `finish`: idle, then the rerun tail, which runs `trigger`.
+\* On a stopped page it is `drain`: the rerun tail meets a stopped page and
+\* starts nothing. An idle page keeps no `encoded`, `pageMoved` or `run`, so
+\* equal pages are one state.
 Finish(s) ==
   LET t == [s EXCEPT !.phase = "idle", !.encoded = {}, !.pageMoved = FALSE]
       u == IF t.rerun THEN WriteRoomCopy([t EXCEPT !.rerun = FALSE]) ELSE t
@@ -99,7 +108,8 @@ Made == UNION {{<<g, n>> : n \in 1..made[g]} : g \in Editors}
 -----------------------------------------------------------------------------
 (* Environment steps: what the GM and the browser do.                     *)
 
-\* A GM's command applies (command-routing.ts applyCommand -> roomCopyEdited).
+\* A GM's command applies (command-routing.ts composeCommand -> roomCopyEdited
+\* -> room-copy `edited`).
 \* The commit goes to every other client.
 Edit(g) ==
   LET s == gm[g] IN
@@ -111,7 +121,8 @@ Edit(g) ==
   /\ gm' = [gm EXCEPT ![g] = Schedule(s)]
   /\ UNCHANGED <<room, everInRoom, falseSaved, wroteAfterStop>>
 
-\* visibilitychange to hidden: engine.pageHidden -> room-copy pageHidden.
+\* visibilitychange to hidden: engine.pageHidden -> room-copy `page-hidden` row
+\* (`hidden`: `pageChanges + 1`, then `trigger`).
 PageHidden(g) ==
   LET s == gm[g] IN
   /\ ~s.stopped /\ ~s.hidden
@@ -121,7 +132,8 @@ PageHidden(g) ==
   /\ UNCHANGED <<room, replica, made, msgs, everInRoom, falseSaved, wroteAfterStop>>
 
 \* visibilitychange to visible, `resume` or `online`: engine.catchUp ->
-\* room-copy pageReturned, then enterCatchUp('page-return').
+\* room-copy `page-returned` row (`pageChanges + 1`), then
+\* enterCatchUp('page-return'), whose `catchUpEnter` leaves `live` at once.
 PageReturned(g) ==
   LET s == gm[g] IN
   /\ ~s.stopped
@@ -131,14 +143,17 @@ PageReturned(g) ==
 
 \* The tab closes. A closing tab is hidden first. Production never calls
 \* engine.stop(); the page dies, so no later step of this page writes, as
-\* after room-copy stop. A request already sent may still land.
+\* after `controller.abort()`: the room copy's abort listener dispatches `stop`
+\* (phase `stopped`, `disarm`), and the clock's `schedule` cancels on abort
+\* too. A request already sent may still land. Break "stop-keeps-timer" removes
+\* both cancels.
 Stop(g) ==
   LET s == gm[g] IN
   /\ ~s.stopped /\ s.hidden
   /\ gm' = [gm EXCEPT ![g] =
               [s EXCEPT !.stopped = TRUE,
                         !.scheduled = IF Break = "stop-keeps-timer" THEN s.scheduled ELSE FALSE]]
-  \* engine.ts stop unsubscribes from the room: commits on their way are lost.
+  \* The engine's abort listener unsubscribes from the room: commits on their way are lost.
   /\ msgs' = [msgs EXCEPT ![g] = {}]
   /\ UNCHANGED <<room, replica, made, everInRoom, falseSaved, wroteAfterStop>>
 
@@ -153,6 +168,7 @@ Reopen(g) ==
 (* Internal steps: timers and port answers.                               *)
 
 \* room-protocol.ts 'commit': receiveRecords changed the replica -> roomCopyEdited.
+\* A stopped page is unsubscribed; its `edited` row would ignore it anyway.
 Deliver(g) ==
   \E e \in msgs[g] :
     /\ msgs' = [msgs EXCEPT ![g] = @ \ {e}]
@@ -162,18 +178,24 @@ Deliver(g) ==
             /\ gm' = [gm EXCEPT ![g] = Schedule(gm[g])]
     /\ UNCHANGED <<room, made, everInRoom, falseSaved, wroteAfterStop>>
 
-\* The pause timer of scheduleRoomCopy fires.
+\* The pause timer armed by `pause` fires: the shell dispatches `fired`.
 TimerFires(g) ==
   /\ gm[g].scheduled
   /\ gm' = [gm EXCEPT ![g] = WriteRoomCopy([gm[g] EXCEPT !.scheduled = FALSE])]
   /\ UNCHANGED <<room, replica, made, msgs, everInRoom, falseSaved, wroteAfterStop>>
 
-\* Catch-up ends (engine.ts, the step that calls roomCopy.caughtUp). It merged
-\* the room copy and the state of the online GMs. No command waited, so
-\* `applied` is false.
+\* Catch-up ends: the catch-up table goes `live` and emits `caught-up`, and
+\* catch-up-effects.ts `run` calls engine.ts performCaughtUp in the same
+\* synchronous run, which calls room-copy `caughtUp(applied)`. It merged the
+\* room copy and the state of the online GMs. No command waited, so `applied`
+\* is false. The catch-up's own read of the room copy (`observeRead`) owes a
+\* write when the copy lacks a record the GM stores (TASK-118); the model
+\* compares the copy with the GM's records before the merge. Break
+\* "catch-up-ignores-copy" removes that.
 CatchUpEnds(g) ==
   LET s == gm[g]
-      t == [s EXCEPT !.live = TRUE]
+      behind == Break # "catch-up-ignores-copy" /\ ~(replica[g] \subseteq room)
+      t == [s EXCEPT !.live = TRUE, !.owed = @ \/ behind]
   IN
   /\ ~s.stopped /\ ~s.live
   /\ replica' = [replica EXCEPT ![g] =
@@ -181,20 +203,31 @@ CatchUpEnds(g) ==
   /\ gm' = [gm EXCEPT ![g] = IF t.owed THEN Schedule(t) ELSE t]
   /\ UNCHANGED <<room, made, msgs, everInRoom, falseSaved, wroteAfterStop>>
 
-\* runRoomCopyWrite: getMetadata answers. `ok` FALSE covers a failed read, a copy
-\* this build cannot read, and a copy over ROOM_METADATA_BYTE_LIMIT. On success the
-\* copy merges (options.receive), the replica is encoded and setMetadata is sent.
+\* The ordinary read answers: room-copy.ts runPortEffect dispatches `read-done`,
+\* or `failed` for a failed read. `ok` FALSE covers a failed read, a copy this
+\* build cannot read (readDone's `!current.isOk()`), and a copy over
+\* ROOM_METADATA_BYTE_LIMIT (encodeWrite). On success the `receive` effect merges
+\* the copy, dispatches `read-done` `merged`, which tests the gate again and runs
+\* encodeWrite, all in this one step; setMetadata is sent.
+\* Two guards stop a closed page from writing here: the stopped row's
+\* `read-done` and `failed` cells drain the write, and readDone's
+\* `!env.writable` holds `!signal.aborted`. Break "no-gate-check" removes both.
 ReadDone(g) ==
-  LET s == gm[g] IN
+  LET s == gm[g]
+      guards == Break # "no-gate-check"
+      gateOpen == IF guards THEN Writable(s) ELSE s.live
+  IN
   /\ s.phase = "reading"
   /\ \E ok \in BOOLEAN :
-       IF (~Writable(s) /\ Break # "no-gate-check") \/ s.pageMoved
+       \* The stopped row drains; readDone and `failed` test
+       \* `!env.writable || work.pageChanges !== phase.pageChanges`.
+       IF (s.stopped /\ guards) \/ ~gateOpen \/ s.pageMoved
        THEN /\ gm' = [gm EXCEPT ![g] = Finish(s)]
             /\ UNCHANGED <<replica, wroteAfterStop>>
        ELSE IF ~ok
        THEN /\ gm' = [gm EXCEPT ![g] =
                         IF Break = "no-finally"
-                        \* The lifecycle keeps the finished operation: no read is pending.
+                        \* The reading row ignores `failed`: no read is pending.
                         THEN [Fail(s) EXCEPT !.phase = "stuck"]
                         ELSE Finish(Fail(s))]
             /\ UNCHANGED <<replica, wroteAfterStop>>
@@ -204,8 +237,10 @@ ReadDone(g) ==
             /\ wroteAfterStop' = (wroteAfterStop \/ s.stopped)
   /\ UNCHANGED <<room, made, msgs, everInRoom, falseSaved>>
 
-\* verifyRoomCopyWrite: setMetadata settles. Owlbear may drop a write and still
-\* report success, or reject it.
+\* setMetadata settles: `write-done` (writeDone), or `failed` when it throws (the
+\* writing row, or the stopped row on a closed page). Owlbear may drop a write
+\* and still report success. A closed page fails the `!env.writable` test and
+\* drains.
 WriteDone(g) ==
   LET s == gm[g] IN
   /\ s.phase = "writing"
@@ -218,7 +253,8 @@ WriteDone(g) ==
                    ELSE [s EXCEPT !.phase = "verifying"]]
   /\ UNCHANGED <<replica, made, msgs, falseSaved, wroteAfterStop>>
 
-\* verifyRoomCopyWrite: the read-back answers. readBackHolds(written, readBack)
+\* The read-back answers: `verify-done` (verifyDone, or stoppedVerifyDone on a
+\* closed page), or `failed` for a failed read. readBackHolds(written, readBack)
 \* passes when the room copy covers every written record.
 VerifyDone(g) ==
   LET s == gm[g] IN
@@ -283,9 +319,11 @@ NoSilentLossAtRest ==
               \/ e \in room
               \/ \E g \in Open : gm[g].notSaved /\ gm[g].owed /\ e \in replica[g]
 
-\* At rest, every edit made is in the room copy, or an open GM that holds it owes a write.
+\* At rest, every edit an open GM holds is in the room copy, or an open GM that
+\* holds it owes a write. An edit that only closed pages hold waits for one of
+\* them to open again: no code writes from a closed page.
 NoLossForGood ==
-  AtRest => \A e \in Made :
+  AtRest => \A e \in UNION {replica[g] : g \in Open} :
               \/ e \in room
               \/ \E g \in Open : gm[g].owed /\ e \in replica[g]
 

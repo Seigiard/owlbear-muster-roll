@@ -15,6 +15,7 @@ Muster Roll is an Owlbear Rodeo extension that keeps the sheets of one room, suc
 - Builder examples are `docs/example-preset.json` and `tests/fixtures/presets/`.
 - `public/` - `manifest.json` and `_headers`
 - `tools/oxlint/` - vendored anti-slop lint rules
+- `formal/` - TLA+ models of the replica; each `formal/<area>/` has a project skill that runs it and a `coverage.txt` naming the code it describes
 - `backlog/` - tasks, managed by the `backlog` CLI
 - `_bmad-output/` - product spec (`specs/spec-muster-roll/SPEC.md`), architecture (`planning-artifacts/architecture/`), UX, per-task specs and `deferred-work.md` (`implementation-artifacts/`), forge sessions
 - `prototypes/owlbear-probe/` - an early platform spike, not shipped
@@ -39,6 +40,7 @@ The paths in the commit choose the checks. For a normal commit, inspect `git dif
 |---|---|
 | Source or tests (`src/`, `tests/`, `scripts/`, `tools/`, `test-setup.ts`), root HTML entry pages, shipped assets or presets (`public/`, `presets/`), `package.json`, `bun.lock`, or configuration consumed by these checks | Full check: `bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, `bun run mutants` (on committed files; it refuses a dirty target), `bun run test:browser`, `bun run build`. |
 | Backlog records (`backlog/`) | Read each touched task with `backlog task view <id> --plain`: the CLI must read it and its fields must match the intended change. Run `backlog doctor` for ID and dependency diagnostics, the touched-path format check below, and `git diff --cached --check`. |
+| Formal models: `formal/<area>/` or the model's skill in `.claude/skills/` | Run that area's `formal/<area>/check.sh` and `formal/drift.sh`. |
 | Documentation: `docs/`, `_bmad-output/`, `GLOSSARY.md`, `CLAUDE.md`, or other Markdown outside source/test/config paths | Run the touched-path format check below and `git diff --cached --check`. Changes to `docs/preset-format.md` or `docs/example-preset.json` also require the example's parse test from the preset-format block. |
 
 `bun run test:browser` needs Chromium; run it outside the sandbox.
@@ -49,9 +51,9 @@ For paths outside the table, inspect their consumers; use the full check if they
 
 For a merge commit, record conflicted paths before resolving them. Classify those paths plus every extra manual edit, including edits to auto-merged files; cleanly auto-merged source stays outside the classification. A merge with only documentation and backlog conflicts therefore uses the smaller rows.
 
-PR CI (`.github/workflows/ci.yml`) is the backstop: on every PR, docs-only included, it runs every full-check command except `bun run test:browser`. The smaller local sets defer those checks to CI. Browser tests remain a local responsibility for full-check commits only.
+PR CI (`.github/workflows/ci.yml`) is the backstop: on every PR, docs-only included, it runs every full-check command except `bun run test:browser`, plus `formal/drift.sh`, and every `formal/*/check.sh` when the PR touches `formal/`. The smaller local sets defer those checks to CI. Browser tests remain a local responsibility for full-check commits only.
 
-Lefthook (`lefthook.yml`) lints and formats matching staged files before a commit. Its pre-push hook runs `bun run typecheck` on every push, docs-only pushes included.
+Lefthook (`lefthook.yml`) lints and formats matching staged files before a commit. Its pre-push hook runs `bun run typecheck` and `formal/drift.sh` on every push, docs-only pushes included. `formal/drift.sh` fails when a file a formal model covers changed after the model's sync commit; bring the model in line through its skill, then move `sync` in `formal/<area>/coverage.txt`.
 </important>
 
 <important if="you are about to deploy, release, or touch wrangler.toml or the production URL">

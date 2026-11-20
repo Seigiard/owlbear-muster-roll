@@ -128,9 +128,18 @@ function staleReplyFragments(
   }
 }
 
+// How many committed proposals a GM client remembers. A player resends at least every 30 seconds,
+// and a session commits far fewer proposals in that time.
+const COMMITTED_EDITS_LIMIT = 1000;
+
 export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   let roomMessages: Promise<void> = Promise.resolve();
   const proposalFragments = createFragmentAssembler(GM_FRAGMENT_ASSEMBLER_LIMITS);
+  // AD-4, TASK-119: the generation and `(k, c, a)` of the proposals this client committed, oldest
+  // first. A player whose commit was lost sends the same proposal again. After a later GM edit of
+  // its field `checkProposal` would call it stale, and the player's rebuilt patch would overwrite
+  // that edit, so the client commits its current record with the echo instead.
+  const committedEdits = new Set<string>();
 
   function receive(event: RoomProtocolEvent): void {
     const parsed = parseRoomMessage(event.data);
@@ -267,7 +276,8 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   // AD-4: a GM client that is live and can vouch for its records checks a player's proposal in
   // `core/access`. It merges a passed record unchanged and commits it, or the existing tombstone
   // for a removal of a removed row, echoing the proposer's `(k, c, a)` either way; or it rejects
-  // with that echo. A GM in catch-up neither commits nor rejects: the player resends.
+  // with that echo. A proposal it already committed gets its held record with the echo, ahead of
+  // those checks. A GM in catch-up neither commits nor rejects: the player resends.
   function receiveProposal(
     message: ProposeMessage,
     sender: string,
@@ -317,6 +327,16 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
       return;
     }
 
+    const committedKey = JSON.stringify([ports.generation(), edit.k, edit.c, edit.a]);
+    const held = ports.records().get(record.k);
+
+    if (record.a === sender && held !== undefined && committedEdits.has(committedKey)) {
+      ports.sendCommits([held], [edit]);
+      rememberCommitted(committedKey);
+
+      return;
+    }
+
     const verdict = checkProposal(
       proposalContext(ports.records()),
       { playerId: member.playerId, author: sender },
@@ -337,6 +357,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
         }
 
         ports.sendCommits([winner], [edit]);
+        rememberCommitted(committedKey);
         unlinkRemovedBlock(winner);
 
         break;
@@ -344,6 +365,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
 
       case 'commit-existing':
         ports.sendCommits([verdict.record], [edit]);
+        rememberCommitted(committedKey);
         unlinkRemovedBlock(verdict.record);
         break;
       case 'denied':
@@ -383,6 +405,19 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
 
       default:
         unknownVerdict(verdict);
+    }
+  }
+
+  function rememberCommitted(key: string): void {
+    committedEdits.delete(key);
+    committedEdits.add(key);
+
+    if (committedEdits.size > COMMITTED_EDITS_LIMIT) {
+      const oldest = committedEdits.values().next();
+
+      if (oldest.done !== true) {
+        committedEdits.delete(oldest.value);
+      }
     }
   }
 

@@ -133,6 +133,7 @@ function createHarness(overrides: Partial<RollFlowPorts> = {}): FlowHarness {
     role: () => 'GM',
     signal: new AbortController().signal,
     generation: () => ({ n: 0, a: '' }),
+    importing: () => false,
     dice: {
       ready: async () => 'permitted',
       roll: async () => Result.ok([{ sides: 20, face: 17 }]),
@@ -569,6 +570,61 @@ test('a repeated roll request id rolls and answers once', async () => {
   expect({ outcomes: harness.outcomes, sent: harness.sent.length }).toEqual({
     outcomes: [{ code: 'rolled' }],
     sent: 1,
+  });
+});
+
+test('a roll during a generation import fails before any dice show', async () => {
+  // #given
+  let rolls = 0;
+
+  const harness = createHarness({
+    importing: () => true,
+    dice: {
+      ready: async () => 'permitted',
+      roll: async () => {
+        rolls += 1;
+
+        return Result.ok([{ sides: 20, face: 17 }]);
+      },
+    },
+  });
+
+  const flow = createRollFlow(harness.ports);
+  // #when
+  flow.handleRollRequest(REQUEST);
+  await drain();
+  // #then
+  expect({ outcomes: harness.outcomes, sent: harness.sent.length, rolls }).toEqual({
+    outcomes: [{ code: 'failed' }],
+    sent: 0,
+    rolls: 0,
+  });
+});
+
+test('a roll whose import starts while the dice roll fails and sends nothing to the room', async () => {
+  // #given
+  let importing = false;
+
+  const harness = createHarness({
+    importing: () => importing,
+    dice: {
+      ready: async () => 'permitted',
+      roll: async () => {
+        importing = true;
+
+        return Result.ok([{ sides: 20, face: 17 }]);
+      },
+    },
+  });
+
+  const flow = createRollFlow(harness.ports);
+  // #when
+  flow.handleRollRequest(REQUEST);
+  await drain();
+  // #then
+  expect({ outcomes: harness.outcomes, sent: harness.sent.length }).toEqual({
+    outcomes: [{ code: 'failed' }],
+    sent: 0,
   });
 });
 

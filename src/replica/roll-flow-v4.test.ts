@@ -75,6 +75,7 @@ function harness(sectionVisibility?: Visibility, rowVisibility?: Visibility) {
     role: () => 'PLAYER',
     signal: new AbortController().signal,
     generation: () => ({ n: 0, a: '' }),
+    importing: () => false,
     dice: {
       ready: async () => 'absent',
       roll: async () => Result.ok([]),

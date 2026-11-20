@@ -2,9 +2,10 @@
 (***************************************************************************)
 (* Catch-up and the GM link of Muster Roll clients in one room.            *)
 (*                                                                         *)
-(* Each client runs the module of src/replica/catch-up.ts (createCatchUp), *)
-(* and the engine interprets its decisions as in src/replica/engine.ts     *)
-(* (runCatchUp, armCatchUpTimer, disarmCatchUpTimer). Room messages pass   *)
+(* Each client runs createCatchUp of src/replica/catch-up.ts: its feed    *)
+(* steps catchUpTable and livenessTable of src/replica/catch-up-table.ts. *)
+(* The engine interprets the decisions with createCatchUpEffects          *)
+(* (src/replica/catch-up-effects.ts run, arm, disarm). Room messages pass *)
 (* through the admission and dispatch of src/replica/room-protocol.ts.     *)
 (* One step is one event the engine hands to the module (a message after  *)
 (* its sender lookup, a timer, a finished read, a page or role event)      *)
@@ -14,6 +15,7 @@
 (*                                                                         *)
 (* "x" is a GM client of a higher generation (an importer), outside the   *)
 (* modeled clients: it writes the room copy, sends `reset` and answers.    *)
+(* It can import up to `Imports` times, each time one generation higher.  *)
 (***************************************************************************)
 EXTENDS Integers, Sequences, FiniteSets, TLC
 
@@ -27,7 +29,7 @@ CONSTANTS
     MaxRoleChanges, \* role changes per client
     HideClients,    \* the clients whose page can stop its timers for a while
     MaxInFlight,    \* room messages on their way at once
-    WithImport,     \* whether the importer "x" appears
+    Imports,        \* how many generations the importer "x" creates in turn (0: no importer)
     SaveCanFail,    \* whether a GM's saveAdoption can return false
     Mutation        \* "none", or the name of a scratch break (see Mutated)
 
@@ -41,15 +43,17 @@ VARIABLES
     net,        \* set of room messages on their way
     opens, returns, roleChanges, \* per-client bounds
     xLife,      \* "none", "present" or "gone"
+    xGen,       \* the importer's generation: 0 before it imports
     copyGen,    \* the generation the room copy holds
-    pinged,     \* [c -> BOOLEAN] ghost: a ping went out since gm-silence was last armed
+    pinged,     \* [c -> BOOLEAN] a ping went out since gm-silence was last armed (`pingSentAt`)
     owed,       \* [c -> set of r] ghost: requests this GM heard and has not answered or seen answered
     dropped,    \* [c -> set of r] ghost: owed requests whose answer timer fired while adopting
     lastHeard,  \* [c -> sender] ghost: the GM client whose message last armed gm-silence
-    badOffline  \* [c -> {"no", "visible", "hidden"}] ghost: gm-silence fired while a GM reply was due
+    badOffline, \* [c -> {"no", "visible", "hidden"}] ghost: gm-silence took the link offline while a GM reply was due
+    ownDropped  \* [c -> BOOLEAN] ghost: a `state` for the client's active `r` made it take a new `r`
 
 vars == <<life, role, hidden, m, timers, reads, net, opens, returns, roleChanges,
-          xLife, copyGen, pinged, owed, dropped, lastHeard, badOffline>>
+          xLife, xGen, copyGen, pinged, owed, dropped, lastHeard, badOffline, ownDropped>>
 
 Mutated(name) == Mutation = name
 
@@ -57,6 +61,7 @@ InitialRole == [c \in Clients |-> IF c \in GmClients THEN "GM" ELSE "PLAYER"]
 
 NoGen == -1
 NoR == <<"none", 0>>
+\* The phase kinds of catch-up-table.ts: "ordinary" is the kind 'catching-up'.
 CatchingUp == {"ordinary", "adopting"}
 
 Key(kind, r) == [kind |-> kind, r |-> r]
@@ -84,7 +89,7 @@ Res(M, ds) == [m |-> M, d |-> ds]
 Own(c, M) == <<c, M.nonce>>
 
 (***************************************************************************)
-(* The module, src/replica/catch-up.ts                                     *)
+(* The module: src/replica/catch-up-table.ts, stepped by catch-up.ts feed *)
 (***************************************************************************)
 
 \* canAnswer(). The drift clause never holds here, as the model has no drift.
@@ -99,10 +104,10 @@ ScheduleAnswer(M, r) ==
     IF ~CanAnswer(M) \/ r \in M.armed THEN Same(M)
     ELSE Res([M EXCEPT !.armed = @ \cup {r}], <<Arm(AK(r))>>)
 
-\* request(r)
+\* request(r): only the active `r` of a client that catches up goes out.
 RequestR(c, M, r) ==
-    Res(IF M.phase \in CatchingUp /\ Own(c, M) = r THEN [M EXCEPT !.sent = TRUE] ELSE M,
-        <<Request(r)>>)
+    IF M.phase \notin CatchingUp \/ Own(c, M) # r THEN Same(M)
+    ELSE Res([M EXCEPT !.sent = TRUE], <<Request(r)>>)
 
 \* ask(r)
 Ask(c, M, r) ==
@@ -121,7 +126,7 @@ Leave(c, M, exit) ==
          IN Res([M1 EXCEPT !.armed = @ \cup rs],
                 <<Disarm(CK), D("caught-up"), ArmAnswers(rs)>>)
 
-\* enter(trigger, adopting)
+\* catchUpEnter. `adoptTo` is the adopting phase that enterFromGeneration builds first.
 Enter(c, M, t, adoptTo) ==
     IF t = "page-return" /\ M.phase \in CatchingUp
     THEN Res(M, <<D("entered"), ReadCopy(Own(c, M), FALSE)>>)
@@ -130,16 +135,19 @@ Enter(c, M, t, adoptTo) ==
                      ELSE IF M.phase = "adopting" THEN M.target ELSE NoGen
              M1 == [M EXCEPT !.phase = IF mode = NoGen THEN "ordinary" ELSE "adopting",
                              !.target = mode, !.trig = t, !.nonce = n, !.ids = n,
-                             !.sent = FALSE, !.seen = FALSE, !.last = n]
+                             !.sent = FALSE, !.seen = FALSE, !.last = n, !.pend = "none"]
          IN Res(M1, <<D("entered")>>
                     \o (IF Mutated("no-timeout-on-enter") THEN <<>> ELSE <<Arm(CK)>>)
                     \o <<ReadCopy(<<c, n>>, TRUE)>>)
 
-\* watch()
+\* livenessWatch (catchUpTable ignores `watch`)
 Watch(M) ==
     Res(M, <<Arm(PK)>> \o (IF Mutated("no-silence-rearm") THEN <<>> ELSE <<Arm(SK)>>))
 
-\* setGmLink(next, answersOwn)
+\* livenessHeard and livenessFired('gm-silence'), together with catchUpHeard,
+\* in the order createCatchUp feed returns their decisions for `heard`: arms,
+\* gm-back, then a gm-return entry (no show) or a repeated request and show.
+\* catchUpHeard reads env.gmLink, the link before this event.
 SetGmLink(c, M, next, answersOwn) ==
     IF M.link = next THEN Same(M)
     ELSE LET M1 == [M EXCEPT !.link = next]
@@ -152,30 +160,52 @@ SetGmLink(c, M, next, answersOwn) ==
                       IN Res(Q.m, back \o Q.d \o <<D("show")>>)
                  ELSE Res(M1, back \o <<D("show")>>)
 
-\* enterFromGeneration(generation, keepNonce)
+\* enterFromGeneration(generation, keepNonce): catchUpGenerationHeard and
+\* catchUpGenerationRead. generation-table.ts seeGeneration and adoptFromCopy
+\* compare the generation the same way before they hand it on.
 EnterFromGeneration(c, M, g, keepNonce) ==
     LET current == IF M.phase = "adopting" THEN M.target ELSE M.gen
     IN IF g <= current THEN Same(M)
        ELSE IF keepNonce /\ M.phase \in CatchingUp
-            THEN Res([M EXCEPT !.phase = "adopting", !.trig = "generation", !.target = g],
+            THEN Res([M EXCEPT !.phase = "adopting", !.trig = "generation", !.target = g,
+                               !.pend = "none"],
                      <<D("adopt")>>)
             ELSE LET E == Enter(c, M, "generation", g) IN Res(E.m, <<D("adopt")>> \o E.d)
 
-\* finishAdoption(fromCopy). `saveOk` is what options.saveAdoption returns; it
-\* also moves the client's own generation (generation-flow.ts saveAdoption).
-FinishAdoption(c, M, fromCopy, saveOk) ==
-    IF M.phase # "adopting" \/ ~saveOk THEN Same(M)
-    ELSE LET M1 == [M EXCEPT !.phase = "ordinary", !.gen = M.target, !.target = NoGen]
-         IN IF fromCopy THEN Res(M1, <<Arm(CK)>>)
+\* The save of a complete adoption. catch-up.ts feed: after a `state-merged`
+\* or `adoption-staged` event that leaves the phase adopting with
+\* pendingAdoption set, options.saveAdoption, then the `adoption-saved` event
+\* (catchUpAdoptionSaved). `pend` is pendingAdoption: "copy" (fromCopy),
+\* "answer", or "none". `saveOk` is what saveAdoption returns; it also moves
+\* the client's own generation (generation-table.ts saveAdoption,
+\* storeWritten). A failed save keeps pendingAdoption, so the next
+\* `state-merged` or `adoption-staged` saves again. The Mutation
+\* "save-fail-reenters" breaks that retry: a failed save starts the adoption
+\* over with a new `r` instead.
+SavePending(c, M, saveOk) ==
+    IF M.phase # "adopting" \/ M.pend = "none" THEN Same(M)
+    ELSE IF ~saveOk /\ Mutated("save-fail-reenters")
+    THEN Enter(c, M, "generation", M.target)
+    ELSE IF ~saveOk THEN Same(M)
+    ELSE LET M1 == [M EXCEPT !.phase = "ordinary", !.gen = M.target, !.target = NoGen,
+                             !.pend = "none"]
+         IN IF M.pend = "copy" THEN Res(M1, <<Arm(CK)>>)
             ELSE LET L == Leave(c, M1, "answered") IN Res(L.m, <<Arm(CK)>> \o L.d)
 
-\* roomCopyRead(r, fresh)
+\* adoptionStaged(): catchUpAdoptionStaged (adopting only), then the save.
+AdoptionStaged(c, M, saveOk) ==
+    SavePending(c, IF M.phase = "adopting" THEN [M EXCEPT !.pend = "copy"] ELSE M, saveOk)
+
+\* catchUpRoomCopyRead (the live and initializing rows ignore it). It does not
+\* check `r`; for an old `r`, request() sends nothing, and the request timer and
+\* party read it arms do nothing later, so Collect drops them.
 RoomCopyRead(c, M, n, fresh) ==
-    IF M.phase \notin CatchingUp \/ M.nonce # n THEN Same(M)
+    IF M.phase \notin CatchingUp THEN Same(M)
     ELSE LET A == IF fresh \/ ~M.seen THEN Ask(c, M, <<c, n>>) ELSE Same(M)
          IN Res(A.m, A.d \o (IF M.role = "GM" THEN <<ReadParty(<<c, n>>)>> ELSE <<>>))
 
-\* partyRead(r, players). `ok` FALSE is a failed read (null).
+\* catchUpPartyRead (ordinary only; the other rows ignore it). `ok` FALSE is a
+\* failed read: catch-up-effects.ts reports it and calls nothing.
 PartyRead(c, M, n, ok, otherGm) ==
     IF ~ok \/ M.phase # "ordinary" \/ M.nonce # n \/ M.role # "GM" THEN Same(M)
     ELSE IF otherGm THEN Same(M) ELSE Leave(c, M, "unanswered")
@@ -183,8 +213,8 @@ PartyRead(c, M, n, ok, otherGm) ==
 MarkSeen(c, M, r) ==
     IF M.phase \in CatchingUp /\ Own(c, M) = r THEN [M EXCEPT !.seen = TRUE] ELSE M
 
-\* stateMerged(message, sender, relation), for a one-part answer (n = 1).
-StateMerged(c, M, msg, rel, saveOk) ==
+\* catchUpStateMerged, for a one-part answer (n = 1).
+StateMergedStep(c, M, msg, rel) ==
     LET pre == IF rel = "higher"
                THEN IF M.phase # "adopting" \/ msg.g # M.target THEN "stop"
                     ELSE "go"
@@ -197,12 +227,18 @@ StateMerged(c, M, msg, rel, saveOk) ==
        ELSE IF msg.r # <<c, M1.last>> \/ (M1.phase = "adopting" /\ msg.g # M1.target)
             THEN Res(M1, d1)
        ELSE IF M1.phase = "adopting"
-            THEN LET F == FinishAdoption(c, M1, FALSE, saveOk) IN Res(F.m, d1 \o F.d)
+            THEN Res([M1 EXCEPT !.pend = "answer"], d1)
        ELSE IF M1.phase = "ordinary"
             THEN LET L == Leave(c, M1, "answered") IN Res(L.m, d1 \o L.d)
        ELSE IF ~M1.gmAnswered
             THEN Res([M1 EXCEPT !.gmAnswered = TRUE], d1 \o <<D("show")>>)
        ELSE Res(M1, d1)
+
+\* stateMerged(message, sender, relation): the step, then the save of a pending adoption.
+StateMerged(c, M, msg, rel, saveOk) ==
+    LET S == StateMergedStep(c, M, msg, rel)
+        V == SavePending(c, S.m, saveOk)
+    IN Res(V.m, S.d \o V.d)
 
 \* heard(senderRole, message) for a GM sender
 Heard(c, M, msg) ==
@@ -210,15 +246,21 @@ Heard(c, M, msg) ==
         S == SetGmLink(c, W.m, "online", msg.t = "state" /\ msg.r = <<c, M.last>>)
     IN Res(S.m, W.d \o S.d)
 
-\* stateRequested(r)
+\* catchUpStateRequested
 StateRequested(M, r) ==
     LET M1 == [M EXCEPT !.answered = @ \ {r}]
     IN IF M1.role = "GM" /\ ~CanAnswer(M1)
        THEN Same([M1 EXCEPT !.held = @ \cup {r}])
        ELSE ScheduleAnswer(M1, r)
 
-\* fired(timer)
-Fired(c, M, k) ==
+\* fired(timer): catchUpFired, and livenessFired for ping and gm-silence.
+\* gm-silence takes the link offline only when `silenceAnswered`: it fires on
+\* time (`late` is a page whose timers stopped) and its last ping is at least a
+\* quarter of the timeout old (`pingOld`). Otherwise it keeps the link, pings
+\* and arms itself again (`recheckGm`, TASK-120). The Mutation
+\* "silence-ignores-pause" takes the link offline as before the fix;
+\* "silence-ignores-ping-age" checks lateness only.
+Fired(c, M, k, late, pingOld) ==
     CASE k.kind = "catch-up" ->
             IF M.phase \notin CatchingUp THEN Same(M)
             ELSE IF M.phase = "adopting"
@@ -226,7 +268,11 @@ Fired(c, M, k) ==
                  ELSE Leave(c, M, "unanswered")
       [] k.kind = "ping" ->
             Res(M, <<D("ping")>> \o (IF Mutated("ping-not-rearmed") THEN <<>> ELSE <<Arm(PK)>>))
-      [] k.kind = "gm-silence" -> SetGmLink(c, M, "offline", FALSE)
+      [] k.kind = "gm-silence" ->
+            IF M.link = "online" /\ ~Mutated("silence-ignores-pause")
+               /\ (late \/ (~pingOld /\ ~Mutated("silence-ignores-ping-age")))
+            THEN Res(M, <<Arm(SK), D("ping")>>)
+            ELSE SetGmLink(c, M, "offline", FALSE)
       [] k.kind = "request" ->
             IF M.phase \in CatchingUp /\ Own(c, M) = k.r THEN RequestR(c, M, k.r) ELSE Same(M)
       [] k.kind = "answer" ->
@@ -237,10 +283,18 @@ Fired(c, M, k) ==
                THEN Res([M2 EXCEPT !.answered = @ \cup {k.r}], <<AnswerD(k.r)>>)
                ELSE Same(M2)
 
-AnswersOwn(c, M, r) == M.phase \in CatchingUp /\ r = Own(c, M)
+\* `r` is the active request of a client that catches up.
+ActiveR(c, M, r) == M.phase \in CatchingUp /\ r = Own(c, M)
+
+\* answersOwn(r): the active `r` of a client in ordinary catch-up or adoption.
+\* The Mutation "answers-own-ordinary-only" is the TASK-129 regression: only an
+\* ordinary catch-up counts, so an adopting client drops its own answer.
+AnswersOwn(c, M, r) ==
+    IF Mutated("answers-own-ordinary-only") THEN M.phase = "ordinary" /\ r = Own(c, M)
+    ELSE ActiveR(c, M, r)
 
 (***************************************************************************)
-(* The engine: interpretation of decisions (engine.ts runCatchUp)          *)
+(* The engine: catch-up-effects.ts run interprets the decisions           *)
 (***************************************************************************)
 
 \* REMOTE broadcast: every other open client, and the importer while present.
@@ -315,7 +369,8 @@ InitM(c, ids, g) ==
     [phase |-> "initializing", trig |-> "none", nonce |-> 0, sent |-> FALSE,
      seen |-> FALSE, last |-> 0, target |-> NoGen, link |-> "offline",
      firstDone |-> FALSE, gmAnswered |-> FALSE, held |-> {}, answered |-> {},
-     armed |-> {}, gen |-> g, role |-> role[c], vouch |-> Vouches(c), ids |-> ids]
+     armed |-> {}, gen |-> g, role |-> role[c], vouch |-> Vouches(c), ids |-> ids,
+     pend |-> "none"]
 
 SaveOutcomes(c) ==
     IF role[c] = "GM" /\ Vouches(c) /\ SaveCanFail THEN BOOLEAN ELSE {TRUE}
@@ -345,12 +400,13 @@ Dispatch(c, M, msg, rel, saveOk) ==
             Res(M, IF CanAnswer(M) /\ M.phase = "live" THEN <<D("alive")>> ELSE <<>>)
       [] OTHER -> Same(M)  \* alive (drift left out), reset
 
-\* generation-flow.ts adoptFromCopy: generationRead, then adoptionStaged when
-\* the copy is the generation adopted.
+\* generation-flow.ts adoptFromCopy (generation-table.ts adoptFromCopy, twice):
+\* generationRead, then stage and adoptionStaged when the copy is the
+\* generation adopted. engine.ts `adopt` runs both decision lists at once.
 AdoptFromCopy(c, M, saveOk) ==
     LET G == EnterFromGeneration(c, M, copyGen, M.phase \in CatchingUp)
     IN IF G.m.phase = "adopting" /\ G.m.target = copyGen
-       THEN LET F == FinishAdoption(c, G.m, TRUE, saveOk) IN Res(F.m, G.d \o F.d)
+       THEN LET F == AdoptionStaged(c, G.m, saveOk) IN Res(F.m, G.d \o F.d)
        ELSE G
 
 OtherGmInParty(c) ==
@@ -365,20 +421,30 @@ AnsweringGm(c) ==
 Quiet(c) == ~\E msg \in net : msg.to = c \/ (msg.from = c /\ msg.t = "ping")
 
 \* Real delays the clockless model keeps. watch() arms ping at 1/2..3/4 of
-\* gmLinkTimeoutMs and gm-silence at the whole of it, and a reply takes far
-\* less than a quarter of it, so in a running page gm-silence fires only after
-\* a ping went out and every reply came back. `hidden` stands for a page whose
-\* timers stopped for a while (a frozen or suspended tab, a sleeping laptop):
-\* when it runs again, every overdue timer fires back to back, before any reply.
+\* gmLinkTimeoutMs and gm-silence at the whole of it; recheckGm pings and arms
+\* gm-silence at a quarter. So in a running page gm-silence fires after a ping.
+\* `hidden` stands for a page whose timers stopped for a while (a frozen or
+\* suspended tab, a sleeping laptop): when it runs again, every overdue timer
+\* fires back to back, before any reply, and its gm-silence fires more than a
+\* quarter late. It runs again from that gm-silence on (Fire). A page that
+\* wakes less than a quarter after its gm-silence came due is left out: its
+\* replies may still wait behind it.
 TimingOK(c, k) ==
-    k = SK => (hidden[c] \/ Mutated("silence-not-after-ping") \/ (pinged[c] /\ Quiet(c)))
+    k = SK => (hidden[c] \/ Mutated("silence-not-after-ping") \/ pinged[c])
+
+\* The clock, at a gm-silence: can its last ping be a quarter of the timeout
+\* old? A reply takes far less than a quarter, so in a running page an old
+\* ping's replies came back; a young one went out when the page woke.
+PingCanBeOld(c) ==
+    pinged[c] /\ (hidden[c] \/ Quiet(c) \/ Mutated("silence-not-after-ping"))
 
 (***************************************************************************)
 (* Actions                                                                 *)
 (***************************************************************************)
 
 Untouched(c) ==
-    UNCHANGED <<life, role, hidden, opens, returns, roleChanges, xLife, copyGen, lastHeard, badOffline>>
+    UNCHANGED <<life, role, hidden, opens, returns, roleChanges, xLife, xGen, copyGen, lastHeard,
+                badOffline, ownDropped>>
 
 \* engine.ts startup: enterCatchUp('start') then catchUp.watch(), with no await between.
 Open(c) ==
@@ -392,7 +458,7 @@ Open(c) ==
     /\ hidden' = [hidden EXCEPT ![c] = FALSE]
     /\ opens' = [opens EXCEPT ![c] = @ + 1]
     /\ lastHeard' = [lastHeard EXCEPT ![c] = "none"]
-    /\ UNCHANGED <<role, returns, roleChanges, xLife, copyGen, badOffline>>
+    /\ UNCHANGED <<role, returns, roleChanges, xLife, xGen, copyGen, badOffline, ownDropped>>
 
 \* The page goes away: stop() clears every catch-up timer. closing() runs
 \* before it, but whatever it arms is cleared at once. The module is gone, so
@@ -408,7 +474,8 @@ Close(c) ==
     /\ hidden' = [hidden EXCEPT ![c] = FALSE]
     /\ pinged' = [pinged EXCEPT ![c] = FALSE]
     /\ lastHeard' = [lastHeard EXCEPT ![c] = "none"]
-    /\ UNCHANGED <<role, net, opens, returns, roleChanges, xLife, copyGen, badOffline>>
+    /\ UNCHANGED <<role, net, opens, returns, roleChanges, xLife, xGen, copyGen, badOffline,
+                   ownDropped>>
 
 \* The page stops running its timers (frozen tab, sleep). engine.ts pageHidden
 \* touches only the room copy, so nothing in catch-up changes here; it stays so
@@ -417,7 +484,7 @@ PageHidden(c) ==
     /\ c \in HideClients /\ life[c] = "open" /\ ~hidden[c]
     /\ hidden' = [hidden EXCEPT ![c] = TRUE]
     /\ UNCHANGED <<life, role, m, timers, reads, net, opens, returns, roleChanges,
-                   xLife, copyGen, pinged, owed, dropped, lastHeard, badOffline>>
+                   xLife, xGen, copyGen, pinged, owed, dropped, lastHeard, badOffline, ownDropped>>
 
 \* engine.ts catchUp(): enterCatchUp('page-return'). The page became visible,
 \* resumed or came back online.
@@ -426,7 +493,8 @@ PageReturn(c) ==
     /\ Run(c, Enter(c, m[c], "page-return", NoGen))
     /\ hidden' = [hidden EXCEPT ![c] = FALSE]
     /\ returns' = [returns EXCEPT ![c] = @ + 1]
-    /\ UNCHANGED <<life, role, opens, roleChanges, xLife, copyGen, lastHeard, badOffline>>
+    /\ UNCHANGED <<life, role, opens, roleChanges, xLife, xGen, copyGen, lastHeard, badOffline,
+                   ownDropped>>
 
 \* engine.ts changeRole(next): replicaReplaced, then enterCatchUp('role')
 RoleChange(c) ==
@@ -435,22 +503,29 @@ RoleChange(c) ==
        IN /\ role' = [role EXCEPT ![c] = next]
           /\ Run(c, Enter(c, [m[c] EXCEPT !.role = next], "role", NoGen))
     /\ roleChanges' = [roleChanges EXCEPT ![c] = @ + 1]
-    /\ UNCHANGED <<life, hidden, opens, returns, xLife, copyGen, lastHeard, badOffline>>
+    /\ UNCHANGED <<life, hidden, opens, returns, xLife, xGen, copyGen, lastHeard, badOffline,
+                   ownDropped>>
 
-\* armCatchUpTimer's callback: the key is removed, then fired(timer) runs.
+\* catch-up-effects.ts arm's callback: the key is removed, then fired(timer) runs.
 Fire(c, k) ==
     /\ life[c] = "open" /\ k \in timers[c] /\ TimingOK(c, k)
-    /\ RunWithD(c, Fired(c, m[c], k), timers[c] \ {k}, reads[c], net, owed[c],
-                IF k.kind = "answer" /\ m[c].phase = "adopting"
-                THEN dropped[c] \cup {k.r} ELSE dropped[c])
+    /\ \E pingOld \in {o \in BOOLEAN : o => PingCanBeOld(c)} :
+        RunWithD(c, Fired(c, m[c], k, hidden[c], pingOld), timers[c] \ {k}, reads[c], net,
+                 owed[c],
+                 IF k.kind = "answer" /\ m[c].phase = "adopting"
+                 THEN dropped[c] \cup {k.r} ELSE dropped[c])
     /\ badOffline' =
-          IF k = SK /\ m[c].link = "online" /\ AnsweringGm(c) /\ ~(pinged[c] /\ Quiet(c))
+          IF k = SK /\ m[c].link = "online" /\ m'[c].link = "offline" /\ AnsweringGm(c)
+             /\ ~(pinged[c] /\ Quiet(c))
           THEN [badOffline EXCEPT ![c] = IF hidden[c] THEN "hidden" ELSE "visible"]
           ELSE badOffline
-    /\ UNCHANGED <<life, role, hidden, opens, returns, roleChanges, xLife, copyGen, lastHeard>>
+    /\ hidden' = IF k = SK THEN [hidden EXCEPT ![c] = FALSE] ELSE hidden
+    /\ UNCHANGED <<life, role, opens, returns, roleChanges, xLife, xGen, copyGen, lastHeard,
+                   ownDropped>>
 
 \* room-protocol.ts receive, after `await senderOf`: seeGeneration, admission,
-\* heard, dispatch. Each runCatchUp in it is interpreted at once, in order.
+\* heard, dispatch. Each ports.runCatchUp in it (catch-up-effects.ts run)
+\* interprets its decisions at once, in order.
 Receive(msg) ==
     LET c == msg.to
         M == m[c]
@@ -471,7 +546,12 @@ Receive(msg) ==
                          IF msg.t = "state-request" THEN dropped[c] \ {msg.r} ELSE dropped[c])
        /\ lastHeard' = IF adm /\ sr = "GM" /\ Unreadable # {} THEN [lastHeard EXCEPT ![c] = msg.from]
                        ELSE lastHeard
-       /\ UNCHANGED <<life, role, hidden, opens, returns, roleChanges, xLife, copyGen, badOffline>>
+       \* The answer to the active request was dropped for a new request.
+       /\ ownDropped' = IF /\ msg.t = "state" /\ sr = "GM" /\ ActiveR(c, M, msg.r)
+                           /\ m'[c].phase \in CatchingUp /\ m'[c].nonce # M.nonce
+                        THEN [ownDropped EXCEPT ![c] = TRUE] ELSE ownDropped
+       /\ UNCHANGED <<life, role, hidden, opens, returns, roleChanges, xLife, xGen, copyGen,
+                      badOffline>>
 
 Deliver(msg) ==
     /\ msg \in net
@@ -485,10 +565,11 @@ Drop(msg) ==
     /\ IF msg.to = "x" THEN xLife # "present" ELSE life[msg.to] # "open"
     /\ net' = net \ {msg}
     /\ UNCHANGED <<life, role, hidden, m, timers, reads, opens, returns, roleChanges,
-                   xLife, copyGen, pinged, owed, dropped, lastHeard, badOffline>>
+                   xLife, xGen, copyGen, pinged, owed, dropped, lastHeard, badOffline, ownDropped>>
 
-\* runCatchUp 'read-room-copy': roomCopy.read() merges the copy, adopting a
-\* higher generation, then catchUp.roomCopyRead(r, fresh). A read may never end.
+\* catch-up-effects.ts 'read-room-copy': roomCopy.read() merges the copy
+\* (room-copy.ts mergeReadRoomCopy adopts a higher generation), then
+\* catchUp.roomCopyRead(r, fresh). A read may never end.
 CopyReadDone(c, rd) ==
     /\ life[c] = "open" /\ rd \in reads[c] /\ rd.kind = "copy"
     /\ \E ok \in SaveOutcomes(c) :
@@ -497,7 +578,7 @@ CopyReadDone(c, rd) ==
           IN RunWith(c, Res(B.m, A.d \o B.d), timers[c], reads[c] \ {rd}, net, owed[c])
     /\ Untouched(c)
 
-\* runCatchUp 'read-party': platform.party.getPlayers(), then catchUp.partyRead.
+\* catch-up-effects.ts 'read-party': platform.party.getPlayers(), then catchUp.partyRead.
 PartyReadDone(c, rd) ==
     /\ life[c] = "open" /\ rd \in reads[c] /\ rd.kind = "party"
     /\ \E ok \in BOOLEAN :
@@ -505,23 +586,27 @@ PartyReadDone(c, rd) ==
                   timers[c], reads[c] \ {rd}, net, owed[c])
     /\ Untouched(c)
 
-\* room-copy.ts followMetadata: a metadata change shows a copy of a higher generation.
+\* room-copy.ts followMetadata, or the write loop's read-back (room-copy-table.ts
+\* adoptForOrdinary): a copy of a higher generation is adopted at any time.
 FollowCopy(c) ==
     /\ life[c] = "open" /\ copyGen > m[c].gen
     /\ \E ok \in SaveOutcomes(c) : Run(c, AdoptFromCopy(c, m[c], ok))
     /\ Untouched(c)
 
-XBcast(t, r) == {[from |-> "x", to |-> d, t |-> t, r |-> r, g |-> 1] :
-                    d \in {d \in Clients : life[d] = "open"}}
+XBcastG(t, r, g) == {[from |-> "x", to |-> d, t |-> t, r |-> r, g |-> g] :
+                        d \in {d \in Clients : life[d] = "open"}}
+XBcast(t, r) == XBcastG(t, r, xGen)
 
 \* The importer writes the room copy before its `reset`; the copy may not fit.
+\* A second import (or a wipe) by the same GM client takes the next generation.
 XImport ==
-    /\ WithImport /\ xLife = "none"
-    /\ \E fits \in BOOLEAN : copyGen' = IF fits THEN 1 ELSE copyGen
+    /\ xGen < Imports /\ xLife # "gone"
+    /\ xGen' = xGen + 1
+    /\ \E fits \in BOOLEAN : copyGen' = IF fits THEN xGen + 1 ELSE copyGen
     /\ xLife' = "present"
-    /\ net' = net \cup XBcast("reset", NoR)
+    /\ net' = net \cup XBcastG("reset", NoR, xGen + 1)
     /\ UNCHANGED <<life, role, hidden, m, timers, reads, opens, returns, roleChanges,
-                   pinged, owed, dropped, lastHeard, badOffline>>
+                   pinged, owed, dropped, lastHeard, badOffline, ownDropped>>
 
 \* The importer is a live, vouching GM: it answers requests and pings on receipt.
 XReceive(msg) ==
@@ -531,13 +616,13 @@ XReceive(msg) ==
                       [] msg.t = "ping" -> XBcast("alive", NoR)
                       [] OTHER -> {})
     /\ UNCHANGED <<life, role, hidden, m, timers, reads, opens, returns, roleChanges,
-                   xLife, copyGen, pinged, owed, dropped, lastHeard, badOffline>>
+                   xLife, xGen, copyGen, pinged, owed, dropped, lastHeard, badOffline, ownDropped>>
 
 XLeave ==
     /\ xLife = "present"
     /\ xLife' = "gone"
     /\ UNCHANGED <<life, role, hidden, m, timers, reads, net, opens, returns, roleChanges,
-                   copyGen, pinged, owed, dropped, lastHeard, badOffline>>
+                   xGen, copyGen, pinged, owed, dropped, lastHeard, badOffline, ownDropped>>
 
 Init ==
     /\ life = [c \in Clients |-> "unopened"]
@@ -547,7 +632,8 @@ Init ==
                                sent |-> FALSE, seen |-> FALSE, last |-> 0, target |-> NoGen,
                                link |-> "offline", firstDone |-> FALSE, gmAnswered |-> FALSE,
                                held |-> {}, answered |-> {}, armed |-> {}, gen |-> 0,
-                               role |-> InitialRole[c], vouch |-> Vouches(c), ids |-> 0]]
+                               role |-> InitialRole[c], vouch |-> Vouches(c), ids |-> 0,
+                               pend |-> "none"]]
     /\ timers = [c \in Clients |-> {}]
     /\ reads = [c \in Clients |-> {}]
     /\ net = {}
@@ -555,12 +641,14 @@ Init ==
     /\ returns = [c \in Clients |-> 0]
     /\ roleChanges = [c \in Clients |-> 0]
     /\ xLife = "none"
+    /\ xGen = 0
     /\ copyGen = 0
     /\ pinged = [c \in Clients |-> FALSE]
     /\ owed = [c \in Clients |-> {}]
     /\ dropped = [c \in Clients |-> {}]
     /\ lastHeard = [c \in Clients |-> "none"]
     /\ badOffline = [c \in Clients |-> "no"]
+    /\ ownDropped = [c \in Clients |-> FALSE]
 
 \* Every timer key and read a client can hold, so that each disjunct of Next is
 \* one quantifier over one action and TLC names the action in its traces.
@@ -591,6 +679,13 @@ Next ==
     \/ XLeave
 
 Spec == Init /\ [][Next]_vars
+
+\* An extra CONSTRAINT for large rooms: TLC does not explore a state with a
+\* ping or alive on its way. A client whose ping timer fires while a peer is
+\* open is not explored past it, so the GM link changes only through state,
+\* reset and state-request messages, and gm-silence fires only after a ping
+\* that reached nobody (TimingOK). This leaves out the pings, not the answers.
+NoPingTraffic == \A msg \in net : msg.t \notin {"ping", "alive"}
 
 \* newId() calls are bounded; TLC does not explore past MaxIds.
 Bounds ==
@@ -654,6 +749,12 @@ AdoptionCanComplete ==
             \/ copyGen >= m[c].target
             \/ xLife = "present"
             \/ \E d \in Clients : Open_(d) /\ role[d] = "GM" /\ Vouches(d) /\ m[d].gen = m[c].target
+
+\* A `state` that answers a client's active request keeps that request: the
+\* client does not drop it for a new `r` and ask again. room-protocol.ts
+\* handleRoomMessage: "An answer to this client's own request keeps that
+\* request." (the keepNonce it passes to seeGeneration).
+OwnAnswerKeepsRequest == \A c \in Clients : ~ownDropped[c]
 
 \* A client shows a GM online only while the GM that kept it online can
 \* answer: not a GM client whose saved records cannot be read.

@@ -57,7 +57,7 @@ vars == <<cl, inbox, copy, imports, roleChanges, closes, storeFails, copyFails, 
 
 GmAtStart == [role |-> "GM", open |-> TRUE, own |-> 0, seen |-> 0, persist |-> 0,
               complete |-> {0}, replica |-> {0}, staged |-> {},
-              phase |-> "live", target |-> NONE,
+              phase |-> "live", target |-> NONE, pending |-> "none",
               importing |-> FALSE, impGen |-> NONE, impStage |-> "none",
               persistAll |-> FALSE]
 
@@ -87,23 +87,27 @@ CountFail(ok) == storeFails' = storeFails + (IF ok THEN 0 ELSE 1)
 -----------------------------------------------------------------------------
 (* Pure updates of one client's record, each mapped to one code function.   *)
 
-(* catch-up.ts enterFromGeneration, reached by generation-flow.ts           *)
+(* catch-up-table.ts enterFromGeneration, reached by generation-table.ts    *)
 (* seeGeneration / adoptFromCopy; the `adopt` decision runs clearStaged.    *)
+(* A new target drops a pending adoption whose save failed.                 *)
 SeeGeneration(r, g) ==
   LET base == IF r.target = NONE THEN r.own ELSE r.target
       heard == [r EXCEPT !.seen = Max2(r.seen, g)]
   IN IF g > base /\ (Bug # "no-retarget" \/ r.target = NONE)
-       THEN [heard EXCEPT !.phase = "adopting", !.target = g,
+       THEN [heard EXCEPT !.phase = "adopting", !.target = g, !.pending = "none",
                           !.staged = IF Bug = "keep-staged" THEN r.staged ELSE {}]
        ELSE heard
 
-(* catch-up.ts leave + engine.ts performCaughtUp (AD-11 persist-all).       *)
+(* catch-up-table.ts leave + engine.ts performCaughtUp (AD-11 persist-all). *)
 Leave(r) ==
   [r EXCEPT !.phase = "live", !.persistAll = FALSE,
             !.complete = IF r.persistAll /\ r.persist # NONE /\ Bug # "exit-skips-persist-all"
                            THEN r.complete \cup {r.persist} ELSE r.complete]
 
-(* catch-up.ts finishAdoption -> generation-flow.ts saveAdoption.           *)
+(* catch-up.ts feed with a pending adoption -> generation-flow.ts           *)
+(* saveAdoption; catch-up-table.ts catchUpAdoptionSaved. A failed save     *)
+(* keeps the adoption pending, so the next `state` the client merges        *)
+(* retries the save with the same `fromCopy`.                               *)
 SaveAdoption(r, fromCopy, ok) ==
   LET T == r.target
       saved == IF r.persist = NONE THEN r
@@ -111,32 +115,45 @@ SaveAdoption(r, fromCopy, ok) ==
                               !.persist = IF Bug = "save-keeps-persistence" THEN r.persist ELSE T]
       done == [saved EXCEPT !.staged = IF Bug = "save-keeps-staged" THEN r.staged ELSE {},
                             !.own = T, !.seen = Max2(r.seen, T),
-                            !.replica = r.staged, !.phase = "catching", !.target = NONE]
+                            !.replica = r.staged, !.phase = "catching", !.target = NONE,
+                            !.pending = "none"]
   IN IF r.persist # NONE /\ ~ok
        THEN [r EXCEPT !.complete =
                (IF Bug = "remove-old-on-fail" THEN {g \in r.complete : g >= T}
                 ELSE r.complete) \ {T},
-                      !.replica = IF Bug = "replace-on-failed-save" THEN r.staged ELSE r.replica]
+                      !.replica = IF Bug = "replace-on-failed-save" THEN r.staged ELSE r.replica,
+                      !.pending = IF fromCopy THEN "copy" ELSE "answer"]
        ELSE IF fromCopy THEN done ELSE Leave(done)
+
+(* The Bug "no-retry" breaks the retry of a failed save: catch-up.ts feed   *)
+(* saves only when the adoption first becomes pending, so a pending        *)
+(* adoption is never saved again.                                           *)
+NoRetry(r) == Bug = "no-retry" /\ r.pending # "none"
+
+(* engine.ts `vouches`: a GM with saved records answers for them, except   *)
+(* while it imports, until its room copy is written (TASK-117).             *)
+Vouches(r) == r.persist # NONE /\ (~r.importing \/ Bug = "importer-answers")
 
 (* room-copy.ts mergeReadRoomCopy with generation-flow.ts adoptFromCopy.    *)
 ReadCopyInto(r, ok) ==
   LET adopting == IF copy.g > r.own THEN SeeGeneration(r, copy.g) ELSE r
-      saving == copy.g > r.own /\ adopting.target = copy.g
+      saving == copy.g > r.own /\ adopting.target = copy.g /\ ~NoRetry(adopting)
       staged == [adopting EXCEPT !.staged = @ \cup copy.tags]
       after == IF saving THEN SaveAdoption(staged, TRUE, ok) ELSE adopting
   IN IF after.own = copy.g THEN [after EXCEPT !.replica = @ \cup copy.tags] ELSE after
 
 CopySaves(r) == copy.g > r.own /\ SeeGeneration(r, copy.g).target = copy.g
+                /\ ~NoRetry(SeeGeneration(r, copy.g))
 
-(* generation-flow.ts importSuperseded, with `stopped` false.               *)
+(* generation-table.ts importSuperseded, with `aborted` false.             *)
 Superseded(r) == r.target # NONE \/ r.own # r.impGen
 
 -----------------------------------------------------------------------------
 (* Actions. Each is one synchronous run of code between two awaits.         *)
 
 (* GM imports a snapshot or wipes: command-routing.ts decideCommandRoute,   *)
-(* then generation-flow.ts replaceGeneration up to `await writeImport`.     *)
+(* then generation-table.ts importGeneration, whose effects generation-     *)
+(* flow.ts run applies up to `await ports.roomCopy.writeImport`.            *)
 Import(c) ==
   LET r == cl[c]
       G == NextGeneration(r, c)
@@ -154,7 +171,8 @@ Import(c) ==
      /\ UNCHANGED <<inbox, copy, roleChanges, closes, copyFails>>
      /\ UpdateHi
 
-(* room-copy.ts writeImportCopy / importCopyVerified / removeLowerCopy.     *)
+(* room-copy.ts writeImport -> room-copy-table.ts importRead, encodeWrite,  *)
+(* verifyDone, importRejected, cleanupRead: the whole import copy write.    *)
 ImportCopyWritten(c) ==
   LET r == cl[c]
   IN /\ r.open /\ r.importing /\ r.impStage = "copying"
@@ -176,7 +194,8 @@ ImportCopyWritten(c) ==
                  /\ UNCHANGED storeFails
      /\ UpdateHi
 
-(* generation-flow.ts replaceGeneration after `await writeImport`.          *)
+(* generation-flow.ts writeImport after its await -> generation-table.ts    *)
+(* copyWritten (`written`, then `finished`).                                *)
 ImportFinished(c) ==
   LET r == cl[c]
   IN /\ r.open /\ r.importing /\ r.impStage = "finishing"
@@ -192,7 +211,8 @@ ImportFinished(c) ==
      /\ UpdateHi
 
 (* room-protocol.ts handleRoomMessage, dispatchRoomMessage, receiveState;   *)
-(* catch-up.ts stateMerged / stateRequested.                                *)
+(* catch-up-table.ts catchUpStateMerged / catchUpStateRequested; catch-up.ts *)
+(* feed saves a pending adoption after any `state-merged`.                  *)
 Deliver(c) ==
   LET r == cl[c]
       m == Head(inbox[c])
@@ -203,16 +223,26 @@ Deliver(c) ==
       stages == m.t = "state" /\ sender = "GM" /\ higher /\ heard.target # NONE
                 /\ (Bug = "stage-any-higher" \/ heard.target = m.g)
       merges == m.t = "state" /\ sender = "GM" /\ equal
+      (* A `state` of the client's own generation while a failed adoption    *)
+      (* save is pending: feed saves the adoption again.                     *)
+      retries == merges /\ heard.phase = "adopting" /\ heard.pending # "none" /\ ~NoRetry(heard)
+      (* A `state` of the target completes the adoption as an answer, or,   *)
+      (* with a copy adoption pending, retries it as a copy save.           *)
+      FromCopy == IF heard.pending = "copy" THEN BOOLEAN ELSE {FALSE}
       answers == m.t = "request" /\ sender # "NONE" /\ heard.role = "GM"
-                 /\ heard.persist # NONE /\ heard.phase = "live"
+                 /\ Vouches(heard) /\ heard.phase = "live"
   IN /\ r.open /\ inbox[c] # << >>
-     /\ \E ok \in SaveOutcomes(r, stages) :
+     /\ \E ok \in SaveOutcomes(r, (stages /\ ~NoRetry(heard)) \/ retries), fromCopy \in FromCopy :
           /\ CountFail(ok)
           /\ cl' = [cl EXCEPT ![c] =
-                CASE stages -> SaveAdoption([heard EXCEPT !.staged = @ \cup m.tags], FALSE, ok)
+                CASE stages /\ NoRetry(heard) -> [heard EXCEPT !.staged = @ \cup m.tags]
+                  [] stages -> SaveAdoption([heard EXCEPT !.staged = @ \cup m.tags], fromCopy, ok)
                   [] merges ->
                        LET merged == [heard EXCEPT !.replica = @ \cup m.tags]
-                       IN IF merged.phase = "catching" THEN Leave(merged) ELSE merged
+                           retried == IF Bug = "retry-stages-equal"
+                                        THEN [merged EXCEPT !.staged = @ \cup m.tags] ELSE merged
+                       IN IF retries THEN SaveAdoption(retried, heard.pending = "copy", ok)
+                          ELSE IF merged.phase = "catching" THEN Leave(merged) ELSE merged
                   [] OTHER -> heard]
      /\ LET rest == [inbox EXCEPT ![c] = Tail(@)]
         IN inbox' = IF answers
@@ -221,8 +251,8 @@ Deliver(c) ==
      /\ UNCHANGED <<copy, imports, roleChanges, closes, copyFails>>
      /\ UpdateHi
 
-(* room-copy.ts read / followed, the read a catch-up entry or retry starts, *)
-(* and the metadata subscription.                                           *)
+(* room-copy.ts read / followed -> room-copy-table.ts observeRead, the read *)
+(* a catch-up entry or retry starts, and the metadata subscription.         *)
 ReadCopy(c) ==
   LET r == cl[c]
   IN /\ r.open /\ copy.g # NONE /\ copy.g >= r.own
@@ -233,7 +263,8 @@ ReadCopy(c) ==
      /\ UNCHANGED <<inbox, copy, imports, roleChanges, closes, copyFails>>
      /\ UpdateHi
 
-(* room-copy.ts runRoomCopyWrite: a live GM's routine AD-8 write.            *)
+(* room-copy-table.ts trigger / readDone / encodeWrite / verifyDone: a live *)
+(* GM's routine AD-8 write.                                                 *)
 WriteCopy(c) ==
   LET r == cl[c]
       merged == IF copy.g = r.own THEN [r EXCEPT !.replica = @ \cup copy.tags] ELSE r
@@ -245,8 +276,8 @@ WriteCopy(c) ==
      /\ UNCHANGED <<inbox, imports, roleChanges, closes, storeFails, copyFails>>
      /\ UpdateHi
 
-(* catch-up.ts request / fired('catch-up') while adopting: a client in      *)
-(* catch-up asks the room for state.                                        *)
+(* catch-up-table.ts request / catchUpFired('catch-up') while adopting: a  *)
+(* client in catch-up asks the room for state.                              *)
 Ask(c) ==
   LET r == cl[c]
       m == Msg(c, "request", r.own, {})
@@ -255,23 +286,25 @@ Ask(c) ==
      /\ inbox' = Broadcast(inbox, c, m)
      /\ UNCHANGED <<cl, copy, imports, roleChanges, closes, storeFails, copyFails, hi>>
 
-(* catch-up.ts pingReceived: a live GM answers a ping with `alive`.         *)
+(* catch-up-table.ts catchUpPing: a live GM answers a ping with `alive`.   *)
 SpeakAlive(c) ==
   LET r == cl[c]
       m == Msg(c, "alive", r.own, {})
-  IN /\ r.open /\ r.role = "GM" /\ r.persist # NONE /\ r.phase = "live"
+  IN /\ r.open /\ r.role = "GM" /\ Vouches(r) /\ r.phase = "live"
      /\ Reaches(c, m)
      /\ inbox' = Broadcast(inbox, c, m)
      /\ UNCHANGED <<cl, copy, imports, roleChanges, closes, storeFails, copyFails, hi>>
 
-(* catch-up.ts fired('catch-up') in ordinary catch-up, or partyRead alone.   *)
+(* catch-up-table.ts catchUpFired('catch-up') in ordinary catch-up, or      *)
+(* catchUpPartyRead alone.                                                  *)
 Timeout(c) ==
   /\ cl[c].open /\ cl[c].phase = "catching"
   /\ cl' = [cl EXCEPT ![c] = Leave(@)]
   /\ UNCHANGED <<inbox, copy, imports, roleChanges, closes, storeFails, copyFails>>
   /\ UpdateHi
 
-(* engine.ts changeRole -> generation-flow.ts roleChanged; catch-up enter('role'). *)
+(* engine.ts changeRole -> generation-flow.ts roleChanged; catch-up enter('role'), *)
+(* which drops a pending adoption.                                          *)
 RoleChange(c) ==
   LET r == cl[c]
       stored == IF r.complete = {} THEN 0 ELSE MaxOf(r.complete)
@@ -282,9 +315,10 @@ RoleChange(c) ==
      /\ cl' = [cl EXCEPT ![c] =
            IF r.role = "GM"
              THEN [r EXCEPT !.role = "PLAYER", !.persist = NONE, !.persistAll = FALSE,
-                            !.phase = phase]
+                            !.phase = phase, !.pending = "none"]
              ELSE [r EXCEPT !.role = "GM", !.persist = gen, !.own = gen,
-                            !.seen = Max2(r.seen, gen), !.persistAll = TRUE, !.phase = phase]]
+                            !.seen = Max2(r.seen, gen), !.persistAll = TRUE, !.phase = phase,
+                            !.pending = "none"]]
      /\ UNCHANGED <<inbox, copy, imports, closes, storeFails, copyFails>>
      /\ UpdateHi
 
@@ -321,6 +355,7 @@ TypeOK ==
        /\ cl[c].role \in {"GM", "PLAYER"}
        /\ cl[c].phase \in {"live", "catching", "adopting"}
        /\ cl[c].impStage \in {"none", "copying", "finishing"}
+       /\ cl[c].pending \in {"none", "copy", "answer"}
   /\ imports <= MaxImports /\ storeFails <= MaxStoreFails /\ copyFails <= MaxCopyFails
 
 (* The replica holds records of the client's own generation only.           *)

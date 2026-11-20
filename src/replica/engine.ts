@@ -357,7 +357,9 @@ export async function startReplicaEngine(
     newId,
     now,
     role: () => role,
-    vouches: () => generationFlow.persistence() !== null,
+    // AD-9: an importer answers for no generation until its room copy is written, so no client
+    // hears the new one while the importer is its only holder.
+    vouches: () => generationFlow.persistence() !== null && !generationFlow.importing(),
     generation: () => generationFlow.generation(),
     digest: ownDigest,
     commitsUnsent: () => outbox.hasUnsent(),
@@ -504,6 +506,11 @@ export async function startReplicaEngine(
         });
     },
     sendPing: () => {
+      // AD-9: a ping would name the new generation before its room copy is written.
+      if (generationFlow.importing()) {
+        return;
+      }
+
       sendQueue
         .enqueue(SYNC_CHANNEL, pingMessage(generationFlow.generation()), REMOTE)
         .catch((error) => {
@@ -573,6 +580,7 @@ export async function startReplicaEngine(
     role: () => role,
     signal,
     generation: () => generationFlow.generation(),
+    importing: () => generationFlow.importing(),
     dice: diceExtension,
     gmInParty,
     playerId: ownPlayerId,

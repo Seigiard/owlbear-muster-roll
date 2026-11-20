@@ -13,6 +13,7 @@ import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
 import type { Wait } from '@/platform/send-queue';
 import {
+  copyValue,
   createRoomRig,
   heardOf,
   outcome,
@@ -302,6 +303,8 @@ describe('a GM client answers a proposal', () => {
   test('a repeat tombstone with no links does not owe an unchanged room-copy write', async () => {
     // #given
     const room = roomRig.openRoom();
+    // The room copy already holds what the GM stores, so only the step under test could owe a write.
+    room.room.setMetadata({ 'app.muster-roll/snapshot': copyValue({ n: 0, a: '' }, BASE) });
     let metadataWrites = 0;
 
     const gm = await startClient(room, 'gm-a', {
@@ -723,6 +726,61 @@ describe('a GM client answers a proposal', () => {
     }).toEqual({
       sent: [removal, { k: 'link:child', d: null, c: 2, a: 'gm-a' }],
       stored: { k: 'link:child', d: null, c: 2, a: 'gm-a' },
+    });
+  });
+  test('sent again after a later GM edit of its field: commits the GM record with its echo, not stale', async () => {
+    // #given: the GM committed the proposal, its commit never reached the player, and the GM then
+    // edited the same field.
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a');
+    const proposed: VersionedRecord = fixturePatch(STR_ROW, { str: 11 }, 3, PLAYER_SOCKET);
+    joinPlayerSocket(room);
+    propose(room, proposed);
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 1);
+    send(gm, strEdit('str', 15));
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 2);
+    const later = fixturePatch(STR_ROW, { str: 15 }, 4, 'gm-a');
+    // #when: the player's resend timer sends the same proposal.
+    propose(room, proposed);
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 3);
+    await pause(20);
+    // #then
+    expect({
+      answer: heardOf(room, 'gm-a', 'commit').at(-1),
+      rejects: heardOf(room, 'gm-a', 'reject'),
+      stored: storedRecord(gm, proposed.k),
+    }).toEqual({
+      answer: commit([later], [{ k: proposed.k, c: 3, a: PLAYER_SOCKET }]),
+      rejects: [],
+      stored: later,
+    });
+  });
+  test('already held when proposed, then sent again after a later GM edit: commits the GM record with its echo', async () => {
+    // #given: the GM already held the proposed record, so it answered commit-existing; its commit
+    // never reached the player, and the GM then edited the same field.
+    const room = roomRig.openRoom();
+    const proposed: VersionedRecord = fixturePatch(STR_ROW, { str: 11 }, 3, PLAYER_SOCKET);
+
+    const gm = await startClient(room, 'gm-a', {
+      seeded: BASE.map((record) => (record.k === proposed.k ? proposed : record)),
+    });
+
+    joinPlayerSocket(room);
+    propose(room, proposed);
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 1);
+    send(gm, strEdit('str', 15));
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 2);
+    const later = fixturePatch(STR_ROW, { str: 15 }, 4, 'gm-a');
+    // #when
+    propose(room, proposed);
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 3);
+    // #then
+    expect({
+      answer: heardOf(room, 'gm-a', 'commit').at(-1),
+      rejects: heardOf(room, 'gm-a', 'reject'),
+    }).toEqual({
+      answer: commit([later], [{ k: proposed.k, c: 3, a: PLAYER_SOCKET }]),
+      rejects: [],
     });
   });
   test('with a c not above the current one: rejects it as stale with the current record', async () => {

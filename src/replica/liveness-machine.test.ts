@@ -43,6 +43,31 @@ function stepView(phase: LivenessPhase, event: LivenessEvent) {
   return { phase: result.phase.kind, effects: result.effects };
 }
 
+function onlineAt(now: number): LivenessPhase {
+  return step(livenessTable, initialLiveness(), {
+    kind: 'heard',
+    senderRole: 'GM',
+    message: { t: 'commit' },
+    env: { ...createEnvironment('online'), now },
+  }).phase;
+}
+
+function pingedAt(phase: LivenessPhase, now: number): LivenessPhase {
+  return step(livenessTable, phase, {
+    kind: 'fired',
+    timer: { kind: 'ping' },
+    env: { ...createEnvironment('online'), now },
+  }).phase;
+}
+
+function silenceAt(now: number): Extract<LivenessEvent, { kind: 'fired' }> {
+  return {
+    kind: 'fired',
+    timer: { kind: 'gm-silence' },
+    env: { ...createEnvironment('online'), now },
+  };
+}
+
 describe('livenessTable', () => {
   test('brings an offline GM link online when a GM message is heard', () => {
     // #given
@@ -69,20 +94,97 @@ describe('livenessTable', () => {
     });
   });
 
-  test('takes an online GM link offline when its silence timer fires', () => {
+  test('takes an online GM link offline when its silence timer fires after an unanswered ping', () => {
+    // #given: online at 0, so silence is due at 80, and a ping at 60 got no reply.
+
+    const online = pingedAt(onlineAt(0), 60);
+    // #when
+
+    const result = stepView(online, silenceAt(80));
+    // #then
+
+    expect(result).toEqual({ phase: 'offline', effects: [{ type: 'show', projectedOnly: true }] });
+  });
+
+  test('takes the GM link offline when its silence timer fires up to a quarter late', () => {
+    // #given: online at 0, so silence is due at 80, and a ping at 60 got no reply.
+
+    const online = pingedAt(onlineAt(0), 60);
+    // #when
+
+    const result = stepView(online, silenceAt(100));
+    // #then
+
+    expect(result).toEqual({ phase: 'offline', effects: [{ type: 'show', projectedOnly: true }] });
+  });
+
+  test('keeps an online GM link and pings again when its silence timer fires more than a quarter late', () => {
+    // #given: online at 0, so silence is due at 80, and a ping at 60.
+
+    const online = pingedAt(onlineAt(0), 60);
+    // #when
+
+    const result = stepView(online, silenceAt(101));
+    // #then
+
+    expect(result).toEqual({
+      phase: 'online',
+      effects: [{ type: 'arm', timer: { kind: 'gm-silence' }, delayMs: 20 }, { type: 'ping' }],
+    });
+  });
+
+  test('keeps an online GM link and pings again when its last ping is under a quarter old', () => {
+    // #given: online at 0; the page woke at 79 and its overdue ping went out then.
+
+    const online = pingedAt(onlineAt(0), 79);
+    // #when
+
+    const result = stepView(online, silenceAt(80));
+    // #then
+
+    expect(result).toEqual({
+      phase: 'online',
+      effects: [{ type: 'arm', timer: { kind: 'gm-silence' }, delayMs: 20 }, { type: 'ping' }],
+    });
+  });
+
+  test('keeps an online GM link and pings when its silence timer fires with no ping since it was armed', () => {
     // #given
 
-    const env = createEnvironment('online');
+    const online = onlineAt(0);
+    // #when
 
-    const online = step(livenessTable, initialLiveness(), {
-      kind: 'heard',
-      senderRole: 'GM',
-      message: { t: 'commit' },
-      env,
+    const result = stepView(online, silenceAt(80));
+    // #then
+
+    expect(result).toEqual({
+      phase: 'online',
+      effects: [{ type: 'arm', timer: { kind: 'gm-silence' }, delayMs: 20 }, { type: 'ping' }],
+    });
+  });
+
+  test('a watch moves the silence due time of an online link', () => {
+    // #given: online at 0, watched again at 50, so silence is due at 130; a ping at 110.
+
+    const watched = step(livenessTable, onlineAt(0), {
+      kind: 'watch',
+      env: { ...createEnvironment('online'), now: 50 },
     }).phase;
     // #when
 
-    const result = stepView(online, { kind: 'fired', timer: { kind: 'gm-silence' }, env });
+    const result = stepView(pingedAt(watched, 110), silenceAt(140));
+    // #then
+
+    expect(result).toEqual({ phase: 'offline', effects: [{ type: 'show', projectedOnly: true }] });
+  });
+
+  test('takes the link offline when the recheck a quarter after its ping hears nothing', () => {
+    // #given: a late silence at 101 pinged and armed the recheck for 121.
+
+    const rechecked = step(livenessTable, pingedAt(onlineAt(0), 60), silenceAt(101)).phase;
+    // #when
+
+    const result = stepView(rechecked, silenceAt(121));
     // #then
 
     expect(result).toEqual({ phase: 'offline', effects: [{ type: 'show', projectedOnly: true }] });
@@ -181,11 +283,11 @@ test('liveness transition table has valid phases, effects, and diagram', () => {
     env: onlineEnvironment,
   };
 
-  const silence: LivenessEvent = {
-    kind: 'fired',
-    timer: { kind: 'gm-silence' },
-    env: offlineEnvironment,
-  };
+  // The online phases below heard the GM at 0 and pinged at 60: silence at 80 is on time after
+  // an unanswered ping, and at 101 more than a quarter late.
+  const silence = silenceAt(80);
+
+  const lateSilence = silenceAt(101);
 
   const watch: LivenessEvent = { kind: 'watch', env: offlineEnvironment };
   // #when
@@ -205,9 +307,12 @@ test('liveness transition table has valid phases, effects, and diagram', () => {
         online: fc
           .array(fc.constant(heard), { minLength: 1, maxLength: 4 })
           .map((events) =>
-            events.reduce(
-              (phase, event) => step(livenessTable, phase, event).phase,
-              initialLiveness(),
+            pingedAt(
+              events.reduce(
+                (phase, event) => step(livenessTable, phase, event).phase,
+                initialLiveness(),
+              ),
+              60,
             ),
           )
           .filter(
@@ -216,7 +321,7 @@ test('liveness transition table has valid phases, effects, and diagram', () => {
       },
       events: {
         heard: fc.constant(heard),
-        fired: fc.constant(silence),
+        fired: fc.constantFrom(silence, lateSilence),
         watch: fc.constant(watch),
       },
       allowedEffects: { offline: allEffects, online: allEffects },
