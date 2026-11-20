@@ -701,3 +701,12 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-111-legacy-repeat-warning.md`
   summary: Prevent the local browser test server from aborting under Node 26 (TASK-144).
   evidence: Node v26.13.1 aborted in `Buffer.byteLength` with `Lazy deopt after a fast API call with return value is unsupported` while Vite served a dependency. Playwright recorded 265 passes before the abort and 322 connection failures afterward.
+
+## Deferred from: TASK-101 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-101-nested-runtime-cleanup.md`
+  summary: Keep repeat-row fields out of sheet-scope dice lookup (TASK-145).
+  evidence: With a die face of 1 and a sheet bonus of 4, `rollDiceCell` returned 1 when a repeat row with a check field of the same id came first, and 5 when the sheet row came first.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-101-nested-runtime-cleanup.md`
+  summary: Finish clearing fields when a preset change is retried (TASK-146).
+  evidence: After the preset write succeeded and the block write failed, `composePresetUpload` reported zero values to clear on retry. `runPresetBatch` completed with the original text still stored in the field that changed to select.
