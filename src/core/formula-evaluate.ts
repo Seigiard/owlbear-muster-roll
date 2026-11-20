@@ -343,10 +343,9 @@ export function resolveFormulaDiceFields(
   return resolveExpression(tree);
 }
 
-// The lookup for a dice cell in the row at `from`. `sheetRow` reads rows of the same sheet only, so
-// an id never crosses sheets. An id resolves through `resolveFieldReference`: the cell's own repeat
-// block first, then the sheet's non-repeat scope. The caller passes repeat values as `ownBlock`;
-// without them the repeat block's own fields read as empty.
+// The lookup for a dice cell in the row at `from`. It resolves fields in order: the cell's own
+// repeat block (`ownBlock`), enclosing blocks from nearest outward (`blockAt` with the owning scope
+// path), then the same sheet (`sheetRow`). An id never crosses sheets.
 export function formulaFieldLookup(
   layout: TemplateLayout,
   from: TemplateRowPlace,

@@ -1,18 +1,14 @@
 import { acceptedFieldValue } from '@/core/field-patch';
 import {
   blockIdOf,
-  blockKeyOf,
-  childAddress,
   parentOf,
   parseBlockKey,
   scopePathOf,
   sectionIdOf,
-  sheetRootAddress,
   type BlockAddress,
 } from '@/core/block-address';
 import { sameJson } from '@/core/json';
 import { linkTargetOf, liveLinkTarget } from '@/core/link-target';
-import { compareVersions } from '@/core/merge';
 import {
   firstFieldId,
   repeatSectionId,
@@ -100,9 +96,6 @@ export function presetDiff(
         .sort((a, b) => (a.k < b.k ? -1 : 1));
 
       const lostBefore = erased.length;
-      const claimed = new Set<string>();
-      const highest = new Map<string, number>();
-      const offsets = new Map<string, number>();
       const sectionIds = [...before.sections.keys()];
 
       const moving = blocks
@@ -128,51 +121,7 @@ export function presetDiff(
           );
         });
 
-      const relocatedSources = new Set<string>();
-      const relocatedTargets = new Set<string>();
-
-      if (after !== null) {
-        for (const source of moving) {
-          const parts = parseRepeatPath(source.k);
-
-          if (parts === null) continue;
-          const scope = repeatScopeTarget(parts, after);
-
-          if (scope === null) continue;
-          const parent = parentOf(parts.address) ?? sheetRootAddress(sheetId);
-          const target = blockKeyOf(childAddress(parent, scope, parts.instanceId));
-
-          if (target === source.k) continue;
-          const written = records.get(target);
-
-          if (
-            written?.d !== null &&
-            written !== undefined &&
-            compareVersions(
-              {
-                c: written.l?.[0] ?? written.c,
-                a: written.l?.[1] ?? written.a,
-              },
-              {
-                c: source.l?.[0] ?? source.c,
-                a: source.l?.[1] ?? source.a,
-              },
-            ) > 0
-          ) {
-            relocatedSources.add(source.k);
-            relocatedTargets.add(target);
-          }
-        }
-      }
-
       for (const record of moving) {
-        if (relocatedTargets.has(record.k)) continue;
-
-        if (relocatedSources.has(record.k)) {
-          last.push({ k: record.k, d: null });
-          continue;
-        }
-
         const data = blockDataSchema.safeParse(record.d).data;
 
         if (data === undefined) continue;
@@ -213,70 +162,14 @@ export function presetDiff(
 
         lose(template.id, record.k, lost);
 
-        const target =
-          parts === null
-            ? record.k
-            : blockKeyOf(
-                childAddress(
-                  parentOf(parts.address) ?? sheetRootAddress(sheetId),
-                  scope ?? '',
-                  parts.instanceId,
-                ),
-              );
+        const cleared: Cells = { ...cells };
 
-        if (target !== record.k) {
-          if (claimed.has(target)) {
-            lose(template.id, record.k, cells);
-          } else {
-            claimed.add(target);
-
-            const group = `${parts?.parentPath.join(':') ?? ''}:${scope ?? ''}:${
-              parts?.sectionId ?? ''
-            }`;
-
-            if (!offsets.has(group)) {
-              const lowest = Math.min(
-                ...moving.flatMap((candidate) => {
-                  const part = parseRepeatPath(candidate.k);
-                  const held = blockDataSchema.safeParse(candidate.d).data;
-
-                  return part?.sectionId === parts?.sectionId &&
-                    JSON.stringify(part?.parentPath) === JSON.stringify(parts?.parentPath) &&
-                    held !== undefined
-                    ? [held.order]
-                    : [];
-                }),
-              );
-
-              const held = highest.get(group);
-
-              offsets.set(group, held !== undefined && held >= lowest ? held + 1 - lowest : 0);
-            }
-
-            const order = data.order + (offsets.get(group) ?? 0);
-            highest.set(group, Math.max(highest.get(group) ?? -Infinity, order));
-            first.push({ k: target, d: { ...data, order, cells }, relocate: true });
-          }
-
-          last.push({ k: record.k, d: null });
-        } else {
-          if (parts !== null)
-            highest.set(
-              `${parts.parentPath.join(':')}:${parts.sectionId}`,
-              Math.max(
-                highest.get(`${parts.parentPath.join(':')}:${parts.sectionId}`) ?? -Infinity,
-                data.order,
-              ),
-            );
-          const cleared: Cells = { ...cells };
-
-          for (const [id, cell] of Object.entries(data.cells)) {
-            if (!Object.hasOwn(cells, id)) cleared[id] = [null, cell[1], cell[2]];
-          }
-
-          if (!sameJson(data.cells, cleared))
-            last.push({ k: record.k, d: { ...data, cells: cleared } });
+        for (const [id, cell] of Object.entries(data.cells)) {
+          if (!Object.hasOwn(cells, id)) cleared[id] = [null, cell[1], cell[2]];
         }
+
+        if (!sameJson(data.cells, cleared))
+          last.push({ k: record.k, d: { ...data, cells: cleared } });
       }
 
       if (next === undefined) {
@@ -386,30 +279,21 @@ export function keptValues(values: FieldValues, fields: readonly PresetFieldCell
   );
 }
 
-export function presetMoves(before: TemplateLayout, after: TemplateLayout): PresetMoves {
-  const old = templateScopes(before);
+export function presetMoves(_before: TemplateLayout, after: TemplateLayout): PresetMoves {
   const next = templateScopes(after);
 
   return {
     rowOf: (id) => next.rowFields.get(id)?.rowId ?? null,
     sectionOf: (id, block) =>
       block === undefined
-        ? sectionTarget(id, old.sections.get(id) ?? [], next)
+        ? sectionTarget(id, next)
         : next.sectionsByPath.has(scopePathOf(block).join(':'))
           ? id
           : null,
   };
 }
 
-export function sectionTarget(
-  sectionId: string,
-  fields: readonly PresetFieldCell[],
-  after: TemplateScopes,
-  allowTextForSelect = false,
-): string | null {
-  void fields;
-  void allowTextForSelect;
-
+export function sectionTarget(sectionId: string, after: TemplateScopes): string | null {
   // v4 repeat ids are stable scope identities. Matching fields is not a relocation
   // rule: changing the scope id erases its blocks.
   return after.sections.has(sectionId) ? sectionId : null;
