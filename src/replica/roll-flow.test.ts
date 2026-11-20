@@ -7,7 +7,8 @@ import { Result } from 'better-result';
 import type { Generation } from '@/core/storage-key';
 import type { RollMessage } from '@/core/room-messages';
 import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
-import { createRollFlow, type RollDiceFailure, type RollFlowPorts } from './roll-flow';
+import type { DiceExtensionFailure } from './dice-extension';
+import { createRollFlow, type RollFlowPorts } from './roll-flow';
 
 const PRESET: Preset = {
   v: 4,
@@ -164,7 +165,7 @@ function drain(count = 10): Promise<void> {
 
 test('replies waiting-access before a permitted dice roll finishes', async () => {
   // #given
-  const diceResult = deferred<Result<DieFace[], RollDiceFailure>>();
+  const diceResult = deferred<Result<DieFace[], DiceExtensionFailure>>();
 
   const harness = createHarness({
     dice: {
@@ -418,7 +419,7 @@ test('does not ask the dice port when its signal aborts after readiness', async 
 test('does not report a malformed dice result after its signal aborts during the dice wait', async () => {
   // #given
   const controller = new AbortController();
-  const diceResult = deferred<Result<DieFace[], RollDiceFailure>>();
+  const diceResult = deferred<Result<DieFace[], DiceExtensionFailure>>();
 
   const harness = createHarness({
     signal: controller.signal,
