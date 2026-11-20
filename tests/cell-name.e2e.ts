@@ -155,8 +155,10 @@ test('Escape closes a named writer tooltip opened by hover', async ({ context })
 
 test('an unnamed writer field and dice cell keep their labels and show no tooltip', async ({
   context,
+  page,
 }) => {
   // #given
+  await page.clock.install();
   const gm = await openSeededGm(context, cairnRecords(), CAIRN_TEXT);
   const panel = gm.window.getByRole('tabpanel');
   const field = panel.getByRole('textbox', { name: 'Имя', exact: true });
@@ -164,7 +166,7 @@ test('an unnamed writer field and dice cell keep their labels and show no toolti
   // #when
   await field.focus();
   await field.hover();
-  await gm.window.waitForTimeout(600);
+  await gm.window.clock.runFor(600);
   // #then
   await expect(gm.window.getByRole('tooltip')).toHaveCount(0);
   await expect(dice).toHaveText('STR');
@@ -187,8 +189,10 @@ test('a named dice cell keeps its formula visible but uses its name for the butt
 
 test('a named read-only value is a tab stop with one tooltip, while an unnamed value is not', async ({
   context,
+  page,
 }) => {
   // #given
+  await page.clock.install();
   await openSeededGm(context, cairnRecords(), CAIRN_TEXT);
   const player = await openClient(context, PLAYER);
   const panel = player.window.getByRole('tabpanel');
@@ -207,7 +211,7 @@ test('a named read-only value is a tab stop with one tooltip, while an unnamed v
   // #when
   await player.window.keyboard.press('Escape');
   await unnamed.hover();
-  await player.window.waitForTimeout(600);
+  await player.window.clock.runFor(600);
   // #then
   await expect(player.window.getByRole('tooltip')).toHaveCount(0);
 });
@@ -263,8 +267,10 @@ test.describe('touch tooltip', () => {
   });
   test('a no-focus touch tap keeps a named checkbox tooltip open after the pointer leaves', async ({
     context,
+    page,
   }) => {
     // #given
+    await page.clock.install();
     const gm = await openSeededGm(context, RECORDS, PRESET_TEXT);
 
     const checkbox = gm.window
@@ -275,11 +281,11 @@ test.describe('touch tooltip', () => {
     // #when
     await checkbox.dispatchEvent('pointerover', touchPointer);
     await checkbox.dispatchEvent('pointerdown', { ...touchPointer, button: 0, buttons: 1 });
-    await gm.window.waitForTimeout(50);
+    await gm.window.clock.runFor(50);
     const openOnPointerDown = await tooltip(gm.window, 'Готовность').isVisible();
     await checkbox.dispatchEvent('pointerup', { ...touchPointer, button: 0, buttons: 0 });
     await checkbox.dispatchEvent('pointerout', touchPointer);
-    await gm.window.waitForTimeout(300);
+    await gm.window.clock.runFor(300);
     // #then
     expect({
       focused: await checkbox.evaluate((element) => element === document.activeElement),

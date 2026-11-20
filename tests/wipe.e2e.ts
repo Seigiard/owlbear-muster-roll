@@ -12,6 +12,7 @@ import {
   pcSheet,
   record,
   seedStorage,
+  storedCell,
   type ClientParams,
   type RoomClient,
   type StoredRecord,
@@ -80,19 +81,24 @@ test.beforeEach(async ({ page }) => {
 
 test('a GM in a room whose copy is of version 1 sees the older-format banner, and no write replaces the copy', async ({
   context,
+  page,
 }) => {
   // #given
+  await page.clock.install();
   const gm = await openGm(context, { ...GM, ...QUICK }, RECORDS);
   await expect(gm.window.getByRole('status')).toHaveText(OLDER_FORMAT);
   // #when: an edit and a hidden page are the two routine triggers of a room copy write.
   await gm.window.getByRole('textbox', { name: 'Класс' }).fill('Воин');
   await gm.window.getByRole('textbox', { name: 'Класс' }).press('Enter');
+  await expect
+    .poll(() => storedCell(gm.window, 'blk:brok', 'class'))
+    .toEqual(['Воин', 2, gm.connectionId]);
   await gm.background.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
     document.dispatchEvent(new Event('visibilitychange'));
   });
   // Several write pauses pass with no write, as nothing signals a write that does not happen.
-  await gm.window.waitForTimeout(1000);
+  await gm.background.clock.runFor(1000);
   // #then
   await expect(gm.window.getByRole('status')).toHaveText(OLDER_FORMAT);
   expect(await roomCopy(gm.window)).toEqual(V1_COPY);

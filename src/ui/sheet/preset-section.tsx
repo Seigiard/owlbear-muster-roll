@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useId, useRef, useState } from 'react';
 import type { ReactNode, RefCallback } from 'react';
 
 import {
@@ -248,20 +248,16 @@ function PlainContent({
   tabBlock,
   role,
 }: PlainContentProps): ReactNode {
-  const rows = useMemo(
-    () =>
-      plainRows(
-        template,
-        section,
-        tabIndex,
-        sectionIndex,
-        sheetId,
-        records,
-        pending,
-        role,
-        tabBlock,
-      ),
-    [template, section, tabIndex, sectionIndex, sheetId, records, pending, role, tabBlock],
+  const rows = plainRows(
+    template,
+    section,
+    tabIndex,
+    sectionIndex,
+    sheetId,
+    records,
+    pending,
+    role,
+    tabBlock,
   );
 
   return (
@@ -372,21 +368,17 @@ function ReadOnlyRepeatContent({
   role,
   parent,
 }: ReadOnlyRepeatContentProps): ReactNode {
-  const blocks = useMemo(
-    () =>
-      repeatBlocksOf(
-        template,
-        section,
-        tabIndex,
-        sectionIndex,
-        sectionId,
-        sheetId,
-        records,
-        pending,
-        role,
-        parent,
-      ),
-    [template, section, tabIndex, sectionIndex, sectionId, sheetId, records, pending, role, parent],
+  const blocks = repeatBlocksOf(
+    template,
+    section,
+    tabIndex,
+    sectionIndex,
+    sectionId,
+    sheetId,
+    records,
+    pending,
+    role,
+    parent,
   );
 
   return (
@@ -427,34 +419,26 @@ function RepeatContent({
   role,
   parent,
 }: RepeatContentProps): ReactNode {
-  const blocks = useMemo(
-    () =>
-      repeatBlocksOf(
-        template,
-        section,
-        tabIndex,
-        sectionIndex,
-        sectionId,
-        sheetId,
-        records,
-        pending,
-        role,
-        parent,
-      ),
-    [template, section, tabIndex, sectionIndex, sectionId, sheetId, records, pending, role, parent],
+  const blocks = repeatBlocksOf(
+    template,
+    section,
+    tabIndex,
+    sectionIndex,
+    sectionId,
+    sheetId,
+    records,
+    pending,
+    role,
+    parent,
   );
 
   // A repeat block whose removal waits for a GM counts as gone: its "Удалить" is gone, so the focus
   // moves on.
-  const instanceIds = useMemo(
-    () =>
-      blocks.flatMap((block) => {
-        const instanceId = blockIdOf(block.block);
+  const instanceIds = blocks.flatMap((block) => {
+    const instanceId = blockIdOf(block.block);
 
-        return block.pending.removed || instanceId === null ? [] : [instanceId];
-      }),
-    [blocks],
-  );
+    return block.pending.removed || instanceId === null ? [] : [instanceId];
+  });
 
   const controls = useRepeatBlocks(sheetId, sectionId, instanceIds, parent);
   const title = sectionTitle(section) ?? templateTitle;
@@ -588,23 +572,17 @@ function Blocks({
   const mapMarked = useContext(MapSelectionContext).marked;
   const [duplicateAsk, setDuplicateAsk] = useState<DuplicateAsk | null>(null);
   const duplicateButtons = useRef(new Map<string, HTMLButtonElement>());
-  // The repeat block the open duplicate block belongs to, for a close that runs outside a render.
-  const askedBlock = useRef<string | null>(null);
-
-  useLayoutEffect(() => {
-    askedBlock.current = duplicateAsk?.blockKey ?? null;
-  });
 
   // The block closes and the focus goes back to the "Дублировать…" it was opened from.
-  const closeDuplicate = useCallback(() => {
-    const asked = askedBlock.current;
+  function closeDuplicate(): void {
+    const asked = duplicateAsk?.blockKey ?? null;
 
     setDuplicateAsk(null);
 
     if (asked !== null) {
       duplicateButtons.current.get(asked)?.focus();
     }
-  }, []);
+  }
 
   // A repeat block gone elsewhere takes its open duplicate block with it.
   if (

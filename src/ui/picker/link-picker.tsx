@@ -69,12 +69,10 @@ export function LinkPicker({
   const closeStarted = useRef<number | null>(null);
   const labelHintId = useId();
 
-  const groups = useMemo(
-    () => pickerGroups(view.records, view.preset),
-    [view.records, view.preset],
-  );
+  const groups = pickerGroups(view.records, view.preset);
 
   // A pending view can still be refused when catch-up ends, so only the replica counts.
+  // Its stable identity keeps the reducer facts effect from dispatching on unrelated renders.
   const arrivedTarget = useMemo(
     () => linkTargetOf(replica.get(linkKey(tokenId))?.d ?? null),
     [replica, tokenId],
@@ -466,18 +464,16 @@ export function TokenCellPicker({
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const targetKey = linkTargetKey(target);
+  // Link identity changes drive the scene-token query effect below.
   const links = useMemo(() => liveLinks(view.records, view.preset), [view.records, view.preset]);
 
+  // The set identity is a dependency of the scene-token query; unrelated renders must not refetch.
   const linked = useMemo(() => new Set(links.keys()), [links]);
 
-  const linkedToTarget = useMemo(
-    () =>
-      new Set(
-        [...links].flatMap(([tokenId, live]) =>
-          linkTargetKey(live.target) === targetKey ? [tokenId] : [],
-        ),
-      ),
-    [links, targetKey],
+  const linkedToTarget = new Set(
+    [...links].flatMap(([tokenId, live]) =>
+      linkTargetKey(live.target) === targetKey ? [tokenId] : [],
+    ),
   );
 
   const [failed, setFailed] = useState(false);

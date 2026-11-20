@@ -35,6 +35,7 @@ export function CellTooltip({ name, children, className }: CellTooltipProps): Re
     };
   }, []);
 
+  // Stable identity keeps the window-listener effect registered until unmount.
   const hide = useCallback((): void => {
     if (activeTooltip?.id === tooltipId.current) {
       activeTooltip = null;
@@ -53,51 +54,48 @@ export function CellTooltip({ name, children, className }: CellTooltipProps): Re
     setIsOpen(false);
   }, []);
 
-  const show = useCallback(
-    (immediate: boolean): void => {
-      if (Date.now() >= scrollLockUntil) {
-        scrollTooltip = null;
-      }
+  function show(immediate: boolean): void {
+    if (Date.now() >= scrollLockUntil) {
+      scrollTooltip = null;
+    }
 
-      if (scrollTooltip !== null && scrollTooltip !== tooltipId.current) {
-        return;
-      }
+    if (scrollTooltip !== null && scrollTooltip !== tooltipId.current) {
+      return;
+    }
 
-      if (activeTooltip !== null && activeTooltip.id !== tooltipId.current) {
-        return;
-      }
+    if (activeTooltip !== null && activeTooltip.id !== tooltipId.current) {
+      return;
+    }
 
-      if (timer.current !== null) {
-        clearTimeout(timer.current);
-        timer.current = null;
-      }
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
 
-      const open = (): void => {
-        scheduledTooltip = null;
-        activeTooltip = { id: tooltipId.current, hide };
-        setIsOpen(true);
-      };
+    const open = (): void => {
+      scheduledTooltip = null;
+      activeTooltip = { id: tooltipId.current, hide };
+      setIsOpen(true);
+    };
 
-      if (immediate) {
-        open();
+    if (immediate) {
+      open();
 
-        return;
-      }
+      return;
+    }
 
-      scheduledTooltip = tooltipId.current;
-      timer.current = setTimeout(() => {
-        timer.current = null;
-        open();
-      }, TOOLTIP_DELAY);
-    },
-    [hide],
-  );
+    scheduledTooltip = tooltipId.current;
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      open();
+    }, TOOLTIP_DELAY);
+  }
 
-  const hideIfInactive = useCallback((): void => {
+  function hideIfInactive(): void {
     if (!pointerInside.current && !focusInside.current) {
       hide();
     }
-  }, [hide]);
+  }
 
   useEffect(() => {
     function onWindowKeyDown(event: globalThis.KeyboardEvent): void {

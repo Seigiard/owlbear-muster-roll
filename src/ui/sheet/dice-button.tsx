@@ -68,6 +68,7 @@ export function DiceButton({
   const [rolling, setRolling] = useState(false);
   const [waitingForGm, setWaitingForGm] = useState(false);
   const [message, setMessage] = useState<ShownMessage | null>(null);
+  // The promise callback reads the signature current when the roll finishes, not when it starts.
   const latestSignature = useRef(sheet.valuesSignature);
 
   useLayoutEffect(() => {

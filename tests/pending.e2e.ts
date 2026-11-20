@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import type { JsonValue } from '@/core/json';
 import { SYNC_CHANNEL } from '@/core/room-messages';
+import { parseEngineMessage, UI_CHANNEL } from '@/core/ui-messages';
 import {
   ADD,
   addPartyMember,
@@ -148,6 +149,7 @@ type Proposed = {
 declare global {
   interface Window {
     proposed: Proposed[];
+    editDeltas: JsonValue[];
   }
 }
 
@@ -157,18 +159,23 @@ test.beforeEach(async ({ page }) => {
 
 test('a player\'s edit shows at once, and "Ожидает" only after the delay with no answer', async ({
   context,
+  page,
 }) => {
   // #given
+  await page.clock.install();
   const { gm, player } = await openWithSilentGm(context);
+  await watchEditDeltas(player.window);
+  await player.window.clock.pauseAt(Date.now() + 1000);
   // #when
   await strength(player.window).fill('16');
   await strength(player.window).press('Enter');
-  const edited = Date.now();
   // #then: at a point well inside the delay the edit has gone out and shows, with no mark yet.
+  await player.window.clock.runFor(INSIDE_DELAY_MS);
   await expect.poll(() => proposedKeys(gm.window)).toEqual(['blk:brok']);
-  await player.window.waitForTimeout(Math.max(0, edited + INSIDE_DELAY_MS - Date.now()));
+  await expect.poll(() => editReachedWindow(player.window, 'pending')).toBe(true);
   await expect(strength(player.window)).toHaveValue('16');
   await expect(mark(player.window)).toHaveCount(0);
+  await player.window.clock.runFor(MARK_DELAY_MS);
   await expect(mark(player.window)).toBeVisible({ timeout: MARK_DELAY_MS * 3 });
   await expect(strength(player.window)).toHaveAccessibleDescription(PENDING);
 });
@@ -390,12 +397,15 @@ test('a revoke while an edit waits makes the sheet read-only at once, returns th
 
 test('an edit a live GM answers within the delay never shows the mark, and the GM window shows none', async ({
   context,
+  page,
 }) => {
   // #given
+  await page.clock.install();
   const gm = await openClient(context, GM, RECORDS);
   await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
   const player = await openClient(context, PLAYER, null);
   await expect(strength(player.window)).toHaveValue('14');
+  await watchEditDeltas(player.window);
   // #when
   await strength(player.window).fill('16');
   await strength(player.window).press('Enter');
@@ -403,7 +413,8 @@ test('an edit a live GM answers within the delay never shows the mark, and the G
     .poll(() => storedCell(gm.window, 'blk:brok', 'str'))
     .toEqual([16, 2, player.connectionId]);
   await expect.poll(() => storedCell(gm.window, 'blk:brok', 'dex')).toEqual([12, 1, 'seed']);
-  await player.window.waitForTimeout(MARK_DELAY_MS * 1.5);
+  await expect.poll(() => editReachedWindow(player.window, 'records')).toBe(true);
+  await player.window.clock.runFor(MARK_DELAY_MS * 1.5);
   // #then
   await expect(mark(player.window)).toHaveCount(0);
   await expect(mark(gm.window)).toHaveCount(0);
@@ -458,6 +469,29 @@ async function watchProposals(page: Page): Promise<void> {
       }
     });
   }, SYNC_CHANNEL);
+}
+
+async function watchEditDeltas(page: Page): Promise<void> {
+  await page.evaluate((channel) => {
+    window.editDeltas = [];
+    window.mockPlatform.broadcast.onMessage(channel, (event) => {
+      window.editDeltas.push(event.data);
+    });
+  }, UI_CHANNEL);
+}
+
+async function editReachedWindow(page: Page, view: 'pending' | 'records'): Promise<boolean> {
+  const messages = await page.evaluate(() => window.editDeltas);
+
+  return messages.some((message) => {
+    const parsed = parseEngineMessage(message);
+
+    return (
+      parsed.isOk() &&
+      parsed.value.t === 'delta' &&
+      parsed.value[view].some((entry) => entry.k === 'blk:brok' && entry.c === 2)
+    );
+  });
 }
 
 async function proposalCount(page: Page, key: string): Promise<number> {

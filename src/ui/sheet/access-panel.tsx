@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react';
-import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
+import { useEffect, useId, useReducer, useRef, useState } from 'react';
 import type { FocusEvent, KeyboardEvent, ReactNode } from 'react';
 
 import { accessRows, canEdit, shownName, type AccessRow } from '@/core/access';
@@ -61,16 +61,10 @@ export function AccessPanel({
   const party = useStore(store.$party);
   const [state, dispatch] = useReducer(reducePanel, INITIAL_STATE);
 
-  const rows = useMemo(
-    () => accessRows(party, records.values(), sheetId, ownPlayerId),
-    [party, records, sheetId, ownPlayerId],
-  );
+  const rows = accessRows(party, records.values(), sheetId, ownPlayerId);
 
   // FR19: the live `plink:` with the highest `(c, a)`, as on every client.
-  const owner = useMemo(
-    () => ownersBySheet(records.values()).get(sheetId) ?? null,
-    [records, sheetId],
-  );
+  const owner = ownersBySheet(records.values()).get(sheetId) ?? null;
 
   useEffect(() => {
     const pending = [...state.acl.values(), ...(state.owner === null ? [] : [state.owner])];
