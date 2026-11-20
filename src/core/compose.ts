@@ -35,6 +35,7 @@ import {
   templateById,
   type Preset,
   type PresetSection,
+  type TemplateLayout,
 } from '@/core/preset';
 import {
   presetDiff,
@@ -90,7 +91,6 @@ export type ComposeContext = {
   newRecordId: (kind: RecordIdKind, role: string) => string;
   isGmPlayer: (playerId: string) => boolean;
   mode: ComposeMode;
-  allowUnchanged?: boolean;
 };
 
 // TASK-37: new ids are short, so a drawn id can collide. A command that draws its own ids draws a
@@ -317,15 +317,11 @@ export function createComposers(connectionId: string): Composers {
     context: ComposeContext,
     command: FieldPatchCommand,
     current: VersionedRecord | undefined,
-    allowUnchanged = false,
   ): Result<PatchedRecord, RejectionReason> {
     const policy = sheetPolicyOf(context, command.sheetId, 'unknown-field');
 
-    if (!policy.isOk()) {
-      return policy;
-    }
+    if (!policy.isOk()) return policy;
 
-    const { template } = policy.value;
     const target = command.target;
 
     if (
@@ -337,33 +333,20 @@ export function createComposers(connectionId: string): Composers {
       return Result.err('unknown-instance');
     }
 
-    const field = findPatchField(template, target, command.fieldId);
-
-    if (field === null) {
-      return Result.err('unknown-field');
-    }
-
-    const value = acceptedFieldValue(field, command.value);
+    const value = acceptedPatchValue(policy.value.template, command);
 
     if (!value.isOk()) {
       return value;
     }
 
-    const patched = patchedRecord(
-      command.sheetId,
-      target,
-      current,
-      command.fieldId,
-      value.value,
-      allowUnchanged,
-    );
+    const patched = patchedRecord(command.sheetId, target, current, command.fieldId, value.value);
 
     if (!patched.isOk()) {
       return patched;
     }
 
     // AD-14: a new version keeps no value the template no longer has in this row or repeat block.
-    const stripped = stripToTemplate(patched.value, template);
+    const stripped = stripToTemplate(patched.value, policy.value.template);
 
     return patchedRecordFits(stripped) ? Result.ok(stripped) : Result.err('too-large');
   }
@@ -375,7 +358,7 @@ export function createComposers(connectionId: string): Composers {
     const target = command.target;
 
     const existing = context.records.get(patchRecordKey(command.sheetId, target));
-    const patched = patchOnto(context, command, existing, context.allowUnchanged ?? false);
+    const patched = patchOnto(context, command, existing);
 
     if (!patched.isOk()) {
       return patched;
@@ -383,15 +366,7 @@ export function createComposers(connectionId: string): Composers {
 
     const { c, a } = context.mint(patched.value.k, existing?.c ?? 0);
 
-    return Result.ok(
-      mintedPatch(
-        patched.value,
-        existing,
-        { c, a },
-        context.mode,
-        context.allowUnchanged ? [command.fieldId] : [],
-      ),
-    );
+    return Result.ok(mintedPatch(patched.value, existing, { c, a }, context.mode));
   }
 
   // A patch that changes nothing on the record built so far is skipped in silence: the window
@@ -888,10 +863,7 @@ export function createComposers(connectionId: string): Composers {
     const remove = commands.some((command) => command.type === 'repeat-block-delete');
 
     if (remove) {
-      if (
-        base?.d === null ||
-        (base === undefined && prior?.d === null && fixedVersion === undefined)
-      ) {
+      if (base?.d === null) {
         return Result.err('unchanged');
       }
 
@@ -929,11 +901,7 @@ export function createComposers(connectionId: string): Composers {
 
       if (!policy.isOk()) return policy;
 
-      const field = findPatchField(policy.value.template, command.target, command.fieldId);
-
-      if (field === null) return Result.err('unknown-field');
-
-      const value = acceptedFieldValue(field, command.value);
+      const value = acceptedPatchValue(policy.value.template, command);
 
       if (!value.isOk()) return value;
 
@@ -953,16 +921,21 @@ export function createComposers(connectionId: string): Composers {
     const version = fixedVersion ?? context.mint(key, Math.max(base?.c ?? 0, prior?.c ?? 0));
     const inheritedData = add ? undefined : baseData;
 
-    return Result.ok({
-      k: key,
-      ...version,
-      l: base?.l ?? prior?.l ?? lifecycle ?? [version.c, version.a],
-      d: {
-        ...inheritedData,
-        order: add ? (order ?? priorData?.order ?? 0) : (baseData?.order ?? priorData?.order ?? 0),
-        cells: versionCells(values, version.c, version.a),
-      },
-    });
+    return Result.ok(
+      mintedBlock(
+        key,
+        version,
+        base?.l ?? prior?.l ?? lifecycle ?? [version.c, version.a],
+        {
+          ...inheritedData,
+          order: add
+            ? (order ?? priorData?.order ?? 0)
+            : (baseData?.order ?? priorData?.order ?? 0),
+          cells: {},
+        },
+        values,
+      ),
+    );
   }
 
   function currentPreset(context: ComposeContext): Preset | null {
@@ -981,47 +954,43 @@ export function createComposers(connectionId: string): Composers {
     return decodedPreset.preset;
   }
 
-  function compose(
-    context: ComposeContext,
-    command: Command,
-  ): Result<VersionedRecord[], RejectionReason> {
-    switch (command.type) {
-      case 'sheet-create':
-        return listOf(composeSheetCreate(context, command));
-      case 'sheet-delete':
-        return composeSheetDelete(context, command);
-      case 'repeat-block-duplicate':
-        return composeRepeatBlockDuplicate(context, command);
-      case 'link-set':
-        return listOf(composeLinkSet(context, command));
-      case 'link-clear':
-        return listOf(composeLinkClear(context, command));
-      case 'acl-set':
-        return listOf(composeAclSet(context, command));
-      case 'owner-set':
-        return composeOwnerSet(context, command);
-      // AD-14: an upload is an ordered batch with its own confirmation, sent through
-      // `composePresetUpload` only. A flat list here would lose the order.
-      case 'preset-upload':
-        return Result.err('not-allowed');
-      // AD-9: an import and a wipe replace the generation, so the engine runs each on its own
-      // path.
-      case 'snapshot-import':
-      case 'wipe':
-        return Result.err('not-allowed');
-      case 'field-patch':
-        return listOf(composeFieldPatch(context, command));
-      case 'repeat-block-add':
-        return listOf(composeRepeatBlockAdd(context, command));
-      case 'repeat-block-delete':
-        return composeRepeatBlockDelete(context, command);
-      default:
-        return unknownCommand(command);
-    }
-  }
-
   return {
-    compose,
+    compose: (context, command) => {
+      switch (command.type) {
+        case 'sheet-create':
+          return listOf(composeSheetCreate(context, command));
+        case 'sheet-delete':
+          return composeSheetDelete(context, command);
+        case 'repeat-block-duplicate':
+          return composeRepeatBlockDuplicate(context, command);
+        case 'link-set':
+          return listOf(composeLinkSet(context, command));
+        case 'link-clear':
+          return listOf(composeLinkClear(context, command));
+        case 'acl-set':
+          return listOf(composeAclSet(context, command));
+        case 'owner-set':
+          return composeOwnerSet(context, command);
+        // AD-14: an upload is an ordered batch with its own confirmation, sent through
+        // `composePresetUpload` only. A flat list here would lose the order.
+        case 'preset-upload':
+          return Result.err('not-allowed');
+        // AD-9: an import and a wipe replace the generation, so the engine runs each on its own
+        // path.
+        case 'snapshot-import':
+        case 'wipe':
+          return Result.err('not-allowed');
+
+        case 'field-patch':
+          return listOf(composeFieldPatch(context, command));
+        case 'repeat-block-add':
+          return listOf(composeRepeatBlockAdd(context, command));
+        case 'repeat-block-delete':
+          return composeRepeatBlockDelete(context, command);
+        default:
+          return unknownCommand(command);
+      }
+    },
     composePatches,
     composePending,
     composePresetUpload,
@@ -1056,6 +1025,15 @@ export function blockLinkTombstones(
 
 function lossOf(migration: PresetMigration): PresetUploadLoss {
   return { count: migration.count, sheets: migration.sheets, digest: migration.digest };
+}
+
+function acceptedPatchValue(
+  template: TemplateLayout,
+  command: FieldPatchCommand,
+): Result<FieldValue | null, RejectionReason> {
+  const field = findPatchField(template, command.target, command.fieldId);
+
+  return field === null ? Result.err('unknown-field') : acceptedFieldValue(field, command.value);
 }
 
 // The link goes, and the sheet and the token stay. A link to a deleted sheet is still a record, so
@@ -1237,13 +1215,12 @@ function mintedPatch(
   existing: VersionedRecord | undefined,
   version: Version,
   mode: ComposeMode,
-  forcedFields: readonly string[] = [],
 ): VersionedRecord {
   const before = blockDataSchema.safeParse(existing?.d).data;
 
   const changed = Object.fromEntries(
     Object.entries(patched.d.cells)
-      .filter(([id, cell]) => forcedFields.includes(id) || cell[0] !== before?.cells[id]?.[0])
+      .filter(([id, cell]) => cell[0] !== before?.cells[id]?.[0])
       .map(([id, [value]]) => [id, value]),
   );
 
@@ -1256,14 +1233,24 @@ function mintedPatch(
         )
       : {};
 
+  return mintedBlock(patched.k, version, existing?.l ?? [version.c, version.a], patched.d, {
+    ...changed,
+    ...removed,
+  });
+}
+
+function mintedBlock(
+  key: string,
+  version: Version,
+  lifecycle: Lifecycle,
+  data: PatchedRecord['d'],
+  values: Record<string, FieldValue | null>,
+): VersionedRecord {
   return {
-    k: patched.k,
+    k: key,
     ...version,
-    l: existing?.l ?? [version.c, version.a],
-    d: {
-      ...patched.d,
-      cells: versionCells({ ...changed, ...removed }, version.c, version.a),
-    },
+    l: lifecycle,
+    d: { ...data, cells: versionCells(values, version.c, version.a) },
   };
 }
 
