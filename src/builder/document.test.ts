@@ -20,6 +20,7 @@ import {
   findCell,
   formulaFieldIds,
   fromPreset,
+  locate,
   moveItem,
   nameFieldCandidates,
   removeItem,
@@ -853,5 +854,107 @@ describe('field ids across tabs', () => {
     const ids = template === undefined ? null : nameFieldCandidates(template);
     // #then
     expect(ids).toEqual(['name', 'nick']);
+  });
+});
+
+function formulaRepeatRow(id: string, repeatId?: string): PresetRow {
+  const row: PresetRow = {
+    cells: [
+      { kind: 'field', type: 'text', id: `${id}_name` },
+      { kind: 'field', type: 'number', id: `${id}_bonus` },
+      { kind: 'dice', formula: '1d6' },
+    ],
+  };
+
+  if (repeatId !== undefined) row.repeat = { id: repeatId, nameField: `${id}_name` };
+
+  return row;
+}
+
+function formulaRepeatSection(id: string, repeatId: string, child?: PresetRow): PresetSection {
+  return {
+    repeat: { id: repeatId, nameField: `${id}_name` },
+    rows: [formulaRepeatRow(id), ...(child === undefined ? [] : [child])],
+  };
+}
+
+describe('formula field ids after moving repeats', () => {
+  test.each([
+    {
+      name: 'excludes a moved child row with the same repeat id as its parent',
+      movedPath: [0, 0, 1, 1],
+      destinationPath: [0, 0, 0],
+      dicePath: [0, 0, 0, 0, 2],
+      expected: ['parent_bonus'],
+    },
+    {
+      name: 'uses the actual enclosing section when a moved section shares an id',
+      movedPath: [0, 2, 1],
+      destinationPath: [0, 1],
+      dicePath: [0, 2, 1, 1, 2],
+      expected: ['local_bonus', 'enclosing_bonus', 'alpha_bonus'],
+    },
+  ])('$name', ({ movedPath, destinationPath, dicePath, expected }) => {
+    // #given
+    const preset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'sheet',
+          title: 'Sheet',
+          tabs: [
+            {
+              title: 'Plain',
+              sections: [
+                formulaRepeatSection('parent', 'attack'),
+                formulaRepeatSection('other', 'stash', formulaRepeatRow('child', 'attack')),
+              ],
+            },
+            {
+              title: 'Alpha',
+              repeat: { id: 'alpha', nameField: 'alpha_name' },
+              sections: [
+                { rows: [formulaRepeatRow('alpha')] },
+                formulaRepeatSection('foreign', 'strike'),
+              ],
+            },
+            {
+              title: 'Beta',
+              repeat: { id: 'beta', nameField: 'beta_name' },
+              sections: [
+                { rows: [formulaRepeatRow('beta')] },
+                formulaRepeatSection('enclosing', 'strike', formulaRepeatRow('local', 'detail')),
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    if (!parsePresetFile(JSON.stringify(preset)).isOk()) throw new Error('Invalid seed preset');
+
+    const document = fromPreset(preset);
+    const dice = uid(document, ...dicePath);
+
+    // #when
+    const moved = applied(
+      moveItem(document, uid(document, ...movedPath), {
+        place: 'into',
+        parent: uid(document, ...destinationPath),
+      }),
+    ).document;
+
+    const spot = locate(moved, dice);
+
+    if (spot?.kind !== 'cell') throw new Error('Moved dice cell not found');
+
+    const template = moved.templates[spot.template];
+
+    if (template === undefined) throw new Error('Moved dice template not found');
+
+    const ids = formulaFieldIds(template, spot).filter((id) => id.endsWith('_bonus'));
+
+    // #then
+    expect(ids).toEqual([...expected]);
   });
 });
