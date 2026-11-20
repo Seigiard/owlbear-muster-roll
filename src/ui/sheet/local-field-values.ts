@@ -2,7 +2,13 @@ import { atom, type ReadableAtom } from 'nanostores';
 
 import type { ShownValue } from '@/core/dice-roll';
 import type { FieldPatchTarget } from '@/core/field-patch';
-import { sameAddress } from '@/core/block-address';
+import { blockAddress, sameAddress, type BlockAddress } from '@/core/block-address';
+import {
+  repeatScopePathAt,
+  resolveFieldReference,
+  type TemplateLayout,
+  type TemplateRowPlace,
+} from '@/core/preset';
 
 // A field whose shown value lives in the window only: text not sent yet, or an input error.
 export type LocalFieldValue = {
@@ -57,22 +63,24 @@ export function createLocalFieldValues(): LocalFieldValues {
   };
 }
 
-// The local values a formula in the rolled row can reach, by field id, as the 1.10 resolver reaches
-// them: the row's own fields first, then the fields of the sheet's plain rows. `ownTarget` is the
-// rolled row's record, `null` for a row with no field. `ownFieldIds` are the ids of the rolled
-// row's fields, which hide a plain-row field of the same id.
+// The rolled row's place in the template, and its repeat block, `null` outside a repeat.
+export type RolledRow = Omit<TemplateRowPlace, 'path'> & { block: BlockAddress | null };
+
+// The local values a formula in the rolled row reads, by field id. An id resolves as the formula
+// resolver resolves it: to the nearest enclosing block that has the field, else to a plain row. A
+// local value counts only when it belongs to exactly that record, so an enclosing block's input
+// error reaches a roll in its child block, and a field of the same id elsewhere does not.
 export function shownForRoll(
   values: readonly LocalFieldValue[],
-  ownTarget: FieldPatchTarget | null,
-  ownFieldIds: ReadonlySet<string>,
+  layout: TemplateLayout,
+  row: RolledRow,
 ): Map<string, ShownValue> {
   const shown = new Map<string, ShownValue>();
 
   for (const value of values) {
-    const ownRow = ownTarget !== null && sameTarget(value.target, ownTarget);
-    const reachable = ownRow || (value.target.kind === 'row' && !ownFieldIds.has(value.fieldId));
+    const source = fieldSource(layout, row, value.fieldId);
 
-    if (reachable) {
+    if (source !== null && sameTarget(value.target, source)) {
       shown.set(value.fieldId, value.shown);
     }
   }
@@ -80,12 +88,39 @@ export function shownForRoll(
   return shown;
 }
 
+// The record the field `fieldId` resolves to from the rolled row, `null` for no field.
+function fieldSource(
+  layout: TemplateLayout,
+  row: RolledRow,
+  fieldId: string,
+): FieldPatchTarget | null {
+  const from: TemplateRowPlace = {
+    tabIndex: row.tabIndex,
+    sectionIndex: row.sectionIndex,
+    rowIndex: row.rowIndex,
+  };
+
+  const reference = resolveFieldReference(layout, from, fieldId);
+
+  if (reference === null) return null;
+
+  if (reference.scope === 'sheet') return { kind: 'row', rowId: reference.rowId };
+
+  // As the roll reads it: the enclosing block at the field's scope depth, a prefix of the rolled
+  // block's address.
+  const depth = (reference.scopePath ?? repeatScopePathAt(layout, from)).length * 2;
+
+  if (row.block === null || depth > row.block.path.length) return null;
+
+  const block = blockAddress(row.block.sheetId, row.block.path.slice(0, depth));
+
+  return block === null ? null : { kind: 'rep', block };
+}
+
 function sameTarget(first: FieldPatchTarget, second: FieldPatchTarget): boolean {
   if (first.kind === 'row') {
     return second.kind === 'row' && first.rowId === second.rowId;
   }
-
-  if (second.kind !== 'rep') return false;
 
   return second.kind === 'rep' && sameAddress(first.block, second.block);
 }

@@ -85,7 +85,7 @@ export function SheetBody({
 
   const valuesSignature = sheetValuesSignature(template, records, sheetId, localChanges);
 
-  const diceSheet: DiceSheet = { ...rolling, valuesSignature };
+  const diceSheet: DiceSheet = { ...rolling, valuesSignature, layout: template };
 
   // Runs when the body mounts too, so a request that selected this sheet, and the tab that holds
   // its repeat block, finds that block. A repeat block that is gone shows nothing, and the request
