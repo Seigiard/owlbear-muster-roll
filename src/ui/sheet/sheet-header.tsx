@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { blockDataSchema, rowKey, type VersionedRecord } from '@/core/records';
@@ -70,19 +70,20 @@ export function SheetHeader({
   const [accessOpen, setAccessOpen] = useState(false);
   const focusActions = gm?.focusActions ?? false;
   const onActionsFocused = gm?.onActionsFocused;
+  const notifyActionsFocused = useEffectEvent(() => onActionsFocused?.());
 
   useEffect(() => {
     if (focusActions) {
       actionsRef.current?.focus();
-      onActionsFocused?.();
+      notifyActionsFocused();
     }
-  }, [focusActions, onActionsFocused]);
+  }, [focusActions]);
 
   // `Esc` in the panel closes it, and the focus goes back to "Доступ", where the GM opened it.
-  const closeAccess = useCallback(() => {
+  function closeAccess(): void {
     setAccessOpen(false);
     accessRef.current?.focus();
-  }, []);
+  }
 
   const nameNode =
     nameField !== null && editing !== null ? (
@@ -178,13 +179,15 @@ function NameInput({
       : undefined,
   });
 
+  const notifyNameFocused = useEffectEvent(onNameFocused);
+
   useEffect(() => {
     if (focusName) {
       inputRef.current?.focus();
       inputRef.current?.select();
-      onNameFocused();
+      notifyNameFocused();
     }
-  }, [focusName, onNameFocused]);
+  }, [focusName]);
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1">

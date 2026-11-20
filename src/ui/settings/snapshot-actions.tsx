@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from 'react';
+import { useEffect, useLayoutEffect, useReducer, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { FileTrigger } from 'react-aria-components';
 
@@ -53,11 +53,12 @@ export function useSnapshotActions({
   const { sendCommand, requestSnapshotCheck } = client;
   const waiting = state.phase === 'checking' || state.phase === 'importing';
 
-  if (catchingUp && state.phase === 'asking') {
-    // oxlint-disable-next-line react/refs -- Preserve focus restoration across the render that closes a confirmation during catch-up.
-    refocus.current = true;
-    dispatch({ type: 'catch-up-started' });
-  }
+  useLayoutEffect(() => {
+    if (catchingUp && state.phase === 'asking') {
+      refocus.current = true;
+      dispatch({ type: 'catch-up-started' });
+    }
+  }, [catchingUp, state.phase]);
 
   useEffect(() => {
     if (!waiting) {
