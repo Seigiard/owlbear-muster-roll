@@ -1,9 +1,11 @@
 ---
 id: TASK-132
 title: Keep an unacknowledged player cell from riding a later patch over a GM edit
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@seigiard'
 created_date: '2026-11-19T21:21:00Z'
+updated_date: '2026-11-20T09:55:00Z'
 labels: []
 dependencies:
   - TASK-119
@@ -27,3 +29,12 @@ TASK-119 made a GM client answer a resend of a proposal it already committed wit
 - [ ] #2 A player edit that really lost a race to a GM edit still gets the current behavior (rebuilt and re-proposed, or reported)
 - [ ] #3 A module or engine test reproduces the lost commit, the GM edit and the other-field player edit, and passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Lock a lost-ACK regression and preserve the genuine-stale case.
+2. Keep sent commands apart from later commands and promote them after the matching answer.
+3. Extend EditDelivery to two fields on one key; verify the broken variant and fixed model.
+4. Run changed-path checks, sync formal coverage, and open the PR.
+<!-- SECTION:PLAN:END -->
