@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
+import { syncRead } from './support/room';
 
 test('the window renders the shell root as the child of #root', async ({ page }) => {
   // #given
@@ -11,13 +12,15 @@ test('the window renders the shell root as the child of #root', async ({ page })
   expect(errors).toEqual([]);
 });
 
-test('the background page loads with no console error', async ({ page }) => {
+test('the background page loads with no console error', async ({ page, context }) => {
   // #given
   const errors = collectPageErrors(page);
   // #when
-  await page.goto('/background.html', { waitUntil: 'networkidle' });
+  await page.goto('/background.html');
   // #then
   await expect(page).toHaveTitle('Muster Roll background');
+  const window = await openWindowForBackground(context);
+  await syncRead(window);
   expect(errors).toEqual([]);
 });
 
@@ -31,7 +34,7 @@ for (const path of ['/index.html', '/background.html']) {
       }
     });
     // #when
-    await page.goto(path, { waitUntil: 'networkidle' });
+    await page.goto(path);
     // #then
     expect(sdkRequests).toEqual([]);
   });
@@ -49,4 +52,11 @@ function collectPageErrors(page: Page): string[] {
   });
 
   return errors;
+}
+
+async function openWindowForBackground(context: BrowserContext): Promise<Page> {
+  const window = await context.newPage();
+  await window.goto('/index.html');
+
+  return window;
 }

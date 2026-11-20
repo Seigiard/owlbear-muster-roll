@@ -147,7 +147,7 @@ async function answer(panel: Harness, outcome: AccessOutcome): Promise<void> {
 function viewOf(panel: Harness) {
   return {
     checked: checkboxOf(panel).checked,
-    failure: panel.container.querySelector('[role="status"]')?.textContent ?? null,
+    failure: panel.container.querySelector('output')?.textContent ?? null,
   };
 }
 

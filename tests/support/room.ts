@@ -176,7 +176,8 @@ export async function openBackground(
   path = '/background.html',
 ): Promise<Page> {
   const background = await context.newPage();
-  await background.goto(path, { waitUntil: 'networkidle' });
+  await background.goto(path);
+  await expect(background).toHaveTitle('Muster Roll background');
 
   return background;
 }
@@ -255,8 +256,18 @@ export async function openClientWindow(
 export async function openClientBackground(
   context: BrowserContext,
   params: ClientParams = {},
+  controlClock = false,
 ): Promise<Page> {
-  return openBackground(context, `/background.html${clientQuery(params)}`);
+  const background = await context.newPage();
+
+  if (controlClock) {
+    await background.clock.install();
+  }
+
+  await background.goto(`/background.html${clientQuery(params)}`);
+  await expect(background).toHaveTitle('Muster Roll background');
+
+  return background;
 }
 
 // GM clients in one browser, so they share the storage seeded once. Each window shows its sheets.
@@ -518,6 +529,15 @@ export async function syncRead(page: Page): Promise<{
         answered: boolean;
       }>((resolve) => {
         const nonce = `read-${Date.now()}`;
+        let timer: ReturnType<typeof setInterval>;
+
+        const send = (): void => {
+          void window.mockPlatform.broadcast.sendMessage(
+            channel,
+            { t: 'projection-request', nonce },
+            { destination: 'LOCAL' },
+          );
+        };
 
         const stop = window.mockPlatform.broadcast.onMessage(channel, (event) => {
           const message = Object(event.data);
@@ -526,6 +546,7 @@ export async function syncRead(page: Page): Promise<{
             return;
           }
 
+          clearInterval(timer);
           stop();
           resolve({
             state: String(message.sync.state),
@@ -533,11 +554,8 @@ export async function syncRead(page: Page): Promise<{
           });
         });
 
-        void window.mockPlatform.broadcast.sendMessage(
-          channel,
-          { t: 'projection-request', nonce },
-          { destination: 'LOCAL' },
-        );
+        timer = setInterval(send, 50);
+        send();
       }),
     CHANNEL,
   );

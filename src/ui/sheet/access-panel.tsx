@@ -154,6 +154,7 @@ export function AccessPanel({
   ];
 
   return (
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Escape closes the panel from any focused descendant.
     <section
       id={id}
       aria-label={copy.place.access}
@@ -182,9 +183,9 @@ export function AccessPanel({
           </ul>
         </>
       )}
-      <p role="status" className="text-label-sm text-danger-text">
+      <output className="block text-label-sm text-danger-text">
         {state.failed ? copy.aclFailed : ''}
-      </p>
+      </output>
       <p className="text-label-sm text-text-muted">{copy.guestNote}</p>
     </section>
   );
@@ -303,7 +304,7 @@ function OwnerGroup({ options, checked, onPick }: OwnerGroupProps): ReactNode {
   }
 
   // Focus that leaves the group gives the Tab key back to the checked option.
-  function handleBlur(event: FocusEvent<HTMLDivElement>): void {
+  function handleBlur(event: FocusEvent<HTMLFieldSetElement>): void {
     if (
       !(event.relatedTarget instanceof Node) ||
       !event.currentTarget.contains(event.relatedTarget)
@@ -313,7 +314,13 @@ function OwnerGroup({ options, checked, onPick }: OwnerGroupProps): ReactNode {
   }
 
   return (
-    <div role="radiogroup" aria-labelledby={labelId} className="flex flex-col" onBlur={handleBlur}>
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- The fieldset tracks focus leaving the radio group as a whole.
+    <fieldset
+      role="radiogroup"
+      aria-labelledby={labelId}
+      className="flex flex-col"
+      onBlur={handleBlur}
+    >
       <span id={labelId} className="text-label-sm text-text-muted">
         {copy.label.owner}
       </span>
@@ -322,12 +329,12 @@ function OwnerGroup({ options, checked, onPick }: OwnerGroupProps): ReactNode {
 
         return (
           <button
+            role="radio" // oxlint-disable-line jsx-a11y/prefer-tag-over-role -- This roving radio keeps arrow keys from committing an owner change.
             key={option.playerId ?? ''}
             ref={(element) => {
               buttons.current[index] = element;
             }}
             type="button"
-            role="radio"
             aria-checked={isChecked}
             tabIndex={index === tabStop ? 0 : -1}
             className="inline-flex touch-target items-center gap-2 self-start text-left"
@@ -353,7 +360,7 @@ function OwnerGroup({ options, checked, onPick }: OwnerGroupProps): ReactNode {
           </button>
         );
       })}
-    </div>
+    </fieldset>
   );
 }
 
@@ -366,8 +373,7 @@ function AccessRowItem({ row, checked, onChange }: AccessRowItemProps): ReactNod
 
   return (
     <li>
-      <div
-        role="group"
+      <fieldset
         aria-labelledby={nameId}
         className="flex flex-wrap items-center justify-between gap-x-3"
       >
@@ -386,7 +392,7 @@ function AccessRowItem({ row, checked, onChange }: AccessRowItemProps): ReactNod
           />
           {copy.label.mayEdit}
         </label>
-      </div>
+      </fieldset>
     </li>
   );
 }

@@ -1046,10 +1046,15 @@ test('the preview sidebar lists templates in order and selects a template in the
   const shown = preview(page);
   const sidebar = shown.getByRole('tablist').first();
   // #when
-  const entries = await sidebar.getByRole('tab').allTextContents();
   // #then
   await expect(shown.getByRole('heading', { name: 'Персонажи', exact: true })).toBeVisible();
-  expect(entries).toEqual(['Образец', 'NPC', 'Инвентарь', 'Журнал', 'Заметки ГМ']);
+  await expect(sidebar.getByRole('tab')).toHaveText([
+    'Образец',
+    'NPC',
+    'Инвентарь',
+    'Журнал',
+    'Заметки ГМ',
+  ]);
   // #when
   await sidebar.getByRole('tab', { name: 'NPC', exact: true }).click();
   // #then
@@ -1074,7 +1079,7 @@ test('the player projection hides GM-only content from a visible sheet', async (
   // #then
   await expect(shown.getByRole('tab', { name: 'Ария', exact: true })).toBeVisible();
   await expect(shown.getByRole('heading', { name: 'Ария', level: 1 })).toBeVisible();
-  await expect(shown.getByRole('group', { name: 'Сила' })).toHaveText('12');
+  await expect(shown.getByRole('group', { name: 'Сила', exact: true })).toHaveText('12');
   await expect(shown.getByRole('tab', { name: 'NPC', exact: true })).toHaveCount(0);
   await expect(shown.getByRole('tab', { name: 'Заметки ГМ', exact: true })).toHaveCount(0);
   await expect(shown.getByRole('tab', { name: 'Лич', exact: true })).toHaveCount(0);

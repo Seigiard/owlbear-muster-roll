@@ -259,7 +259,7 @@ test.describe('touch tooltip', () => {
     await field.tap();
     // #then
     await expect(field).toBeFocused();
-    expect(await tooltip(gm.window, 'STR, максимум').isVisible()).toBe(true);
+    await expect(tooltip(gm.window, 'STR, максимум')).toBeVisible();
   });
   test('a no-focus touch tap keeps a named checkbox tooltip open after the pointer leaves', async ({
     context,

@@ -102,9 +102,10 @@ test('Settings shows "Не сохранена" with the free size before any cop
 }) => {
   // #given: the write the GM owes at catch-up waits for the long pause, so no copy exists yet.
   const a = await openClient(context, { client: 'a', device: 'a', ...NEVER }, RECORDS);
+  await expect(strength(a.window)).toHaveValue('14');
   await a.window.getByRole('tab', { name: SETTINGS }).click();
   // The room metadata is `{}`: 2 bytes.
-  const before = await roomCopyText(a.window).textContent();
+  await expect(roomCopyText(a.window)).toHaveText('Не сохранена. Свободно 15,5 кБ.');
   // #when
   await hidePage(a.background);
   await expect.poll(() => roomCopyRecordKeys(a.window)).toContain('blk:brok');
@@ -114,7 +115,6 @@ test('Settings shows "Не сохранена" with the free size before any cop
   await expect(roomCopyText(a.window)).toHaveText(
     `Сохранена. Занято ${kilobytes(total - 2)} кБ, свободно ${kilobytes(LIMIT - total)} кБ.`,
   );
-  expect(before).toBe('Не сохранена. Свободно 15,5 кБ.');
 });
 
 test('a copy that does not fit next to the other metadata is not written, and the banner and Settings say so', async ({

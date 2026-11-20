@@ -42,11 +42,7 @@ test('"Удалить" in "⋯" opens one block at the top of the content area, 
     'Удалить «Брок»? Это нельзя отменить.УдалитьОтменить',
   );
   await expect(cancelButton(page)).toBeFocused();
-  expect(
-    await page
-      .getByRole('tabpanel')
-      .evaluate((panel) => panel.firstElementChild?.getAttribute('role') ?? ''),
-  ).toBe('group');
+  await expect(page.getByRole('tabpanel').locator(':scope > :first-child')).toHaveRole('group');
 });
 
 test('the block names the sheet by its current name', async ({ page, context }) => {

@@ -1,6 +1,15 @@
 import clsx from 'clsx';
 import { useStore } from '@nanostores/react';
-import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 
@@ -145,7 +154,54 @@ export function BuilderPage({
     snapshot: { active: null, queued: null },
   });
 
-  filesRef.current = files;
+  const drainWriteQueueRef = useRef<((kind: FileBlockKind) => Promise<void>) | null>(null);
+
+  const enqueueWrite = useCallback(
+    (
+      kind: FileBlockKind,
+      file: AttachedFile,
+      text: string,
+      canonicalDocumentText: string,
+    ): void => {
+      const queue = writeQueues.current[kind];
+      const pending = { file, text, canonicalDocumentText };
+      const active = queue.active;
+      const queued = queue.queued;
+
+      if (
+        active !== null &&
+        active.file.reference?.id === file.reference?.id &&
+        active.text === text &&
+        active.canonicalDocumentText === canonicalDocumentText
+      ) {
+        return;
+      }
+
+      if (
+        queued !== null &&
+        queued.file.reference?.id === file.reference?.id &&
+        queued.text === text &&
+        queued.canonicalDocumentText === canonicalDocumentText
+      ) {
+        if (active === null) {
+          void drainWriteQueueRef.current?.(kind);
+        }
+
+        return;
+      }
+
+      queue.queued = pending;
+
+      if (queue.active === null) {
+        void drainWriteQueueRef.current?.(kind);
+      }
+    },
+    [writeQueues],
+  );
+
+  useLayoutEffect(() => {
+    filesRef.current = files;
+  }, [files]);
 
   useEffect(() => {
     applyTheme(PREVIEW_THEMES[theme], window.document.documentElement);
@@ -202,6 +258,7 @@ export function BuilderPage({
     const file = attachedFile(kind);
 
     if (file?.reference !== null && file?.reference !== undefined) {
+      // oxlint-disable-next-line react/immutability -- enqueueWrite mutates the write-queue ref; this runs in the clear event handler, never during render.
       enqueueWrite(kind, file, text, text);
     }
 
@@ -469,6 +526,8 @@ export function BuilderPage({
     enqueueWrite('preset', file, textForWrite(files.preset, presetText), presetText);
   }, [
     fileAccess,
+    enqueueWrite,
+    files.preset,
     files.preset.conflict,
     files.preset.file,
     files.preset.failedDocumentText,
@@ -528,6 +587,8 @@ export function BuilderPage({
     );
   }, [
     fileAccess,
+    enqueueWrite,
+    files.snapshot,
     files.snapshot.file,
     files.snapshot.failedDocumentText,
     files.snapshot.forceWrite,
@@ -538,7 +599,9 @@ export function BuilderPage({
     generatedSnapshot,
   ]);
 
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- Keep one subscription effect per attached-file reference; the callback reads current state from filesRef.
   useEffect(() => followAttachedFile('preset'), [fileAccess, files.preset.file?.reference?.id]);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- Keep one subscription effect per attached-file reference; the callback reads current state from filesRef.
   useEffect(() => followAttachedFile('snapshot'), [fileAccess, files.snapshot.file?.reference?.id]);
 
   function followAttachedFile(kind: FileBlockKind): () => void {
@@ -684,46 +747,6 @@ export function BuilderPage({
     dispatchFiles({ type: 'take-file', kind });
   }
 
-  function enqueueWrite(
-    kind: FileBlockKind,
-    file: AttachedFile,
-    text: string,
-    canonicalDocumentText: string,
-  ): void {
-    const queue = writeQueues.current[kind];
-    const pending = { file, text, canonicalDocumentText };
-    const active = queue.active;
-    const queued = queue.queued;
-
-    if (
-      active !== null &&
-      active.file.reference?.id === file.reference?.id &&
-      active.text === text &&
-      active.canonicalDocumentText === canonicalDocumentText
-    ) {
-      return;
-    }
-
-    if (
-      queued !== null &&
-      queued.file.reference?.id === file.reference?.id &&
-      queued.text === text &&
-      queued.canonicalDocumentText === canonicalDocumentText
-    ) {
-      if (active === null) {
-        void drainWriteQueue(kind);
-      }
-
-      return;
-    }
-
-    queue.queued = pending;
-
-    if (queue.active === null) {
-      void drainWriteQueue(kind);
-    }
-  }
-
   async function drainWriteQueue(kind: FileBlockKind): Promise<void> {
     const queue = writeQueues.current[kind];
 
@@ -768,6 +791,10 @@ export function BuilderPage({
       }
     }
   }
+
+  useLayoutEffect(() => {
+    drainWriteQueueRef.current = drainWriteQueue;
+  });
 
   async function writeFile(
     kind: FileBlockKind,
@@ -1151,9 +1178,9 @@ function TopBar({
   return (
     <header className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-4 py-2">
       <h1 className="text-sheet-title">{copy.builder.pageName}</h1>
-      <span role="status" className="text-label-sm text-text-muted">
+      <output className="text-label-sm text-text-muted">
         {state.draft === 'saved' ? copy.builder.draftSaved : copy.builder.draftNotSaved}
-      </span>
+      </output>
       <div className="flex gap-2">
         <AriaButton
           className={TOP_BUTTON_CLASS}
@@ -1225,6 +1252,7 @@ function TopBar({
         <input
           type="checkbox"
           role="switch"
+          aria-checked={theme === 'light'}
           className="accent-accent"
           checked={theme === 'light'}
           onChange={(event) => {
@@ -1243,7 +1271,7 @@ type OpenConfirmationProps = { label: string; onConfirm: () => void; onCancel: (
 function OpenConfirmation({ label, onConfirm, onCancel }: OpenConfirmationProps): ReactNode {
   const textId = useId();
 
-  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLFieldSetElement>): void {
     if (event.key === 'Escape') {
       event.stopPropagation();
       onCancel();
@@ -1251,8 +1279,8 @@ function OpenConfirmation({ label, onConfirm, onCancel }: OpenConfirmationProps)
   }
 
   return (
-    <div
-      role="group"
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Escape cancels from any focused control in this confirmation.
+    <fieldset
       aria-labelledby={textId}
       onKeyDown={handleKeyDown}
       className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface p-2"
@@ -1264,11 +1292,11 @@ function OpenConfirmation({ label, onConfirm, onCancel }: OpenConfirmationProps)
         <Button variant="primary" onPress={onConfirm}>
           {copy.builder.confirmOpen}
         </Button>
-        <Button autoFocus onPress={onCancel}>
+        <Button focusOnMount onPress={onCancel}>
           {copy.command.cancel}
         </Button>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -1291,8 +1319,7 @@ function ClearConfirmation({
     kind === 'preset' ? copy.builder.fileBlock.preset : copy.builder.fileBlock.snapshot;
 
   return (
-    <div
-      role="group"
+    <fieldset
       aria-labelledby={textId}
       className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface p-2"
     >
@@ -1303,11 +1330,11 @@ function ClearConfirmation({
         <Button variant="primary" onPress={onConfirm}>
           {copy.builder.fileBlock.confirmClear}
         </Button>
-        <Button autoFocus onPress={onCancel}>
+        <Button focusOnMount onPress={onCancel}>
           {copy.command.cancel}
         </Button>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -1320,8 +1347,7 @@ function ConflictConfirmation({ onTakeFile, onKeepMine }: ConflictConfirmationPr
   const textId = useId();
 
   return (
-    <div
-      role="group"
+    <fieldset
       aria-labelledby={textId}
       className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface p-2"
     >
@@ -1334,7 +1360,7 @@ function ConflictConfirmation({ onTakeFile, onKeepMine }: ConflictConfirmationPr
         </Button>
         <Button onPress={onKeepMine}>{copy.builder.keepMine}</Button>
       </div>
-    </div>
+    </fieldset>
   );
 }
 

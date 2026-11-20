@@ -484,14 +484,21 @@ export function TokenCellPicker({
 
   useEffect(() => {
     if (!loaded || !sync.firstCatchUpDone) {
-      return;
+      return undefined;
     }
 
+    let active = true;
     const getTokenIds = scene.getTokenIds ?? scene.getItemIds;
 
     void getTokenIds()
       .then(async (ids) => {
-        setNames(await readTokenNames(scene.getItemLabel, ids));
+        const tokenNames = await readTokenNames(scene.getItemLabel, ids);
+
+        if (!active) {
+          return;
+        }
+
+        setNames(tokenNames);
 
         try {
           const [itemBounds, viewportBounds] = await Promise.all([
@@ -499,20 +506,36 @@ export function TokenCellPicker({
             viewport.getBounds(),
           ]);
 
+          if (!active) {
+            return;
+          }
+
           const visible = new Set(
             ids.filter((id) => isInViewport(itemBounds.get(id), viewportBounds)),
           );
 
           setItemIds(orderReversePickerIds(ids, visible, linked));
         } catch (error) {
+          if (!active) {
+            return;
+          }
+
           console.error('Muster Roll could not rank scene tokens by viewport', error);
           setItemIds(orderReversePickerIds(ids, new Set(), linked));
         }
       })
       .catch((error) => {
+        if (!active) {
+          return;
+        }
+
         console.error('Muster Roll could not read scene tokens', error);
         setItemIds([]);
       });
+
+    return () => {
+      active = false;
+    };
   }, [linked, loaded, scene, sync.firstCatchUpDone, viewport]);
 
   const tokens = itemIds ?? [];
