@@ -92,10 +92,7 @@ test('a GM writes the room copy at once when its page becomes hidden', async ({ 
   const a = await openClient(context, { client: 'a', device: 'a', ...NEVER }, RECORDS);
   await expect(strength(a.window)).toHaveValue('14');
   // #when
-  await a.background.evaluate(() => {
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
+  await hidePage(a.background);
   // #then
   await expect.poll(() => roomCopyRecordKeys(a.window)).toEqual(['blk:brok', 'blk:npc', 'preset']);
 });
@@ -103,15 +100,13 @@ test('a GM writes the room copy at once when its page becomes hidden', async ({ 
 test('Settings shows "Не сохранена" with the free size before any copy, and "Сохранена" with sizes after one', async ({
   context,
 }) => {
-  // #given
-  const a = await openClient(context, { client: 'a', device: 'a', ...QUICK }, RECORDS);
+  // #given: the write the GM owes at catch-up waits for the long pause, so no copy exists yet.
+  const a = await openClient(context, { client: 'a', device: 'a', ...NEVER }, RECORDS);
   await a.window.getByRole('tab', { name: SETTINGS }).click();
   // The room metadata is `{}`: 2 bytes.
   const before = await roomCopyText(a.window).textContent();
-  await a.window.getByRole('tab', { name: 'Брок' }).click();
   // #when
-  await strength(a.window).fill('18');
-  await strength(a.window).press('Tab');
+  await hidePage(a.background);
   await expect.poll(() => roomCopyRecordKeys(a.window)).toContain('blk:brok');
   await a.window.getByRole('tab', { name: SETTINGS }).click();
   // #then
@@ -125,14 +120,15 @@ test('Settings shows "Не сохранена" with the free size before any cop
 test('a copy that does not fit next to the other metadata is not written, and the banner and Settings say so', async ({
   context,
 }) => {
-  // #given
-  const a = await openClient(context, { client: 'a', device: 'a', ...QUICK }, RECORDS);
+  // #given: the write the GM owes at catch-up waits for the long pause, so no copy exists yet.
+  const a = await openClient(context, { client: 'a', device: 'a', ...NEVER }, RECORDS);
   await a.window.evaluate(async (key) => {
     await window.mockPlatform.metadata.setMetadata({ [key]: 'x'.repeat(15400) });
   }, 'other.extension/data');
-  // #when
   await strength(a.window).fill('19');
   await strength(a.window).press('Tab');
+  // #when
+  await hidePage(a.background);
   // #then
   await expect(a.window.getByRole('status')).toHaveText(NOT_SAVED);
   await a.window.getByRole('tab', { name: SETTINGS }).click();
@@ -154,6 +150,13 @@ async function openClient(
   const background = await openClientBackground(context, params);
 
   return { window, background, connectionId: connectionIdOf(params) };
+}
+
+async function hidePage(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
 }
 
 function strength(page: Page): Locator {

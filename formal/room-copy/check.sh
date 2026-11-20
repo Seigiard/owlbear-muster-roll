@@ -45,13 +45,14 @@ expect() {
 }
 
 expect RoomCopy.cfg pass
+expect one-gm.cfg pass
 expect liveness.cfg pass
 expect finding-overwrite.cfg RoomKeepsEdits
 expect finding-silent-loss.cfg NoSilentLossAtRest
-expect finding-lost-for-good.cfg NoLossForGood
 expect broken-no-read-back.cfg NoFalseSaved
 expect broken-stop-keeps-timer.cfg StopEndsWork
 expect broken-no-gate-check.cfg StopEndsWork
 expect broken-no-finally.cfg WriteRunEnds
+expect broken-catch-up-ignores-copy.cfg NoLossForGood
 
 [ $mismatches -eq 0 ]
