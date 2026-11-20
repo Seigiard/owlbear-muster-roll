@@ -659,3 +659,7 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-123-roll-flow-dice-extension-types.md`
   summary: Rename the `DiceExtensionFailure` union in `src/replica/dice-extension.ts:53` so it no longer shares a name with the `DiceExtensionFailure` class in `src/platform/ports.ts:133` (TASK-138).
   evidence: `roll-flow.ts` uses both (the union through `Pick<DiceExtension, 'roll'>`, the class at line 231), and `roll-flow.test.ts` now imports the union under the class's name; the collision predates TASK-123.
+
+## Deferred from: TASK-112 (2026-11-20)
+
+- `tests/selection.e2e.ts:135` ("a GM selects the token of one repeat block from the keyboard") failed once in a full `bun run test:browser` run on the TASK-112 branch: the map selection poll timed out after 5 s with one of `t-s1`, `t-s2` missing. It passed 3/3 under `--repeat-each 3`. TASK-112 changes only the Builder, which this test does not load.

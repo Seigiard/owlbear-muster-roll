@@ -2,7 +2,7 @@ import { atom, type ReadableAtom } from 'nanostores';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 
-import { encodePreset, parsePresetStructure, type Preset } from '@/core/preset';
+import { encodePreset, formatPresetFile, parsePresetStructure, type Preset } from '@/core/preset';
 import { presetMoves } from '@/core/preset-migrate';
 import { recordSchema, templateIdSchema, type VersionedRecord } from '@/core/records';
 import { importSnapshot } from '@/core/snapshot-import';
@@ -11,6 +11,7 @@ import { isSheetSet, liveSheets, sheetKey } from '@/core/sheets';
 
 import {
   ancestorUids,
+  collectOriginRepeatIds,
   EMPTY_DOCUMENT,
   fromPreset,
   locate,
@@ -28,7 +29,8 @@ import {
 // an open restores the old draft whole.
 export type BuilderStep = {
   document: BuilderDocument;
-  // The preset of the file the draft was opened from, for the rename warning. `null` otherwise.
+  // The preset of the file the draft was opened from, or of an identical file opened over a draft
+  // with none, for the loaded-file warnings. `null` otherwise.
   origin: Preset | null;
   // The name the download file starts with.
   name: string;
@@ -67,6 +69,8 @@ export type BuilderStore = {
   edit: (edit: (document: BuilderDocument) => DocumentEdit | null, coalesce?: string) => void;
   open: (preset: Preset, origin: Preset | null, name: string) => void;
   replacePreset: (preset: Preset, origin: Preset | null, name: string) => void;
+  // A file the GM opened that holds the draft's preset becomes the origin of a draft with none.
+  adoptOrigin: (origin: Preset) => void;
   setSnapshot: (records: readonly VersionedRecord[]) => void;
   addSheet: (setId: string) => void;
   undo: () => void;
@@ -195,6 +199,39 @@ export function createBuilderStore(storage: DraftStorage | null): BuilderStore {
           },
           changed: firstSelection(document) ?? WINDOW_UID,
         };
+      });
+    },
+    adoptOrigin: (origin) => {
+      const state = $state.get();
+
+      // A draft with an origin keeps it: its attached file is written on each edit, so reopening
+      // that file must not drop the warnings about the file the GM opened first.
+      if (
+        state.step.origin !== null ||
+        formatPresetFile(toPreset(state.step.document)) !== formatPresetFile(origin)
+      ) {
+        return;
+      }
+
+      // The opened file holds the whole draft, so every step of its history gets the origin too,
+      // by uid. Not an undo step, as the draft's content stays.
+      const ids = collectOriginRepeatIds(state.step.document.templates, origin.templates);
+
+      const adopt = (step: BuilderStep): BuilderStep =>
+        step.origin === null
+          ? { ...step, origin, document: { ...step.document, originRepeatIds: ids } }
+          : step;
+
+      const adoptEntry = (entry: HistoryEntry): HistoryEntry => ({
+        ...entry,
+        step: adopt(entry.step),
+      });
+
+      commit({
+        ...state,
+        step: adopt(state.step),
+        undo: state.undo.map(adoptEntry),
+        redo: state.redo.map(adoptEntry),
       });
     },
     setSnapshot: (records) => {
