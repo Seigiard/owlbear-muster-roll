@@ -164,7 +164,7 @@ test('a player sees a tab for every character in order, each with its full sheet
 
   for (const name of CHARACTER_TABS) {
     // oxlint-disable-next-line no-await-in-loop
-    await player.window.getByRole('tab', { name }).click();
+    await player.window.getByRole('tab', { name }).press('Enter');
     // oxlint-disable-next-line no-await-in-loop
     await expect(panel.getByRole('heading', { name, level: 1 })).toBeVisible();
   }
