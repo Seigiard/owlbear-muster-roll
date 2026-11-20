@@ -1,7 +1,7 @@
 document-map v1
 Source: "deferred-work.md"
-SHA256: 59af3b08cc0e9d55e36d2a6c64b0372ff04096412a66f689a5e8fa16e7b85364
-Total lines: 721
+SHA256: ddd9161d0cdd8178701544282ca65283667a4f018da58a3872c0b6ee6ac18b5e
+Total lines: 733
 
 Preamble — lines 1–101
 From spec-3-3-apply-a-players-edit-after-a-gm-check (TASK-22) — lines 102–109
@@ -55,4 +55,6 @@ Deferred from: TASK-135 (2026-11-20) — lines 679–693
 Deferred from: compiler bailouts TASK-133 to TASK-137 (2026-11-20) — lines 694–698
 Deferred from: TASK-111 (2026-11-20) — lines 699–704
 Deferred from: TASK-101 (2026-11-20) — lines 705–713
-Deferred from: TASK-132 (2026-11-20) — lines 714–721
+Deferred from: TASK-132 (2026-11-20) — lines 714–722
+Deferred from: TASK-106 (2026-11-20) — lines 723–728
+Deferred from: TASK-140 (2026-11-20) — lines 729–733

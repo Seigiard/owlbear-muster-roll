@@ -27,6 +27,9 @@ It runs `formal/tlc.sh` on every config in `formal/edit-delivery/` and prints on
 | `Refusals.cfg` | pass | revoke, too-large, catch-up, 1 loss |
 | `Liveness.cfg` | pass | `EntryResolves`, 1 edit |
 | `TwoFields.cfg` | pass | two fields on one key: a committed cell loses its ACK, the GM edits it, and a later field edit advances after the merge |
+| `StagedRefusals.cfg` | pass | two fields and two edits; a staged entry reaches a matching denied reply or revoke with 1 loss |
+| `StagedReturn.cfg` | pass | two fields and two edits; 1 loss and 1 GM reload, with `EntryResolves` under weak fairness |
+| `broken/ReloadReplayAfterLostAck.cfg` | expected failure, known current-code limit | one lost ACK, same-field GM correction, and reload before resend violate `NoOldCellReplayAfterLostAck` |
 | `broken/*.cfg` | the property its header names | each property can fail |
 
 Read every result, pass or fail, with the `/statechart` skill: on a violation it tells the shortest path in plain words, and on a pass it draws how the edit moves between states. Run it in a scratch folder outside the repo. Its chart budget is 500 TLC states and the gates have about a million, so chart a copy with smaller constants. For the old folding bug, use two fields, two player edits, one GM edit, and one lost message with `broken/FoldsUnackedCells.cfg`.
@@ -39,21 +42,23 @@ Each is an operator in `EditDelivery.tla`. Status is at the sync commit.
 | --- | --- | --- | --- |
 | `NoSilentLoss` | An accepted edit is still pending, or the GM merged it or a newer edit, or the player saw a denial notice ("Правка слишком большая" for too-large, "Нет прав на правку" otherwise), or the record the player knows already held its value. | The player believes a value is saved and it never reaches the room, with no notice. | holds |
 | `NoDoubleApply` | The GM merges each player field edit into the room at most once. | A committed edit comes back later and overwrites whatever came after it, such as a GM's correction. | holds (the former F1, fixed by TASK-119) |
-| `NoOldCellReplayAfterLostAck` | After a committed cell's ACK is lost and the GM changes that field, a later edit of another field does not apply the old cell again. | A new field edit restores an old value over the GM's correction. | holds in `TwoFields.cfg`; `broken/FoldsUnackedCells.cfg` must break it |
+| `NoOldCellReplayAfterLostAck` | After a committed cell's ACK is lost and the GM changes that field, a later edit of another field does not apply the old cell again. | A new field edit restores an old value over the GM's correction. | holds in `TwoFields.cfg`; `broken/FoldsUnackedCells.cfg` and `broken/ReloadReplayAfterLostAck.cfg` fail it |
 | `OwnOrderKept` | For each field, once the GM merged a newer edit of this player, the room never shows an older one. | The room ends with the player's earlier value though the later one was accepted. | holds |
 | `OneVersionOneEdit` | The player never sends two different edits under one `(k, c, a)` (AD-3). | Two clients pick different winners for one version, or an ack clears the wrong edit. | holds |
 | `NeverStranded` | A minted entry always has a resend timer; an entry with no version exists only during catch-up, whose end mints it. | An edit waits forever with no resend, even after the GM is back. | holds |
-| `EntryResolves` | When the GM ends up live for good, every pending edit is answered. | Same as above, through any path the structural rule misses. | holds (1 edit; 2 edits pass too, in 45 s) |
+| `EntryResolves` | When the GM ends up live for good, every pending edit is answered. | Same as above, through any path the structural rule misses. | holds in `Liveness.cfg` and `StagedReturn.cfg` |
 
 `NoSilentLoss` counts a drop as reported when `denial(cause)` is asked for with a cause, even inside the quiet window where the notice is not shown again. The cause only picks the text (`engine.ts` `notifyDenied`, since `8c7ff9f`), so the model does not tell the two notices apart.
 
 ## Findings at the sync commit
 
-None open.
+Fixed: former F1, TASK-119, **a lost ack let a committed edit overwrite a later GM edit**. The GM committed the player's `(k, 3, P)`; the commit never reached the player (the send queue gave up, or the player's AD-5 gate dropped it); the GM edited the field at `c=4`; the player's resend of `(k, 3, P)` read as `stale`, and `rejected` rebuilt it at `c=5`, which the GM committed over its own edit. `stale` compares counters only, so neither side could tell "my committed version was overwritten" from "my version lost a race". Now `receiveProposal` remembers the generation and `(k, c, a)` of each proposal it commits (`committedEdits`, the newest 1000), and answers the same proposal again with its held record and the echo, ahead of `checkProposal`. The player's `answered` clears its entry and merges the GM's record. A proposal that really lost a race carries a `(k, c, a)` the GM never committed, so it still reads as `stale`. In the model, `GmReceives` answers a counter in `committed` that way; `broken/ForgetsCommitted.cfg` removes it and fails `NoDoubleApply`, and `NoDoubleApply` is in both one-field gates.
 
-Fixed: former F1, TASK-119, **a lost ack let a committed edit overwrite a later GM edit**. The GM committed the player's `(k, 3, P)`; the commit never reached the player (the send queue gave up, or the player's AD-5 gate dropped it); the GM edited the field at `c=4`; the player's resend of `(k, 3, P)` read as `stale`, and `rejected` rebuilt it at `c=5`, which the GM committed over its own edit. `stale` compares counters only, so neither side could tell "my committed version was overwritten" from "my version lost a race". Now `receiveProposal` remembers the generation and `(k, c, a)` of each proposal it commits (`committedEdits`, the newest 1000), and answers the same proposal again with its held record and the echo, ahead of `checkProposal`. The player's `answered` clears its entry and merges the GM's record. A proposal that really lost a race carries a `(k, c, a)` the GM never committed, so it still reads as `stale`. In the model, `GmReceives` answers a counter in `committed` that way; `broken/ForgetsCommitted.cfg` removes it and fails `NoDoubleApply`, and `NoDoubleApply` is in both one-field gates. Two paths still apply the player's edit twice outside the model:
-- a GM reload before the player's resend: the memory is in RAM, and the model leaves `stop` and reloads out;
-- a second GM page that did not commit the proposal: it answers `stale` and may answer first (two GM clients are not modeled; the owner's verdict counts two GM pages as one GM's accepted risk).
+Two accepted replay limits remain:
+
+- **GM reload (TASK-119, AD-4).** The GM commits a player edit, the ACK is lost, and the GM corrects the same field. The player stages an edit to another field. The GM reloads with the correction saved but forgets that it committed the original proposal. After the GM returns, the resend gets a `stale` reply, so the player proposes both edits together. The next commit overwrites the GM correction. `broken/ReloadReplayAfterLostAck.cfg` reproduces the replay in 16 model transitions. The model can queue the resend before reload, but it delivers the proposal to the GM after return. A separate real-engine replay on the mock platform reproduced the overwrite with a resend sent after reload.
+- **Second GM page.** A second GM page that did not commit the proposal can answer `stale` first. The model covers one GM client, not two.
+
 The old folding path is now in the model: a later player edit of another field of the same key can put an unacknowledged cell in a new `(k, c, a)`. `TwoFields.cfg` keeps the fixed behavior in the shared model, and `broken/FoldsUnackedCells.cfg` makes it fail `NoOldCellReplayAfterLostAck`.
 
 TASK-132 code map: `ProposalEntry.commands` is the current batch and `laterCommands` is staged behind a sent version. A command for the only active field replaces the sent batch. A command for another field is staged when `rc # 0 /\ sent`, including during catch-up; staging keeps the active record, `rc` and timer. Only a non-stage edit during catch-up clears `rc`. `sendNow` marks the entry sent and returns the stored record that the queue takes. `composePending` checks whether any command changes a value, then stamps all commands when one changes or `force` is true. An exact ACK promotes the later commands, then `engine.receiveRecords` merges all records and calls `pendingEdits.advance`, even when none changed. During catch-up, commands with no record wait for `caughtUp`; it mints above the merged block counter and inherits `entry.sent` to force an explicit restoration when no later batch exists. A matching stale reply combines both command groups and rebases them over the GM's current record.
@@ -67,6 +72,7 @@ TASK-132 code map: `ProposalEntry.commands` is the current batch and `laterComma
 | `ResendFires` | `proposal-queue.ts` `armResend` timer, through `platform/schedule.ts` `schedule` |
 | `GmLinkLost` | `catch-up-table.ts` `livenessFired` on `gm-silence` when `silenceAnswered` |
 | `GmBack` | `catch-up.ts` `heard` → `catch-up-table.ts` `livenessHeard` emits `gm-back` → `catch-up-effects.ts` `run` → `pendingEdits.gmBack()` → `resendAll`; in the same run `catchUpHeard` enters `gm-return` for a live player |
+| `GmFlips`, `GmReload` | `GmFlips` models leaving and re-entering `live` with the same engine. `GmReload` models stopping and creating a new engine with saved records intact: `engine.ts` `stop` aborts the old engine, `commit-outbox.ts` clears held commits and ACKs on abort, and `room-protocol.ts` `createRoomProtocol` starts with empty `committedEdits`. `GmReceives` handles resends once the GM is live |
 | `CatchUpStarts`, `CatchUpEnds` | `engine.ts` `enterCatchUp` → `catchUpEnter`; `catch-up-table.ts` `leave` emits `caught-up` → `catch-up-effects.ts` → `engine.ts` `performCaughtUp` → `pending-edits.ts` `caughtUp`; the `state` answer merges first in the same handler (`room-protocol.ts` `receiveState`: `receiveRecords`, then `stateMerged`) |
 | `PlayerReceives` (commit) | `room-protocol.ts` `dispatchRoomMessage` `case 'commit'` → `answered`, then `engine.ts` `receiveRecords` merges the records and calls `advance`, including when none changed; it calls `recordsChanged` for a revoke |
 | `PlayerReceives` (reject) | `room-protocol.ts` `receiveReject` → `pending-edits.ts` `rejected` → `proposeEntry`. `rejected` combines both command groups over the newer base before `put` or `hold`. |
@@ -83,15 +89,28 @@ One atomic step is one synchronous run of one handler: one room message through 
 
 Gate bounds: one-field configs use player values `{0, 1}` and GM value `{1}`. `TwoFields.cfg` uses fields `str` and `note`, player values `{0, 1}`, and GM value `{2}`. `EditDelivery.cfg` allows 2 player edits, 1 GM edit, 2 GM flips, 1 catch-up and 1 loss. `Refusals.cfg` allows 2 player edits, 1 GM edit, 1 revoke, 1 catch-up and 1 loss, and permits too-large edits. `Liveness.cfg` allows 1 player edit, 1 GM edit, 2 GM flips and 1 loss. `TwoFields.cfg` allows 2 player edits, 1 GM edit, 1 catch-up and 1 loss; it has no flips, revokes or too-large edits and does not check liveness.
 
+The three TASK-148 configs allow 2 player edits to `str` and `note`, player values `{1}`, and 1 message loss. None enables independent player catch-up or too-large edits. Return-triggered catch-up still runs through `GmBack`.
+
+| Config | GM edits | Revokes | GM availability |
+| --- | --- | --- | --- |
+| `StagedRefusals.cfg` | 0 | 1 | Always live |
+| `StagedReturn.cfg` | 0 | 0 | At most 1 reload (2 GM flips) |
+| `broken/ReloadReplayAfterLostAck.cfg` | 1 with value `{2}` | 0 | At most 1 reload (2 GM flips) |
+
+On the final configs, `StagedRefusals.cfg` completed in 1 second with 37,421 distinct states. Independent calibration makes `NoSilentLoss` fail when the staged batch is dropped, and a separate trace reaches a staged entry before denial or revoke. `StagedReturn.cfg` completed in 7 seconds with 52,270 distinct states. Independent calibration makes `EntryResolves` fail when the staged timer is omitted after reload, and a separate trace reaches stage, GM absence, offline status, return, `gmBack`, loss, then the staged entry's timer. `broken/ReloadReplayAfterLostAck.cfg` completed in 2 seconds with 214,335 distinct states and a 16-transition counterexample. These are TLC's whole-second runtimes from the final full check and these bounds, not runtime guarantees.
+
+`StagedReturn.cfg` uses weak fairness for taking a queued proposal, firing its resend, `gmBack`, ending catch-up, draining the GM send queue, and delivering queued player/GM messages. Edits, losses and GM availability changes are bounded and are not fair actions. `EntryResolves` applies when the GM is eventually live forever; it does not promise progress while the GM keeps leaving.
+
 Assumptions and simplifications:
 
-- One player, one GM client, one key. Each config has one field, except `TwoFields.cfg`, `broken/FoldsUnackedCells.cfg` and `broken/StaleLosesActive.cfg`, which use `str` and `note`. `entry.active` and `entry.later` are per-field command maps. `entry.rc` versions the active batch. Two GM clients answering one proposal are not modeled.
+- One player, one GM client, one key. Each config declares its field set. Two-field configs use `str` and `note`. `entry.active` and `entry.later` are per-field command maps. `entry.rc` versions the active batch. Two GM clients answering one proposal are not modeled.
 - `committed` is unbounded; the code keeps the newest 1000 committed proposals, and a resend comes within the 30-second backoff cap.
 - The player's `propose` messages are a set: any order, a copy folds into one. Messages to the player are FIFO, as the GM's send queue and one sender's arrival order are.
 - An identical message queued twice is queued once; its second copy would find the entry already past it.
 - The player's id ranks above the GM's on a tie (the worst case for the GM).
 - `gLive` stands for "the GM is live and has persistence": both drop a `propose` with no answer.
-- Left out: generations and adoption (`clearPendingEdits`), role changes (`drain`, `clear`), preset changes and template strips, repeat blocks, proposal and stale-reply fragments, the overlay, the `held` stale path (needs an unknown field), `PROPOSE_C_MAX_STEP`, GM-side too-large, the quiet window of the notice, `stop` (the engine's `AbortSignal` cancels resend timers and clears the outbox), and a closing page's `flushNow` (`outbox.flush`, `sendQueue.flushNow` send without the FIFO wait).
+- `StagedReturn.cfg` and `broken/ReloadReplayAfterLostAck.cfg` substitute `GmReload` for `GmFlips`. Both keep saved records and clear the GM's in-memory history. Only the expected failure allows a GM field edit during the scenario. Its witness tracks an ACK lost while the commit is still remembered and a second field edited after the correction. It does not check every order of ACK loss, correction, and staging across reload. The other configs keep the GM client alive or preserve its memory across an interruption.
+- Left out: generations and adoption (`clearPendingEdits`), role changes (`drain`, `clear`), preset changes and template strips, repeat blocks, proposal and stale-reply fragments, the overlay, the `held` stale path (needs an unknown field), `PROPOSE_C_MAX_STEP`, GM-side too-large, and the quiet window of the notice. The model also leaves out player shutdown, GM startup and storage failures, and the closing page's `flushNow` (`outbox.flush`, `sendQueue.flushNow` send without the FIFO wait).
 
 ## Real bug or modeling error
 

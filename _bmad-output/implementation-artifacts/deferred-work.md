@@ -720,6 +720,12 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
   summary: Check staged player edits across refusal and GM return (TASK-148).
   evidence: `TwoFields.cfg` exercises staging and loss with a live GM and no revoke. The refusal and liveness gates keep the older one-field bounds and cannot stage a second field.
 
+## Deferred from: TASK-106 (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-106-delete-parent-descendants.md`
+  summary: Keep the GM window current when pending withdrawals exceed one message (TASK-149).
+  evidence: `window-publisher.ts` puts every withdrawn key in one delta envelope and advances its held state even if that envelope cannot be sent. Review found the same path for an existing queued sheet deletion. No browser occurrence was observed.
+
 ## Deferred from: TASK-140 (2026-11-20)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-140-compile-repeat-content.md`
