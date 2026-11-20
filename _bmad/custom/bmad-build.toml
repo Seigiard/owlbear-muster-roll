@@ -3,13 +3,15 @@
 # Merge rules and the default values: .claude/skills/bmad-build/customize.toml.
 #
 # BMAD keeps clarify, plan and spec; the `implement` skill builds the spec (tdd chain, then
-# code-review). The BMAD reviewer layers are off: code-review already reviewed and fixed the
-# change before step 04 runs.
+# code-review) on both routes, dispatch and oneshot. The BMAD reviewer layers are off:
+# code-review already reviewed and fixed the change before step 04 or the oneshot review runs.
+# This session is the orchestrator: every child runs on OpenCode, as in `implement`.
 
 [workflow]
 
 # Loaded at activation and carried through the whole run.
 persistent_facts = [
+  "Orchestrator. This session plans, dispatches and judges; OpenCode children do the work. You write the spec, `deferred-work.md`, sprint status and commits. Production code, tests and fixtures come from the `implement` skill's tdd chain, plus the edits `tdd` and `code-review` assign to their orchestrator. Every subagent a step asks for — the epic context in step 01, deep searches in step 02, the spec review at CHECKPOINT 1 — is a fresh OpenCode child started as described in the `tdd` skill's Dispatch section: tier `low` for context and searches, `medium` for the spec review. Its prompt names the files to read and an output path `~/.claude/artifacts/bmad-<spec slug>/<role>-<n>.report.md`; the child writes there and you read that file. A step that tells you to build, implement or patch the code yourself takes the implementation handoff in `step-03-implement.md` beside this `workflow.md` instead: the first build is the `implement` skill, every later fix is a new `tdd` batch in the `implement` run directory. On the oneshot route, run that step's Baseline and Implement sections in place of the oneshot Implement section, then return to the oneshot Review. When no OpenCode child can start, HALT and report why.",
   "Size gate. At CHECKPOINT 1, beside the token count, state the footprint: how many source files and how many test files the Code Map and Tasks touch, and the estimate in hours. A spec that rewrites a data format or an API across layers, or touches more than 15 source files or more than 10 test files, is an epic: propose the split by layer, each part its own spec, and let the human choose split or keep. A kept epic carries its estimate in hours in the spec.",
   "Verification cost. Every entry under `## Verification` carries its expected duration in minutes. An entry over 15 minutes runs only on the human's explicit yes in this run or in CI, and the spec says which. `bun run probe` and `bun run mutants` are CI and on-request checks: a spec names them only when the human asked for them.",
   "Review scope. A verified finding outside the frozen Intent and matrix is one `deferred-work.md` entry. It gets no Backlog task and no question to the human unless the human asks for follow-up tasks.",
@@ -26,7 +28,7 @@ implementer and delegates through its own `tdd` chain.
 2. Call the Skill tool with `implement`, ticket slug = the spec file name without `spec-`
    and `.md`, and this ticket, with {spec_file} filled in:
 
-   > Described work: implement the spec at {spec_file}. The spec is the sole source of truth. Load every file listed in its frontmatter `context:` before you start. Its validation criteria are the spec's `## Tasks & Acceptance` items and every row of its I/O & Edge-Case Matrix, if it has one.
+   > Described work: implement the spec at {spec_file}. The spec is the sole source of truth. Load every file listed in its frontmatter `context:` before you start. Its validation criteria are the spec's `## Tasks & Acceptance` items and every row of its I/O & Edge-Case Matrix, if it has one; a spec with neither has its `## Intent` sentences as the criteria.
 
    When `implement` calls `code-review`, pass it `plan:{spec_file}` and the `implement` run
    directory, so the reviewers judge the change against the spec and the review rounds
@@ -52,6 +54,10 @@ implementer and delegates through its own `tdd` chain.
 
 Step 04's patch route re-engages the implementer the same way: a new `tdd` batch in the
 `implement` run directory, with the patch findings as its criteria.
+
+On the oneshot route this handoff is the oneshot step's Implement section. Write
+`## Implementation Notes` from the `implement` report. "Step 04" above means the oneshot
+Review, and its `patch` groups take a new `tdd` batch the same way.
 """
 
 # An epic is a Backlog milestone. `improve-codebase-architecture` sets
@@ -83,6 +89,29 @@ id = "code-review-carryover"
 name = "Code-review carry-over"
 instruction = """
 Read the code-review report that `implement` returned in step 03 and the
+`review-<round>.md` files in the `implement` run directory. Return as findings, each with
+its file, its evidence and the reviewer's title:
+
+- every open `decision`;
+- every unresolved reachable `critical` or `major`;
+- every deferred finding;
+- every criterion that code-review corrected in `ticket.md`, whatever the final review
+  status, filed as a deviation from the spec: the spec's text, the corrected text, and the
+  code that now follows the corrected one.
+
+Done when each item in those four classes is one finding; with none, return an empty list.
+"""
+
+# The oneshot route builds through `implement` too, so its review is the same carry-over.
+[[workflow.oneshot_review_layers]]
+id = "blind-hunter"
+instruction = ""
+
+[[workflow.oneshot_review_layers]]
+id = "code-review-carryover"
+name = "Code-review carry-over"
+instruction = """
+Read the code-review report that `implement` returned in the Implement section and the
 `review-<round>.md` files in the `implement` run directory. Return as findings, each with
 its file, its evidence and the reviewer's title:
 
