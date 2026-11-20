@@ -22,7 +22,7 @@ const NANOID_PATTERN = /^[A-Za-z0-9_-]{8}$/;
 
 // One repeat section on a grid wider than its row, one that flows inline and opens with a label,
 // and one whose two rows hold five fields.
-const PRESET = {
+const repeatPreset = (leadingAttackCells: readonly JsonValue[] = []) => ({
   v: 4,
   templates: [
     {
@@ -57,6 +57,7 @@ const PRESET = {
               rows: [
                 {
                   cells: [
+                    ...leadingAttackCells,
                     { kind: 'field', type: 'text', id: 'attack' },
                     { kind: 'field', type: 'number', id: 'bonus' },
                   ],
@@ -102,7 +103,9 @@ const PRESET = {
       ],
     },
   ],
-} as const;
+});
+
+const PRESET = repeatPreset();
 
 // The columns of "Атаки" in PRESET.
 const ATTACK_COLUMNS = 3;
@@ -166,6 +169,27 @@ test('a new repeat block focuses its first field when its row opens with a label
   await addButton(page, 'Вещи').click();
   // #then
   await expect(region(page, 'Вещи').getByRole('textbox', { name: 'Вещь' })).toBeFocused();
+});
+
+test('a new repeat block focuses the select field before its text name field', async ({
+  page,
+  context,
+}) => {
+  // #given
+  const preset = repeatPreset([
+    { kind: 'field', type: 'select', id: 'armor', name: 'Броня', options: ['Лёгкая', 'Тяжёлая'] },
+  ]);
+
+  await openSheet(page, context, [], preset);
+
+  const newBlock = region(page, 'Атаки')
+    .getByRole('group')
+    .filter({ has: page.getByRole('button', { name: 'Удалить блок 3', exact: true }) });
+
+  // #when
+  await addButton(page, 'Атаки').click();
+  // #then
+  await expect(newBlock.getByRole('combobox', { name: 'Броня', exact: true })).toBeFocused();
 });
 
 test('repeat blocks added to one sheet leave the other sheet with its own repeat blocks', async ({
@@ -666,12 +690,13 @@ async function openSheet(
   page: Page,
   context: BrowserContext,
   records: readonly StoredRecord[] = [],
+  preset = PRESET,
 ): Promise<Page> {
   const background = await openRoom(
     page,
     context,
     [...RECORDS, ...records],
-    JSON.stringify(PRESET),
+    JSON.stringify(preset),
   );
 
   await expect(page.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
