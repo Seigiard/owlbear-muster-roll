@@ -450,6 +450,15 @@ test('opens on the empty preset: one problem, download off, and the empty previe
   expect(properties.y + properties.height).toBeLessThanOrEqual(1000);
 });
 
+test('the empty preset problem counter moves focus to Добавить набор', async ({ page }) => {
+  // #given
+  await page.goto(PAGE);
+  // #when
+  await problemCounter(page, 1).press('Enter');
+  // #then
+  await expect(item(page, 'Добавить набор')).toBeFocused();
+});
+
 test('the selected form fits beside the preview and stays put while the tree scrolls', async ({
   page,
 }) => {
