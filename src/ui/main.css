@@ -181,3 +181,9 @@
     outline-offset: -1px;
   }
 }
+
+@utility builder-canvas {
+  background-color: var(--color-surface);
+  background-image: radial-gradient(var(--color-line) 0.75px, transparent 0.75px);
+  background-size: 16px 16px;
+}

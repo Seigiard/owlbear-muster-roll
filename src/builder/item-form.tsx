@@ -91,7 +91,7 @@ export function ItemForm({
       // Each item's form starts fresh: an id input's draft and its rename message belong to it.
       key={selection}
       aria-labelledby={headingId}
-      className="flex flex-col gap-3 rounded-md bg-surface p-3"
+      className="flex min-h-0 min-w-0 flex-col gap-3 overflow-auto rounded-md bg-surface p-3"
       data-builder-form
     >
       <h2 id={headingId} className="text-section-heading">

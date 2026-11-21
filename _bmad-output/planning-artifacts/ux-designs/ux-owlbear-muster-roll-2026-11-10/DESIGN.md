@@ -233,19 +233,21 @@ A compact control draws 24 px and keeps a 32 px touch target through a transpare
 
 ### Preset builder
 
-The builder is a top-level page, not inside Owlbear, so no live Owlbear theme exists. It takes the two Owlbear theme copies in `src/ui/themes.ts` (dark and light) through the same token mapping as the window. It opens in the system colour scheme, and the "Светлая тема" switch overrides it. Layout reference: variant B of `.working/builder-layouts.html`.
+The builder is a top-level page, not inside Owlbear, so no live Owlbear theme exists. It takes the two Owlbear theme copies in `src/ui/themes.ts` (dark and light) through the same token mapping as the window. It opens in the system colour scheme, and the "Светлая тема" switch overrides it. Layout reference: the three-column workspace in `_bmad-output/implementation-artifacts/spec-task-154-builder-three-column.md`.
 
 | Component | Visual rule |
 | --- | --- |
-| Page | `{colors.surface-bar}` behind the panes. Full viewport height. No page scroll: each pane scrolls inside |
-| Top bar | 44 px high, `{colors.surface-bar}`, bottom rule in `{colors.line}`. Page name in `{typography.section-heading}`, draft status in `{typography.label-sm}` `{colors.text-muted}`. "Скачать пресет" is `{components.button-primary}`; the other controls are `{components.button-secondary}` |
+| Page | `{colors.surface-bar}` behind three columns: structure tree, centred preview canvas and properties form. Full viewport height. No page scroll: each pane scrolls inside |
+| Narrow page | Below 1000 px, the top bar wraps and the tree, preview and properties stack in one column. The page scrolls vertically |
+| Top bar | About 44 px high, `{colors.surface-bar}`, bottom rule in `{colors.line}`. One compact row holds the page name, draft status, undo/redo, problem counter, one-line Пресет/Снимок chips and theme switch |
 | Problem counter | A chip with `{rounded.full}`: the danger surface and text pair while problems exist, `{components.chip}` with none |
-| Left column | 420 px wide, `{colors.surface}`, right rule in `{colors.line}`. The tree takes the upper part and the form the lower part, split by a `{colors.line}` rule, each scrolling on its own |
+| Structure tree | Left column, `{colors.surface}`. The tree scrolls independently |
+| Properties | Right column, `{colors.surface}`. The selected item's form scrolls independently |
 | Pane title | `{typography.label-sm}` in `{colors.text-muted}`, padding `{spacing.2}` `{spacing.3}` |
-| Tree item | `{typography.body}` at 13 px, 28 px high, `{rounded.sm}`, indented 14 px per level. A kind tag in `{typography.label-sm}` `{colors.text-muted}` with a `{colors.line}` border. Ids in a monospace font, `{colors.text-muted}`. Selected: `{colors.accent}` background and `{colors.accent-contrast}` text. A problem: a "!" chip in the danger pair at the row end. Add items: `{colors.text-muted}`, "+" before the text |
+| Tree item | `{typography.body}` at 13 px, 28 px high, `{rounded.sm}`, indented 14 px per level. A muted, aria-hidden type icon comes before the label. Type and other details use `{typography.label-sm}` `{colors.text-muted}`. Ids in a monospace font. Selected: `{colors.accent}` background and `{colors.accent-contrast}` text. A problem: a "!" chip in the danger pair at the row end. Add items: `{colors.text-muted}`, "+" before the text; container add items appear only when the container or one of its direct children is selected. The two template add items stay at the end |
 | Drop indicator | A 2 px `{colors.accent}` line between items, or a `{colors.accent}` outline on the target container |
 | Form | Padding `{spacing.3}`, `{spacing.3}` between controls. Labels above inputs in `{typography.label-sm}` `{colors.text-muted}`. Inputs on `{colors.surface-bar}` with a `{colors.line}` border and `{rounded.sm}`; ids and formulas in a monospace font. A segmented choice for 2–3 options, the chosen one on `{colors.surface-tab}` in `{colors.accent}`. Messages: hints in `{colors.text-muted}`, problems and warnings in the danger and warning pairs |
-| Preview pane | `{colors.surface-bar}`, the frame centred at the top with `{spacing.4}` around it. The frame is the window at the preset's size with `{rounded.window}` and a `{colors.line}` border. It scales down with its proportions when the pane is narrower |
+| Preview pane | Toolbar with pane title and Мастер/Игрок switch above a `{colors.surface}` canvas with a dot pattern in `{colors.line}`. The frame is centred with `{spacing.3}` around it. The frame is the window at the preset's size with `{rounded.window}` and a `{colors.line}` border. It scales down with its proportions when the pane is narrower and stays reachable when taller than the pane |
 | Preview marks | Selected item: 2 px solid `{colors.accent}` outline, offset 1 px. Problem: 2 px dashed `{colors.danger-text}` outline. Placeholder: the field id in `{colors.text-muted}` |
 | Confirmation and file message | The window's inline confirmation block, full width under the top bar |
 
@@ -257,4 +259,4 @@ The builder is a top-level page, not inside Owlbear, so no live Owlbear theme ex
 - Don't put the accent on navigation or headings. It marks a roll and the map selection.
 - Do let the preset decide the arrangement of sheet content.
 - Don't add colour coding for game concepts. The extension does not know what a stat means.
-- Don't add icons where a word fits. The exceptions are the controls of a sheet header and of a repeat block, each with a name and a tooltip.
+- Don't add icons where a word fits. The exceptions are the controls of a sheet header and of a repeat block, each with a name and a tooltip, and the muted type icons of the Builder's structure tree, which are hidden from assistive technology.
