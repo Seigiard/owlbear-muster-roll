@@ -50,6 +50,7 @@ type PendingRead = {
 
 type BrowserFileAccessControl = {
   queueFile: (name: string, text: string) => void;
+  rewriteFile: (name: string, text: string) => void;
 };
 
 type TestPickerWindow = Window & {
@@ -85,6 +86,7 @@ export async function installBrowserFileAccessFake(page: Page): Promise<void> {
     // SAFETY: the test installs only the optional picker and control properties declared above.
     const browser = window as PickerWindow;
     const openQueue: FakeHandle[] = [];
+    const files = new Map<string, BrowserFakeFile>();
     let nextModifiedAt = Date.parse('2026-11-16T18:06:00.000Z');
 
     function createHandle(file: BrowserFakeFile): FakeHandle {
@@ -113,7 +115,20 @@ export async function installBrowserFileAccessFake(page: Page): Promise<void> {
 
     browser.musterRollFileAccessControl = {
       queueFile: (name, text) => {
-        openQueue.push(createHandle({ name, text, lastModified: nextModifiedAt }));
+        const file = { name, text, lastModified: nextModifiedAt };
+        files.set(name, file);
+        openQueue.push(createHandle(file));
+      },
+      rewriteFile: (name, text) => {
+        const file = files.get(name);
+
+        if (file === undefined) {
+          throw new Error(`No browser file ${name}`);
+        }
+
+        file.text = text;
+        nextModifiedAt += 1000;
+        file.lastModified = nextModifiedAt;
       },
     };
     browser.showOpenFilePicker = async () => {
@@ -146,6 +161,22 @@ export async function queueBrowserFile(page: Page, name: string, text: string): 
       }
 
       control.queueFile(fileName, fileText);
+    },
+    { fileName: name, fileText: text },
+  );
+}
+
+export async function rewriteBrowserFile(page: Page, name: string, text: string): Promise<void> {
+  await page.evaluate(
+    ({ fileName, fileText }) => {
+      // SAFETY: installBrowserFileAccessFake installs only the optional control property declared.
+      const control = (window as TestPickerWindow).musterRollFileAccessControl;
+
+      if (control === undefined) {
+        throw new Error('The browser file-access fake is not installed');
+      }
+
+      control.rewriteFile(fileName, fileText);
     },
     { fileName: name, fileText: text },
   );

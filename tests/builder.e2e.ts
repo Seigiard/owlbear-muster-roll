@@ -6,7 +6,11 @@ import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { parsePresetFile } from '@/core/preset';
 import type { Template } from '@/core/preset';
 import { copy } from '@/copy';
-import { installBrowserFileAccessFake, queueBrowserFile } from './support/file-access';
+import {
+  installBrowserFileAccessFake,
+  queueBrowserFile,
+  rewriteBrowserFile,
+} from './support/file-access';
 import { openBackground } from './support/room';
 
 // TASK-38: the preset builder page (CAP-20 to CAP-28). It runs with no Owlbear and no background
@@ -47,6 +51,29 @@ const ROW_DRAG_TEXT = JSON.stringify({
                     { kind: 'field', type: 'number', id: 'gold' },
                   ],
                 },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+});
+
+const TWO_ROWS_TEXT = JSON.stringify({
+  v: 4,
+  templates: [
+    {
+      id: 'inventory',
+      title: 'Инвентарь',
+      tabs: [
+        {
+          sections: [
+            {
+              title: 'Деньги',
+              rows: [
+                { cells: [{ kind: 'field', type: 'number', id: 'gold' }] },
+                { cells: [{ kind: 'field', type: 'number', id: 'silver' }] },
               ],
             },
           ],
@@ -123,6 +150,57 @@ function preview(page: Page): Locator {
   return page.locator('[data-preview-frame]');
 }
 
+function previewPane(page: Page): Locator {
+  return page.locator('[data-builder-preview]');
+}
+
+async function box(locator: Locator) {
+  const bounds = await locator.boundingBox();
+
+  if (bounds === null) {
+    throw new Error(`Expected a rendered box for ${locator.toString()}`);
+  }
+
+  return bounds;
+}
+
+async function columns(page: Page) {
+  const [structure, canvas, properties] = await Promise.all([
+    box(tree(page)),
+    box(previewPane(page)),
+    box(form(page)),
+  ]);
+
+  return { structure, canvas, properties };
+}
+
+async function openWorkspaceExample(page: Page): Promise<void> {
+  await page.goto(PAGE);
+  await openFromMenu(page, builder.openExample);
+  await expect(preview(page)).toBeVisible();
+}
+
+async function scrollTreeToEnd(page: Page) {
+  return tree(page).evaluate((element) => {
+    for (let pane: Element | null = element; pane !== null; pane = pane.parentElement) {
+      if (!['auto', 'scroll'].includes(getComputedStyle(pane).overflowY)) {
+        continue;
+      }
+
+      if (pane.scrollHeight <= pane.clientHeight) {
+        continue;
+      }
+
+      const start = pane.scrollTop;
+      pane.scrollTop = pane.scrollHeight;
+
+      return { moved: pane.scrollTop > start, bottom: pane.getBoundingClientRect().bottom };
+    }
+
+    return null;
+  });
+}
+
 function problemCounter(page: Page, count: number): Locator {
   return page.getByRole('button', { name: builder.problemsName(count) });
 }
@@ -140,6 +218,12 @@ async function openFileMenu(page: Page, kind: 'Пресет' | 'Снимок'): 
   await block.click();
 
   return page.getByRole('menu');
+}
+
+function fileBlockWithStatus(block: Locator, status: RegExp): Locator {
+  const page = block.page();
+
+  return block.and(page.getByRole('button', { name: status }).or(page.getByTitle(status)));
 }
 
 async function presetDownloadButton(page: Page): Promise<Locator> {
@@ -170,6 +254,19 @@ async function rowNames(page: Page): Promise<(string | null)[]> {
 
 // A drag by the mouse in small steps, so React Aria sees each row it passes.
 async function dragOnto(page: Page, source: Locator, target: Locator): Promise<void> {
+  await source.evaluate((element) => {
+    for (let pane = element.parentElement; pane !== null; pane = pane.parentElement) {
+      if (
+        ['auto', 'scroll'].includes(getComputedStyle(pane).overflowY) &&
+        pane.scrollHeight > pane.clientHeight
+      ) {
+        const row = element.getBoundingClientRect();
+        pane.scrollTop += row.top - pane.getBoundingClientRect().top - row.height;
+
+        return;
+      }
+    }
+  });
   await page.evaluate(
     () =>
       new Promise((resolve) => {
@@ -344,6 +441,163 @@ test('opens on the empty preset: one problem, download off, and the empty previe
   ).toBeVisible();
   await expect(page.getByText(builder.emptyPreset)).toBeVisible();
   await expect(page.getByRole('heading', { name: builder.preview(600, 600) })).toBeVisible();
+  const size = form(page).getByRole('checkbox', { name: 'Свой размер окна' });
+  await expect(size).toBeInViewport({ ratio: 1 });
+  const [canvas, properties] = await Promise.all([box(previewPane(page)), box(form(page))]);
+  expect(properties.x).toBeGreaterThanOrEqual(canvas.x + canvas.width);
+  expect(properties.y).toBeGreaterThanOrEqual(0);
+  expect(properties.x + properties.width).toBeLessThanOrEqual(1400);
+  expect(properties.y + properties.height).toBeLessThanOrEqual(1000);
+});
+
+test('the selected form fits beside the preview and stays put while the tree scrolls', async ({
+  page,
+}) => {
+  // #given
+  await openWorkspaceExample(page);
+  // #when
+  await pick(item(page, 'class · Текст'));
+  // #then
+  const id = form(page).getByRole('textbox', { name: builder.form.fieldId });
+  await expect(id).toHaveValue('class');
+  const { structure, canvas, properties } = await columns(page);
+  expect(structure.x + structure.width).toBeLessThanOrEqual(canvas.x);
+  expect(canvas.x + canvas.width).toBeLessThanOrEqual(properties.x);
+  expect(properties.y).toBeGreaterThanOrEqual(0);
+  expect(properties.x + properties.width).toBeLessThanOrEqual(1400);
+  expect(properties.y + properties.height).toBeLessThanOrEqual(1000);
+  await expect(id).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(1000);
+
+  // #when
+  const header = page.locator('main > header');
+  const topBar = await box(header);
+  const scrolled = await scrollTreeToEnd(page);
+
+  // #then
+  expect(scrolled).toMatchObject({ moved: true });
+  expect(scrolled?.bottom).toBeCloseTo(1000, 0);
+  expect(await Promise.all([box(header), box(previewPane(page)), box(form(page))])).toEqual([
+    topBar,
+    canvas,
+    properties,
+  ]);
+});
+
+test('three columns and a square preview fit a 1000 px viewport', async ({ page }) => {
+  // #given
+  await page.setViewportSize({ width: 1000, height: 800 });
+  // #when
+  await openWorkspaceExample(page);
+  // #then
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1000);
+  const { structure, canvas, properties } = await columns(page);
+  expect(structure.x + structure.width).toBeLessThanOrEqual(canvas.x);
+  expect(canvas.x + canvas.width).toBeLessThanOrEqual(properties.x);
+  const frame = await box(preview(page));
+  expect(frame.x).toBeGreaterThanOrEqual(canvas.x);
+  expect(frame.x + frame.width).toBeLessThanOrEqual(canvas.x + canvas.width);
+  expect(frame.y).toBeGreaterThanOrEqual(canvas.y);
+  expect(frame.y + frame.height).toBeLessThanOrEqual(canvas.y + canvas.height);
+  expect(frame.width / frame.height).toBeCloseTo(1);
+});
+
+test('a 1440 by 1080 window scales to fit the centre pane', async ({ page }) => {
+  // #given
+  await openWorkspaceExample(page);
+  await pick(item(page, builder.windowItem(600, 600)));
+  // #when
+  await form(page).getByRole('checkbox', { name: builder.form.ownWindowSize }).check();
+  await form(page).getByRole('textbox', { name: builder.form.width }).fill('1440');
+  await form(page).getByRole('textbox', { name: builder.form.height }).fill('1080');
+  // #then
+  await expect(page.getByRole('heading', { name: 'Превью · окно 1440 × 1080' })).toBeVisible();
+  const { structure, canvas, properties } = await columns(page);
+  expect(structure.x + structure.width).toBeLessThanOrEqual(canvas.x);
+  expect(canvas.x + canvas.width).toBeLessThanOrEqual(properties.x);
+  const frame = await box(preview(page));
+  expect(frame.width).toBeLessThan(1440);
+  expect(frame.x).toBeGreaterThanOrEqual(canvas.x);
+  expect(frame.x + frame.width).toBeLessThanOrEqual(canvas.x + canvas.width);
+  expect(frame.width / frame.height).toBeCloseTo(4 / 3);
+});
+
+test('the replacement confirmation fits above the workspace without page scroll', async ({
+  page,
+}) => {
+  // #given
+  await openWorkspaceExample(page);
+  // #when
+  await openFromMenu(page, builder.openD20);
+  // #then
+  const group = page.getByRole('group', { name: 'Черновик будет заменён. Открыть «Пример: d20»?' });
+  await expect(group).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(1000);
+
+  const [header, confirmation, { structure, canvas, properties }] = await Promise.all([
+    box(page.locator('main > header')),
+    box(group),
+    columns(page),
+  ]);
+
+  expect(header.y + header.height).toBeLessThanOrEqual(confirmation.y);
+  expect(confirmation.y + confirmation.height).toBeLessThanOrEqual(
+    Math.min(structure.y, canvas.y, properties.y),
+  );
+});
+
+test('a field in row two reveals add items only in its own row', async ({ page }) => {
+  // #given
+  await page.goto(PAGE);
+  await openFile(page, 'two-rows.json', TWO_ROWS_TEXT);
+  // #when
+  await pick(item(page, 'silver · Число'));
+  // #then
+  expect(await rowNames(page)).toEqual([
+    'Окно 600 × 600',
+    'Инвентарь · Одиночный лист',
+    'Вкладка',
+    'Деньги',
+    'Строка 1',
+    'gold · Число',
+    'Строка 2',
+    'silver · Число',
+    'Добавить подпись',
+    'Добавить поле',
+    'Добавить кубик',
+    'Добавить токен',
+    'Добавить набор',
+    'Добавить одиночный лист',
+  ]);
+});
+
+test('a fresh row is selected and immediately offers cell add items', async ({ page }) => {
+  // #given
+  await page.goto(PAGE);
+  await openFile(page, 'two-rows.json', TWO_ROWS_TEXT);
+  await pick(item(page, 'Деньги'));
+  // #when
+  await pick(item(page, 'Добавить строку'));
+  // #then
+  await expect(item(page, 'Строка 3')).toHaveAttribute('aria-selected', 'true');
+  expect(await rowNames(page)).toEqual([
+    'Окно 600 × 600',
+    'Инвентарь · Одиночный лист',
+    'Вкладка',
+    'Деньги',
+    'Строка 1',
+    'gold · Число',
+    'Строка 2',
+    'silver · Число',
+    'Строка 3',
+    'Добавить подпись',
+    'Добавить поле',
+    'Добавить кубик',
+    'Добавить токен',
+    'Добавить строку',
+    'Добавить набор',
+    'Добавить одиночный лист',
+  ]);
 });
 
 test('shows the preset and snapshot as complete file blocks instead of legacy controls', async ({
@@ -357,11 +611,11 @@ test('shows the preset and snapshot as complete file blocks instead of legacy co
   // #then
   await expect(preset).toContainText('Пресет');
   await expect(preset).toContainText('пусто');
-  await expect(preset).toContainText('без файла, черновик в браузере');
+  await expect(fileBlockWithStatus(preset, /без файла, черновик в браузере/)).toBeVisible();
   await expect(preset.locator('[data-file-status-dot]')).toBeVisible();
   await expect(snapshot).toContainText('Снимок');
   await expect(snapshot).toContainText('пусто');
-  await expect(snapshot).toContainText('без файла, черновик в браузере');
+  await expect(fileBlockWithStatus(snapshot, /без файла, черновик в браузере/)).toBeVisible();
   await expect(snapshot.locator('[data-file-status-dot]')).toBeVisible();
   await expect(page.locator('header').getByRole('button', { name: builder.open })).toHaveCount(0);
   await expect(
@@ -370,6 +624,45 @@ test('shows the preset and snapshot as complete file blocks instead of legacy co
   await expect(
     page.locator('header').getByRole('button', { name: copy.command.downloadSnapshot }),
   ).toHaveCount(0);
+});
+
+test('shows an attached preset warning next to its file name', async ({ page }) => {
+  // #given
+  const name = 'crew.json';
+  const preset = fileBlock(page, 'Пресет');
+  const fileName = preset.getByText(name, { exact: true });
+  const check = expect.configure({ soft: true, timeout: 1000 });
+  await page.goto(PAGE);
+  await check(preset).toHaveAttribute('title', /без файла, черновик в браузере/);
+  await openFile(page, name, D6_POOL_TEXT);
+  await pick(item(page, '2D6'));
+  await check(preset).toHaveAttribute('title', /синхронизирован в \d{2}:\d{2}/);
+
+  // #when
+  const formula = form(page).getByRole('combobox', { name: 'Формула', exact: true });
+  await formula.fill('1d20 +');
+  const blocked = 'не сохранено: исправьте проблемы';
+
+  // #then
+  await expect(fileBlockWithStatus(preset, /не сохранено: исправьте проблемы/)).toBeVisible();
+  await check(preset.getByText(blocked, { exact: true })).toBeInViewport({ ratio: 1 });
+  await check(fileName).toBeInViewport({ ratio: 1 });
+  await check(preset).toHaveAttribute('title', blocked);
+
+  // #when
+  await rewriteBrowserFile(page, name, D20_TEXT);
+  await expect(
+    page.getByRole('group', { name: 'Файл и черновик изменились одновременно.' }),
+  ).toBeVisible();
+  await formula.fill('3d6');
+  await rewriteBrowserFile(page, name, ROW_DRAG_TEXT);
+  const changed = 'изменился на диске';
+
+  // #then
+  await expect(fileBlockWithStatus(preset, /изменился на диске/)).toBeVisible();
+  await check(preset.getByText(changed, { exact: true })).toBeInViewport({ ratio: 1 });
+  await check(fileName).toBeInViewport({ ratio: 1 });
+  await check(preset).toHaveAttribute('title', changed);
 });
 
 test('file block menus show file metadata and all actions for their document', async ({ page }) => {
@@ -529,7 +822,7 @@ test('detaching a preset keeps its content as a draft', async ({ page }) => {
   const menu = await openFileMenu(page, 'Пресет');
   await menu.getByRole('menuitem', { name: 'Отключить файл, оставить черновик' }).click();
   // #then
-  await expect(fileBlock(page, 'Пресет')).toContainText('черновик');
+  await expect(fileBlockWithStatus(fileBlock(page, 'Пресет'), /черновик/)).toBeVisible();
   await expect(fileBlock(page, 'Пресет')).not.toContainText('d6-pool.json');
   await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toBeVisible();
   const detachedMenu = await openFileMenu(page, 'Пресет');
@@ -606,6 +899,7 @@ test('builds a preset with the tree and the forms, and the window loads the down
   // #when: a sheet set "Экипаж" with a section of three columns.
   await pick(item(page, builder.addSet));
   await form(page).getByRole('textbox', { name: builder.form.title }).fill('Экипаж');
+  await pick(item(page, builder.untitledTab));
   await pick(item(page, builder.addSection));
   await form(page).getByRole('textbox', { name: builder.form.title }).fill('Характеристики');
   await form(page).getByRole('textbox', { name: builder.form.columns }).fill('3');
@@ -800,6 +1094,7 @@ test('builds, previews and downloads a select field, then drops its options on a
   // #given
   await page.goto(PAGE);
   await pick(item(page, builder.addSingle));
+  await pick(item(page, builder.untitledSection));
   await pick(item(page, builder.addRow));
   await pick(item(page, builder.addLabel));
   await form(page).getByRole('textbox', { name: builder.form.text }).fill('Броня');
@@ -875,6 +1170,7 @@ test('switches a field to dice-choice with the standard dice and downloads its t
   // #given
   await page.goto(PAGE);
   await pick(item(page, builder.addSingle));
+  await pick(item(page, builder.untitledSection));
   await pick(item(page, builder.addRow));
   await pick(item(page, builder.addLabel));
   await form(page).getByRole('textbox', { name: builder.form.text }).fill('Урон');
@@ -920,6 +1216,7 @@ test('sets and clears field and dice cell names, with the hint, in the downloade
   // #given
   await page.goto(PAGE);
   await pick(item(page, builder.addSingle));
+  await pick(item(page, builder.untitledSection));
   await pick(item(page, builder.addRow));
   await pick(item(page, builder.addField));
   const name = form(page).getByRole('textbox', { name: 'Название', exact: true });
@@ -1499,6 +1796,7 @@ test('undo and redo each change, and typing in one input is one step', async ({ 
   // #then
   await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toBeVisible();
   // #when: the keys undo outside text inputs.
+  await pick(item(page, builder.untitledTab));
   await pick(item(page, builder.addSection));
   await expect(tree(page).getByRole('row', { name: builder.untitledSection })).toHaveCount(2);
   await pick(item(page, builder.windowItem(600, 600)));
@@ -1515,6 +1813,7 @@ test('typing select options with a new line is one undo step', async ({ page }) 
   // #given
   await page.goto(PAGE);
   await pick(item(page, builder.addSingle));
+  await pick(item(page, builder.untitledSection));
   await pick(item(page, builder.addRow));
   await pick(item(page, builder.addField));
   await form(page)
@@ -1552,15 +1851,9 @@ test('drags a row out of a repeat section, and the emptied repeat section shows 
     .nth(names.indexOf('Вещи') + 1);
 
   await expect(row).toHaveAttribute('aria-label', builder.rowItem(1));
-  // #when: the row of "Вещи" goes into "Деньги", away from the tree's edges where it scrolls.
-  await item(page, 'Вещи').evaluate((element) => {
-    const scroller = element.closest('[data-builder-tree]');
-
-    if (scroller instanceof HTMLElement && element instanceof HTMLElement) {
-      scroller.scrollTop = element.offsetTop - scroller.offsetTop;
-    }
-  });
+  // #when: the row of "Вещи" goes into "Деньги".
   await dragOnto(page, row, item(page, 'Деньги'));
+  await pick(item(page, 'Вещи'));
   // #then
   const after = await rowNames(page);
   const emptied = after.indexOf('Вещи');
@@ -1604,14 +1897,7 @@ test('adds a tab, drags a section into it, and the preview shows the tab of the 
   await expect(page.getByText(builder.noProblems)).toBeVisible();
   await expect(item(page, 'Основное')).toHaveAttribute('aria-level', '2');
   await expect(item(page, 'Бой')).toHaveAttribute('aria-level', '2');
-  // #when: "Атаки", the last section of "Основное", goes into "Бой", away from the tree's edges.
-  await item(page, 'Атаки').evaluate((element) => {
-    const scroller = element.closest('[data-builder-tree]');
-
-    if (scroller instanceof HTMLElement && element instanceof HTMLElement) {
-      scroller.scrollTop = element.offsetTop - scroller.offsetTop;
-    }
-  });
+  // #when: "Атаки", the last section of "Основное", goes into "Бой".
   await dragOnto(page, item(page, 'Атаки'), item(page, 'Бой'));
   // #then
   const names = await rowNames(page);
