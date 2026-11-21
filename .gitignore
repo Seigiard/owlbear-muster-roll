@@ -12,3 +12,6 @@ test-results/
 .playwright-mcp/
 
 .DS_Store
+
+# revmux review calibration for this project; the rest of .revmux/ stays local
+!.revmux/profile.md
