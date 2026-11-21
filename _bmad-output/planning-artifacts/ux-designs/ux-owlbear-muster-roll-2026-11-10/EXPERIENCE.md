@@ -235,17 +235,17 @@ Failure path: with no room copy, she sees "ГМ ещё не заходил. Ли
 
 ## Preset builder
 
-The builder is a top-level page of the deployed site (`/builder.html`), outside the Owlbear iframe (CAP-20). A GM makes or changes a preset in it, sees the preset as the window draws it, and downloads a file that "Загрузить пресет" accepts. The builder and the room exchange a preset only by file (CAP-21). The layout reference is variant B of `.working/builder-layouts.html`. This section and `DESIGN.md` win on conflict with it. Its top bar, labels and colours are placeholders.
+The builder is a top-level page of the deployed site (`/builder.html`), outside the Owlbear iframe (CAP-20). A GM makes or changes a preset in it, sees the preset as the window draws it, and downloads a file that "Загрузить пресет" accepts. The builder and the room exchange a preset only by file (CAP-21). The layout is the three-column workspace in `_bmad-output/implementation-artifacts/spec-task-154-builder-three-column.md`; this section and `DESIGN.md` win on conflict with it.
 
 ### Builder surfaces
 
 | Surface | Place | Purpose |
 | --- | --- | --- |
-| Top bar | Full width, top | Page name, draft status, undo and redo, problem counter, "Открыть…", theme switch, "Скачать пресет" |
+| Top bar | Full width, top | One compact row with page name, draft status, undo and redo, problem counter, Пресет/Снимок file chips and theme switch |
 | Confirmation | Under the top bar | The one confirmation before the draft is replaced |
-| Structure tree | Left column, top | The preset as a tree: the window, then templates, tabs, sections, rows and cells (CAP-22) |
-| Form | Left column, under the tree | The properties of the item selected in the tree |
-| Preview | Right column | The selected template drawn by the window's own sheet components, in a frame of the preset's window size |
+| Structure tree | Left column | The preset as a tree: the window, then templates, tabs, sections, rows and cells (CAP-22); it scrolls on its own |
+| Preview | Centre column | The selected template drawn by the window's own sheet components, in a frame of the preset's window size, centred on a dotted canvas; a tall frame stays reachable by scrolling |
+| Form | Right column | The properties of the item selected in the tree; it scrolls on its own |
 
 The page opens straight into the editor, on the draft if one exists, otherwise on the empty preset (CAP-26). There is no start screen and no draft prompt.
 
@@ -287,7 +287,7 @@ Form labels, by item:
 
 | Component | Behavioral rules |
 | --- | --- |
-| Structure tree | react-aria `Tree`. The window is the first item. Templates follow in preset order. Each holds its tabs, and each tab holds its sections, rows and cells. A template shows its title and its kind, a tab its title or "Вкладка", a section its title or "Секция", a row "Строка {n}", a label its text, a field its id and type, a dice cell its formula. Each container ends with full-width add items that name what they add. The add items for a template sit at the end of the tree. A new item starts with defaults that pass the checks where it can, and becomes the selected item, so its form opens. A new template starts with one tab with no title |
+| Structure tree | react-aria `Tree`. The window is the first item. Templates follow in preset order. Each holds its tabs, and each tab holds its sections, rows and cells. A template shows its title and kind, a tab its title or "Вкладка", a section its title or "Секция", a row "Строка {n}", a label its text, a field its id and type, and a dice cell its formula. Each item has a muted, aria-hidden type icon before its label; secondary details are muted. A container's add items show only when that container or one of its direct children is selected. "Добавить набор" and "Добавить одиночный лист" always sit at the end. A new item starts with defaults that pass the checks where it can, and becomes the selected item, so its form opens. A new template starts with one tab with no title |
 | Reorder | Drag in the tree only, with no move buttons. A tab, section, row or cell may move into another container of its kind: a tab into another template, a section into another tab, including one of another template. Keyboard and touch drag come from react-aria. A drop that breaks the preset rules is allowed and shows as a problem |
 | Form | The form of the selected item. A change applies at once and the preview redraws at once (CAP-22). "Удалить" ends each form and asks nothing, because undo restores the item |
 | Field id | A new field takes an id from the label before it in its row, transliterated and made to follow the id rules, unique in its scope, or "field" with a number (CAP-24). A label change keeps the id. The id input commits on `Enter` or when the focus leaves it. A commit renames the field: every formula that resolves to it is rewritten by whole word, a sheet set's name field follows, and "Формулы изменены: {n}." shows under the input (CAP-25). In a preset opened from a file, renaming an id that the file had adds the rename warning. `Esc` returns the input to the current id |
@@ -312,9 +312,9 @@ Form labels, by item:
 
 ### Builder interaction and platform
 
-- Laptop and landscape tablet. Layout B from about 1000 px wide. Below that the preview frame scales down and keeps its proportions. No phone or portrait tablet.
+- At 1000 px and wider, the three columns remain side by side. The preview frame scales down to fit and keeps its proportions. Below 1000 px, the top bar wraps and the tree, preview and form stack in one column; the page scrolls vertically.
 - Touch works, and no action needs hover.
-- Tab order: top bar, tree, form, preview.
+- Tab order: top bar, tree, preview, form.
 - Tree keys come from react-aria: arrows move and expand, `Enter` acts on an add item.
 
 ### Oleg builds a preset for a second system (CAP-20 to CAP-28)
