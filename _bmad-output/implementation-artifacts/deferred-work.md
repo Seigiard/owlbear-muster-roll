@@ -752,3 +752,9 @@ Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic:
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-152-validate-preset-references.md`
   summary: Suggest only readable fields in the Builder formula input (TASK-153).
   evidence: A plain dice row gets a `row_bonus` suggestion when that field exists only in a repeat row. The same formula then fails preset validation because it cannot read the field.
+
+## Deferred from: TASK-154 (2026-11-21)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-154-builder-three-column.md`
+  summary: Check whether the Builder preview scale oscillates when a classic vertical scrollbar appears and disappears on the canvas.
+  evidence: Unverified, medium if real. The scale divides the canvas content width and the canvas is `overflow-auto`, so a frame whose scaled height sits near the canvas height could toggle a non-overlay scrollbar. Run Chromium with classic scrollbars and size the window so the scaled frame height matches the canvas height.

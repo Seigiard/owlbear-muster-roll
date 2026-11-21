@@ -2,7 +2,7 @@
 title: 'TASK-154: Builder as a three-column workspace'
 type: 'feature'
 created: '2026-11-21'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '614e1405743a45fa9c85472866c7f154a7714e03'
@@ -61,14 +61,14 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/builder/builder-page.tsx` -- full-height shell `h-dvh` with top bar, confirmations, banners, then a three-pane grid (tree ~280 px, preview `1fr`, properties ~340 px), each pane `overflow-auto`, `min-h-0` -- fixes the form below the fold.
-- [ ] `src/builder/builder-page.tsx` `TopBar` + `src/builder/file-block.tsx` -- one compact row; status pills for draft and problems; file blocks as one-line chips.
-- [ ] `src/builder/structure-tree.tsx` -- drop `max-h-[50vh]`; denser rows; type icon and muted detail text; render a container's add items only per the add-items decision (`allAddKeys` must list only rendered add keys so `disabledKeys` stays exact).
-- [ ] `tests/builder.e2e.ts`, `tests/builder-snapshot.e2e.ts` -- flows that press an add item first select its container where it is not already shown; assert the add-items rule once (I/O rows "Add items" and "Add to fresh row").
-- [ ] `src/builder/preview-pane.tsx` -- toolbar with pane title and role switch; canvas background; frame centred with its size label.
-- [ ] `src/builder/item-form.tsx` -- right-pane styling; heading as pane header.
-- [ ] `tests/builder.e2e.ts` -- add one layout test: at 1400 × 1000 with the example preset, the three panes sit side by side, the page does not scroll, and the form is in the viewport. Adjust existing helpers only where layout broke them.
-- [ ] `DESIGN.md`, `EXPERIENCE.md` -- Preset builder sections describe the three-pane layout and the decisions above.
+- [x] `src/builder/builder-page.tsx` -- full-height shell `h-dvh` with top bar, confirmations, banners, then a three-pane grid (tree ~280 px, preview `1fr`, properties ~340 px), each pane `overflow-auto`, `min-h-0` -- fixes the form below the fold.
+- [x] `src/builder/builder-page.tsx` `TopBar` + `src/builder/file-block.tsx` -- one compact row; status pills for draft and problems; file blocks as one-line chips.
+- [x] `src/builder/structure-tree.tsx` -- drop `max-h-[50vh]`; denser rows; type icon and muted detail text; render a container's add items only per the add-items decision (`allAddKeys` must list only rendered add keys so `disabledKeys` stays exact).
+- [x] `tests/builder.e2e.ts`, `tests/builder-snapshot.e2e.ts` -- flows that press an add item first select its container where it is not already shown; assert the add-items rule once (I/O rows "Add items" and "Add to fresh row").
+- [x] `src/builder/preview-pane.tsx` -- toolbar with pane title and role switch; canvas background; frame centred with its size label.
+- [x] `src/builder/item-form.tsx` -- right-pane styling; heading as pane header.
+- [x] `tests/builder.e2e.ts` -- add one layout test: at 1400 × 1000 with the example preset, the three panes sit side by side, the page does not scroll, and the form is in the viewport. Adjust existing helpers only where layout broke them.
+- [x] `DESIGN.md`, `EXPERIENCE.md` -- Preset builder sections describe the three-pane layout and the decisions above.
 
 **Acceptance Criteria:**
 - Given the example preset at 1400 × 1000, when a tree item is selected, then its form is fully visible in the right pane without page scroll.
@@ -77,9 +77,21 @@ context:
 
 ## Implementation Notes
 
+- Built through the `implement` skill; tdd run directory `~/.claude/artifacts/tdd-20261121-084943/task-154-builder-three-column/`. Three batches: the initial build (criteria 1-15), review round 01 fixes (criteria 16-19: visible file-chip warnings, padding-aware preview scale, wrapping top bar, Tailwind responsive variants in place of global CSS), and the Matrix Test Audit gap (criterion 20: empty-preset problem focus).
+- Commits: `99dd236` tests, `4709793` implementation, `0effc78` UX docs, `9712b1f` problem-focus test. The pre-reslice chain stays at `refs/tdd/tdd-20261121-084943/task-154-builder-three-column/chain`.
+- The file chip shows only the file name in neutral states; a problem status (blocked, changed, refused, failed) shows as visible warning text, and every state carries the full status in the accessible name and `title`.
+- Below 1000 px the panes stack in one column (Tailwind `max-[999px]:` variants); the 700 px repeat-tab suites depend on it.
+- Evidence: full `bun run test:browser --workers=1` 606 passed on the final tree; `bun test` 3695 passed; oxfmt, lint, typecheck and build green. `bun run mutants` not run (CI).
+- Code review: revmux round 01-initial (mixed, 6/6 sources, 11 findings, all routed) and round 02-after-fix (final, 2/2, one minor, deferred).
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+| Finding | Verdict | Evidence | Route |
+|---|---|---|---|
+| bugs+impl-1 (code-review round 02, deferred): preview scale can oscillate when the canvas's classic vertical scrollbar toggles (`src/builder/preview-pane.tsx:464,608-611`) | maybe-false | `scale` divides the canvas content width, and the canvas is `overflow-auto`; with a classic (non-overlay) scrollbar a frame whose scaled height sits near the canvas height could add and remove the scrollbar in turn. Not observed with overlay scrollbars; settling it needs Chromium with classic scrollbars at that height. | defer (medium, unverified) |
+| docs+tests-claude-4 (code-review round 01, deferred): the `my-auto` wrapper fix has no test that fails without it (`src/builder/preview-pane.tsx:616`) | false | A missing test is not a bad outcome: the wrapper carries `my-auto`, so a frame taller than the canvas keeps its top reachable. | reject |
 
 ## Verification
 
