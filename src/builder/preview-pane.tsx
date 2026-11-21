@@ -585,12 +585,15 @@ export function PreviewPane({
   return (
     <section
       aria-labelledby={headingId}
-      className="flex min-w-0 flex-col gap-2"
+      className="flex min-h-0 min-w-0 flex-col gap-2 max-[999px]:min-h-[28rem]"
       data-builder-preview
     >
-      <h2 id={headingId} className="text-section-heading">
-        {copy.builder.preview(size.width, size.height)}
-      </h2>
+      <div className="flex shrink-0 items-center justify-between gap-2">
+        <h2 id={headingId} className="text-section-heading">
+          {copy.builder.preview(size.width, size.height)}
+        </h2>
+        <PreviewRoleSwitch role={role} onRole={setRole} />
+      </div>
       <style>
         {markRules(
           document,
@@ -602,12 +605,14 @@ export function PreviewPane({
           problems,
         )}
       </style>
-      <div ref={area} className="min-w-0">
+      <div
+        ref={area}
+        className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-auto rounded-md builder-canvas bg-surface p-3"
+      >
         {docTemplate === null || template === null ? (
           <p className="text-text-muted">{copy.builder.emptyPreset}</p>
         ) : (
-          <div className="flex flex-col gap-2">
-            <PreviewRoleSwitch role={role} onRole={setRole} />
+          <div className="my-auto flex min-w-0 flex-col items-center gap-2">
             {renderRecords === null ? (
               <p className="text-text-muted">{copy.builder.emptyPreset}</p>
             ) : (
@@ -1044,7 +1049,12 @@ function useWidth(element: { current: HTMLElement | null }): number | null {
     }
 
     const observer = new ResizeObserver(() => {
-      setWidth(target.clientWidth);
+      const style = getComputedStyle(target);
+      setWidth(
+        target.clientWidth -
+          Number.parseFloat(style.paddingInlineStart) -
+          Number.parseFloat(style.paddingInlineEnd),
+      );
     });
 
     observer.observe(target);

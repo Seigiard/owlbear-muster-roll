@@ -109,8 +109,7 @@ const EMPTY_PRESET: Preset = { v: FORMAT_VERSION, templates: [] };
 const TOP_BUTTON_CLASS =
   'touch-target inline-flex items-center justify-center rounded-sm border border-line px-3 text-text data-disabled:opacity-50';
 
-// CAP-20 to CAP-28: the preset builder page, layout B. The top bar spans the page. Under it, the
-// structure tree and the form of its selected item on the left, and the preview on the right.
+// CAP-20 to CAP-28: the Builder's full-height workspace.
 export function BuilderPage({
   store,
   fileAccess,
@@ -978,7 +977,7 @@ export function BuilderPage({
   const first = problems[0];
 
   return (
-    <main className="flex min-h-dvh flex-col bg-surface-bar text-body text-text">
+    <main className="flex h-dvh min-h-0 flex-col overflow-clip bg-surface-bar text-body text-text max-[999px]:h-auto max-[999px]:min-h-dvh max-[999px]:overflow-visible">
       <TopBar
         store={store}
         problemCount={problems.length}
@@ -1085,35 +1084,33 @@ export function BuilderPage({
             : undefined
         }
       />
-      <div className="grid flex-1 grid-cols-[minmax(300px,380px)_minmax(0,1fr)] items-start gap-4 p-4">
-        <div className="flex min-w-0 flex-col gap-4">
-          <section
-            aria-labelledby={structureHeadingId}
-            className="flex flex-col gap-2 rounded-md bg-surface p-2"
-          >
-            <h2 id={structureHeadingId} className="text-section-heading">
-              {copy.builder.structure}
-            </h2>
-            <StructureTree
-              store={store}
-              document={document}
-              selection={state.selection}
-              problems={problems}
-              focusRequest={focusRequest}
-            />
-          </section>
-          <ItemForm
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(220px,280px)_minmax(0,1fr)_minmax(280px,340px)] gap-3 px-3 pbs-3 max-[999px]:flex-none max-[999px]:grid-cols-[minmax(0,1fr)]">
+        <section
+          aria-labelledby={structureHeadingId}
+          className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-clip rounded-md bg-surface max-[999px]:max-h-[50dvh]"
+        >
+          <h2 id={structureHeadingId} className="p-2 text-section-heading">
+            {copy.builder.structure}
+          </h2>
+          <StructureTree
             store={store}
             document={document}
-            origin={state.step.origin}
             selection={state.selection}
             problems={problems}
+            focusRequest={focusRequest}
           />
-        </div>
+        </section>
         <PreviewPane
           store={store}
           document={document}
           records={state.step.records}
+          selection={state.selection}
+          problems={problems}
+        />
+        <ItemForm
+          store={store}
+          document={document}
+          origin={state.step.origin}
           selection={state.selection}
           problems={problems}
         />
@@ -1190,12 +1187,12 @@ function TopBar({
   const state = useStore(store.$state);
 
   return (
-    <header className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-4 py-2">
-      <h1 className="text-sheet-title">{copy.builder.pageName}</h1>
-      <output className="text-label-sm text-text-muted">
+    <header className="flex min-h-[44px] shrink-0 flex-wrap items-center gap-2 border-b border-line bg-surface px-3 py-1 max-[999px]:gap-1">
+      <h1 className="shrink-0 text-section-heading">{copy.builder.pageName}</h1>
+      <output className="shrink-0 text-label-sm text-text-muted">
         {state.draft === 'saved' ? copy.builder.draftSaved : copy.builder.draftNotSaved}
       </output>
-      <div className="flex gap-2">
+      <div className="flex shrink-0 gap-1">
         <AriaButton
           className={TOP_BUTTON_CLASS}
           isDisabled={state.undo.length === 0}
@@ -1225,7 +1222,7 @@ function TopBar({
           {copy.builder.problems(problemCount)}
         </AriaButton>
       )}
-      <div className="ml-auto flex flex-wrap items-center gap-2">
+      <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1 max-[999px]:ms-0">
         <FileBlock
           kind="preset"
           file={presetFile}
@@ -1262,7 +1259,7 @@ function TopBar({
           onClear={onClearSnapshot}
         />
       </div>
-      <label className="flex items-center gap-2">
+      <label className="flex shrink-0 items-center gap-1 text-label-sm">
         <input
           type="checkbox"
           role="switch"

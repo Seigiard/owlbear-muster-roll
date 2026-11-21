@@ -64,19 +64,19 @@ const FIXED_DRAG_TYPE = `${DRAG_TYPE_PREFIX}fixed`;
 const MOVABLE_KINDS: readonly ItemKind[] = ['template', 'tab', 'section', 'row', 'cell'];
 
 const ITEM_CLASS =
-  'touch-target flex cursor-default items-center rounded-sm text-text outline-none data-focus-visible:outline-2 data-focus-visible:outline-solid data-focus-visible:outline-focus data-selected:bg-surface-tab data-dragging:opacity-50 data-drop-target:bg-surface-tab';
+  'touch-target flex min-w-0 cursor-default items-center rounded-sm text-text outline-none data-focus-visible:outline-2 data-focus-visible:outline-solid data-focus-visible:outline-focus data-selected:bg-surface-tab data-dragging:opacity-50 data-drop-target:bg-surface-tab';
 
 const ADD_ITEM_CLASS =
-  'touch-target flex cursor-default items-center rounded-sm text-accent outline-none data-focus-visible:outline-2 data-focus-visible:outline-solid data-focus-visible:outline-focus';
+  'touch-target flex min-w-0 cursor-default items-center rounded-sm text-accent outline-none data-focus-visible:outline-2 data-focus-visible:outline-solid data-focus-visible:outline-focus';
 
 const ICON_BUTTON_CLASS =
   'inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-text-muted';
 
 const INDENT_PX = 16;
 
-// CAP-22, AD-25: the preset as a tree. The window first, then each template with its tabs,
-// sections, rows and cells, each container closed by its add items. Every template shows its tab
-// level, a one-tab template too, so a drop into a tab is always reachable. Reorder is by drag only.
+// CAP-22, AD-25: the preset as a tree. A container shows its add items while it or one of its
+// direct children is selected. Every template shows its tab level, a one-tab template too, so a
+// drop into a tab is always reachable. Reorder is by drag only.
 export function StructureTree({
   store,
   document,
@@ -151,7 +151,7 @@ export function StructureTree({
   });
 
   const expanded = new Set(containerUids(document).filter((uid) => !collapsed.has(uid)));
-  const addKeys = allAddKeys(document);
+  const addKeys = new Set(allAddKeys(document, selection));
 
   function add(key: string): void {
     store.edit((current) => addFromKey(current, key));
@@ -197,7 +197,7 @@ export function StructureTree({
         }
       }}
       dragAndDropHooks={dragAndDropHooks}
-      className="flex max-h-[50vh] flex-col overflow-auto"
+      className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
       data-builder-tree
     >
       <Item
@@ -208,9 +208,16 @@ export function StructureTree({
         )}
         problem={problemUids.has(WINDOW_UID)}
         movable={false}
+        kind="window"
       />
       {document.templates.map((template) => (
-        <TemplateItem key={template.uid} template={template} problems={problemUids} onAdd={add} />
+        <TemplateItem
+          key={template.uid}
+          template={template}
+          problems={problemUids}
+          addKeys={addKeys}
+          onAdd={add}
+        />
       ))}
       <AddItem addKey={ADD_SET_KEY} label={copy.builder.addSet} onAdd={add} />
       <AddItem addKey={ADD_SINGLE_KEY} label={copy.builder.addSingle} onAdd={add} />
@@ -226,10 +233,35 @@ type ItemProps = {
   label: string;
   problem: boolean;
   movable: boolean;
+  kind: ItemKind | 'window' | 'label' | 'field' | 'dice' | 'token';
+  displayLabel?: string;
+  detail?: string;
   children?: ReactNode;
 };
 
-function Item({ uid, label, problem, movable, children }: ItemProps): ReactNode {
+const ITEM_ICONS: Readonly<Record<ItemProps['kind'], string>> = {
+  window: '▣',
+  template: '▤',
+  tab: '▱',
+  section: '▥',
+  row: '≡',
+  cell: '•',
+  label: 'T',
+  field: '□',
+  dice: '⚄',
+  token: '◇',
+};
+
+function Item({
+  uid,
+  label,
+  problem,
+  movable,
+  kind,
+  displayLabel = label,
+  detail,
+  children,
+}: ItemProps): ReactNode {
   return (
     <TreeItem id={uid} textValue={label} className={ITEM_CLASS} data-problem={problem || undefined}>
       <TreeItemContent>
@@ -249,7 +281,13 @@ function Item({ uid, label, problem, movable, children }: ItemProps): ReactNode 
             ) : (
               <span className="size-6 shrink-0" />
             )}
-            <span className="min-w-0 flex-1 truncate">{label}</span>
+            <span className="shrink-0 text-text-muted" aria-hidden="true">
+              {ITEM_ICONS[kind]}
+            </span>
+            <span className="min-w-0 flex-1 truncate">{displayLabel}</span>
+            {detail === undefined ? null : (
+              <span className="shrink-0 text-label-sm text-text-muted">{detail}</span>
+            )}
             {problem ? (
               <span className="shrink-0 text-danger-text">
                 <span aria-hidden>!</span>
@@ -296,13 +334,13 @@ function AddItem({
       <TreeItemContent>
         {({ level }) => (
           <div
-            className="flex items-center gap-1"
+            className="flex min-w-0 items-center gap-1"
             style={{ paddingInlineStart: (level - 1) * INDENT_PX }}
           >
             <span className="w-6 shrink-0 text-center" aria-hidden>
               +
             </span>
-            {label}
+            <span className="min-w-0 truncate">{label}</span>
             <FixedDragSlot />
           </div>
         )}
@@ -317,15 +355,21 @@ function FixedDragSlot(): ReactNode {
   return <Button slot="drag" className="hidden" excludeFromTabOrder aria-hidden />;
 }
 
-type ContainerProps = { problems: ReadonlySet<string>; onAdd: (key: string) => void };
+type ContainerProps = {
+  problems: ReadonlySet<string>;
+  addKeys: ReadonlySet<string>;
+  onAdd: (key: string) => void;
+};
 
 function TemplateItem({
   template,
   problems,
+  addKeys,
   onAdd,
 }: ContainerProps & { template: DocTemplate }): ReactNode {
   const kind = isSheetSet(template) ? copy.builder.form.kindSet : copy.builder.form.kindSingle;
   const title = template.title.trim() === '' ? copy.builder.untitled : template.title;
+  const addKey = `${ADD_PREFIX}tab:${template.uid}`;
 
   return (
     <Item
@@ -333,33 +377,40 @@ function TemplateItem({
       label={copy.builder.templateItem(title, kind)}
       problem={problems.has(template.uid)}
       movable
+      kind="template"
+      displayLabel={title}
+      detail={kind}
     >
       {template.tabs.map((tab) => (
-        <TabItem key={tab.uid} tab={tab} problems={problems} onAdd={onAdd} />
+        <TabItem key={tab.uid} tab={tab} problems={problems} addKeys={addKeys} onAdd={onAdd} />
       ))}
-      <AddItem
-        addKey={`${ADD_PREFIX}tab:${template.uid}`}
-        label={copy.builder.addTab}
-        onAdd={onAdd}
-      />
+      {addKeys.has(addKey) ? (
+        <AddItem addKey={addKey} label={copy.builder.addTab} onAdd={onAdd} />
+      ) : null}
     </Item>
   );
 }
 
-function TabItem({ tab, problems, onAdd }: ContainerProps & { tab: DocTab }): ReactNode {
+function TabItem({ tab, problems, addKeys, onAdd }: ContainerProps & { tab: DocTab }): ReactNode {
   const title =
     tab.title === undefined || tab.title.trim() === '' ? copy.builder.untitledTab : tab.title;
 
+  const addKey = `${ADD_PREFIX}section:${tab.uid}`;
+
   return (
-    <Item uid={tab.uid} label={title} problem={problems.has(tab.uid)} movable>
+    <Item uid={tab.uid} label={title} problem={problems.has(tab.uid)} movable kind="tab">
       {tab.sections.map((section) => (
-        <SectionItem key={section.uid} section={section} problems={problems} onAdd={onAdd} />
+        <SectionItem
+          key={section.uid}
+          section={section}
+          problems={problems}
+          addKeys={addKeys}
+          onAdd={onAdd}
+        />
       ))}
-      <AddItem
-        addKey={`${ADD_PREFIX}section:${tab.uid}`}
-        label={copy.builder.addSection}
-        onAdd={onAdd}
-      />
+      {addKeys.has(addKey) ? (
+        <AddItem addKey={addKey} label={copy.builder.addSection} onAdd={onAdd} />
+      ) : null}
     </Item>
   );
 }
@@ -367,6 +418,7 @@ function TabItem({ tab, problems, onAdd }: ContainerProps & { tab: DocTab }): Re
 function SectionItem({
   section,
   problems,
+  addKeys,
   onAdd,
 }: ContainerProps & { section: DocSection }): ReactNode {
   const title =
@@ -374,16 +426,29 @@ function SectionItem({
       ? copy.builder.untitledSection
       : section.title;
 
+  const addKey = `${ADD_PREFIX}row:${section.uid}`;
+
   return (
-    <Item uid={section.uid} label={title} problem={problems.has(section.uid)} movable>
+    <Item
+      uid={section.uid}
+      label={title}
+      problem={problems.has(section.uid)}
+      movable
+      kind="section"
+    >
       {section.rows.map((row, index) => (
-        <RowItem key={row.uid} row={row} index={index} problems={problems} onAdd={onAdd} />
+        <RowItem
+          key={row.uid}
+          row={row}
+          index={index}
+          problems={problems}
+          addKeys={addKeys}
+          onAdd={onAdd}
+        />
       ))}
-      <AddItem
-        addKey={`${ADD_PREFIX}row:${section.uid}`}
-        label={copy.builder.addRow}
-        onAdd={onAdd}
-      />
+      {addKeys.has(addKey) ? (
+        <AddItem addKey={addKey} label={copy.builder.addRow} onAdd={onAdd} />
+      ) : null}
     </Item>
   );
 }
@@ -392,40 +457,30 @@ function RowItem({
   row,
   index,
   problems,
+  addKeys,
   onAdd,
 }: ContainerProps & { row: DocRow; index: number }): ReactNode {
+  const cellAddItems = [
+    [`${ADD_PREFIX}text:${row.uid}`, copy.builder.addLabel],
+    [`${ADD_PREFIX}field:${row.uid}`, copy.builder.addField],
+    [`${ADD_PREFIX}dice:${row.uid}`, copy.builder.addDice],
+    [`${ADD_PREFIX}token:${row.uid}`, copy.builder.addToken],
+  ] as const;
+
   return (
     <Item
       uid={row.uid}
       label={copy.builder.rowItem(index + 1)}
       problem={problems.has(row.uid)}
       movable
+      kind="row"
     >
       {row.cells.map((cell) => (
-        <Item
-          key={cell.uid}
-          uid={cell.uid}
-          label={cellItemLabel(cell)}
-          problem={problems.has(cell.uid)}
-          movable
-        />
+        <CellItem key={cell.uid} cell={cell} problem={problems.has(cell.uid)} />
       ))}
-      <AddItem
-        addKey={`${ADD_PREFIX}text:${row.uid}`}
-        label={copy.builder.addLabel}
-        onAdd={onAdd}
-      />
-      <AddItem
-        addKey={`${ADD_PREFIX}field:${row.uid}`}
-        label={copy.builder.addField}
-        onAdd={onAdd}
-      />
-      <AddItem addKey={`${ADD_PREFIX}dice:${row.uid}`} label={copy.builder.addDice} onAdd={onAdd} />
-      <AddItem
-        addKey={`${ADD_PREFIX}token:${row.uid}`}
-        label={copy.builder.addToken}
-        onAdd={onAdd}
-      />
+      {cellAddItems.map(([key, label]) =>
+        addKeys.has(key) ? <AddItem key={key} addKey={key} label={label} onAdd={onAdd} /> : null,
+      )}
     </Item>
   );
 }
@@ -437,6 +492,26 @@ const FIELD_TYPE_NAMES = {
   select: copy.builder.form.typeSelect,
   'dice-choice': copy.builder.form.typeDiceChoice,
 } as const;
+
+function CellItem({ cell, problem }: { cell: DocCell; problem: boolean }): ReactNode {
+  const label = cellItemLabel(cell);
+
+  const displayLabel = cell.kind === 'field' ? cell.id : label;
+
+  const detail = cell.kind === 'field' ? FIELD_TYPE_NAMES[cell.type] : undefined;
+
+  return (
+    <Item
+      uid={cell.uid}
+      label={label}
+      problem={problem}
+      movable
+      kind={cell.kind === 'text' ? 'label' : cell.kind}
+      displayLabel={displayLabel}
+      detail={detail}
+    />
+  );
+}
 
 // A label shows its text, a field its id and type, a dice cell its formula.
 export function cellItemLabel(cell: DocCell): string {
@@ -465,20 +540,25 @@ function containerUids(document: BuilderDocument): string[] {
   ]);
 }
 
-function allAddKeys(document: BuilderDocument): string[] {
+function allAddKeys(document: BuilderDocument, selection: string | null): string[] {
+  const selectedPath = selection === null ? [] : ancestorUids(document, selection).slice(0, 2);
+  const showFor = (uid: string): boolean => uid === selection || selectedPath.includes(uid);
+
   return [
     ADD_SET_KEY,
     ADD_SINGLE_KEY,
     ...document.templates.flatMap((template) => [
-      `${ADD_PREFIX}tab:${template.uid}`,
+      ...(showFor(template.uid) ? [`${ADD_PREFIX}tab:${template.uid}`] : []),
       ...template.tabs.flatMap((tab) => [
-        `${ADD_PREFIX}section:${tab.uid}`,
+        ...(showFor(tab.uid) ? [`${ADD_PREFIX}section:${tab.uid}`] : []),
         ...tab.sections.flatMap((section) => [
-          `${ADD_PREFIX}row:${section.uid}`,
+          ...(showFor(section.uid) ? [`${ADD_PREFIX}row:${section.uid}`] : []),
           ...section.rows.flatMap((row) =>
-            (['text', 'field', 'dice', 'token'] as const).map(
-              (kind) => `${ADD_PREFIX}${kind}:${row.uid}`,
-            ),
+            showFor(row.uid)
+              ? (['text', 'field', 'dice', 'token'] as const).map(
+                  (kind) => `${ADD_PREFIX}${kind}:${row.uid}`,
+                )
+              : [],
           ),
         ]),
       ]),

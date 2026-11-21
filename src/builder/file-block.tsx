@@ -29,7 +29,7 @@ const MENU_ITEM_CLASS =
   'touch-target flex cursor-default items-center rounded-sm px-3 data-focused:bg-surface-tab';
 
 const FILE_BLOCK_CLASS =
-  'press inline-flex min-w-[144px] max-w-[208px] flex-col items-start gap-1 rounded-md border border-line px-2 py-1 text-left text-text data-hovered:bg-fill';
+  'press inline-flex min-w-0 max-w-[176px] items-center gap-1 rounded-md border border-line px-2 py-1 text-left text-text data-hovered:bg-fill';
 
 const OPEN_FILE = 'open-file';
 const SAVE_AS = 'save-as';
@@ -62,6 +62,15 @@ export function FileBlock({
   const status =
     file === null ? copy.builder.fileBlock.draftStatus : statusText(file, syncTime ?? '');
 
+  const needsAttention =
+    file !== null &&
+    (file.status.kind === 'blocked' ||
+      file.status.kind === 'changed' ||
+      file.status.kind === 'refused' ||
+      file.status.kind === 'failed');
+
+  const accessibleStatus = `${title}: ${fileName}. ${status}`;
+
   function handleAction(key: string): void {
     if (key === OPEN_FILE) {
       if (canAttach) {
@@ -92,8 +101,16 @@ export function FileBlock({
 
   return (
     <MenuTrigger>
-      <AriaButton className={FILE_BLOCK_CLASS}>
-        <span className="flex w-full items-center gap-1 text-label-sm font-medium">
+      <AriaButton
+        className={FILE_BLOCK_CLASS}
+        aria-label={accessibleStatus}
+        ref={(button) => {
+          if (button !== null) {
+            button.title = status;
+          }
+        }}
+      >
+        <span className="flex shrink-0 items-center gap-1 text-label-sm font-medium">
           <span>{title}</span>
           <span
             data-file-status-dot
@@ -104,10 +121,16 @@ export function FileBlock({
             )}
           />
         </span>
-        <span className="max-w-full truncate text-label-sm" title={fileName}>
+        <span className="min-w-0 truncate text-label-sm" title={fileName}>
           {fileName}
         </span>
-        <span className="max-w-full truncate text-label-sm text-text-muted">{status}</span>
+        {needsAttention ? (
+          <span className="truncate text-label-sm text-warning-text" title={status}>
+            {status}
+          </span>
+        ) : (
+          <span className="sr-only">{status}</span>
+        )}
       </AriaButton>
       <Popover
         placement="bottom start"
